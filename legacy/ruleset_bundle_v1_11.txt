@@ -1,0 +1,647 @@
+# 00_meta.yaml
+# 00_meta.yaml
+meta:
+  ruleset_id: yayoi_debit_account_replace
+  version: "1.11"
+  timezone: "Asia/Tokyo"
+  index_base: 1
+
+---
+
+# 10_output_contract.yaml
+# 10_output_contract.yaml
+csv_contract:
+  format_name: "yayoi_journal_import_25col"
+  record_type_supported:
+    - "2000"
+  delimiter: ","
+  quotechar: '"'
+  encoding_default: "cp932"  # Ｓｈｉｆｔ-ＪＩＳ系
+  line_ending_required: "CRLF"
+  column_count: 25
+
+  # Fixed column map (1-based).
+  column_map_1b:
+    1: record_type
+    2: voucher_type
+    3: voucher_no
+    4: 取引日
+    5: 借方取引先名
+    6: debit_subaccount
+    7: debit_department
+    8: debit_tax_category
+    9: debit_amount
+    10: debit_tax_amount
+    11: 貸方取引先名
+    12: credit_subaccount
+    13: credit_department
+    14: credit_tax_category
+    15: credit_amount
+    16: credit_tax_amount
+    17: 摘要
+    18: aux_18
+    19: aux_19
+    20: aux_20
+    21: aux_21
+    22: 仕訳メモ
+    23: aux_23
+    24: aux_24
+    25: aux_25
+
+  # Canonical field indexes (1-based) used by the agent.
+  field_index_1b:
+    record_type: 1
+    date: 4
+    debit_account: 5
+    debit_tax: 8
+    debit_amount: 9
+    credit_account: 11
+    credit_tax: 14
+    credit_amount: 15
+    summary: 17
+    memo: 22
+
+output_contract:
+  immutable_rule:
+    only_mutable_field_index_1b: 5
+    compare_mode: token_exact
+  output_filenames:
+    ascii_only: true
+    timestamp_prefix: "YYYYMMDD_HHMMSS"
+    templates:
+      replaced_csv: "{TS}_debit_account_replaced.csv"
+      review_xlsx:  "{TS}_review_report.xlsx"
+      manifest_json: "{TS}_run_manifest.json"
+
+  forbidden_in_replacement_value:
+    - ','
+    - '"'
+    - '\r'
+    - '\n'
+
+---
+
+# 20_processing_flow.yaml
+# 20_processing_flow.yaml
+processing_flow:
+  mode: ALWAYS_REPLACE
+  replacement_policy:
+    # v1.9+: When keyword classification falls back to 'global-most-frequent' (hint contains '参照なし→全体最多'),
+    # set reason code and attempt one external lookup (unless gated).
+    keyword_fallback_reason_code: keyword_fallback_global_used
+    external_lookup_on_keyword_fallback: true
+    # v1.9.1+: External lookup observability. For every triggered row, ALWAYS write exactly one of the following
+    # status reason codes (and also add external_lookup_attempted when a lookup is executed):
+    # - external_lookup_skipped_by_gate
+    # - external_lookup_no_signal
+    # - external_lookup_used
+    external_lookup_status_reason_codes:
+      attempted: external_lookup_attempted
+      skipped: external_lookup_skipped_by_gate
+      no_signal: external_lookup_no_signal
+      used: external_lookup_used
+
+    # v1.9.2: If external lookup was attempted but yielded no decisive signal, DO NOT apply the fallback replacement.
+    # Keep the original debit account unchanged (same as dummy handling), mark HIGH priority, and set confidence to 0.0.
+    no_signal_handling:
+      keep_original_debit_account: true
+      force_priority: HIGH
+      force_confidence: 0.0
+      add_reason_codes: [external_lookup_attempted, external_lookup_no_signal]
+    # ALWAYS generate a suggestion for every row.
+    # Applying the suggestion may result in no visible change if the top suggestion equals the original debit account.
+    allow_no_change_when_top_equals_before: true
+    # When top suggestion equals the original debit account, keep it unchanged and add reason code below.
+    no_change_reason_code: no_change_top_equals_before
+  csv_read:
+    strategy: split_by_comma_preserve_tokens
+    precondition: "Yayoi import CSV does not allow commas inside fields."
+    fatal_if_column_count_not_25: true
+  analysis_fields:
+    # Inference/matching MUST use only the summary column.
+    inference_whitelist_columns_1b: [17]
+    # Debit account is read only to record the 'before' value, and replaced in output.
+    debit_account_column_1b: 5
+    # All other columns are pass-through and MUST NOT be used for matching/scoring.
+    forbidden_for_inference_columns_1b: [1,2,3,4,6,7,8,9,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25]
+    use_summary_column_1b: 17
+    ignore_memo_column_1b: 22
+  replacement:
+    replace_debit_account_column_1b: 5
+    keep_all_other_tokens_byte_identical: true
+  report_order:
+    preserve_input_row_order: true
+    no_sorting_by_priority: true
+  dummy_handling:
+    # Dummy entries (OCR unreadable) are identified ONLY by exact match on the summary column (17th column).
+    # No partial match, no fuzzy match, no similarity match. The marker must match exactly.
+    marker_exact_match: "##DUMMY_OCR_UNREADABLE##"
+    summary_column_1b: 17
+
+    # Replacement policy for dummy rows:
+    # - keep_original: keep debit account unchanged (still treated as processed; report marks HIGH, confidence 0.0).
+    # - fallback_preference: replace using fallback_debit_account_preference list (first existing in master).
+    dummy_replacement_mode: keep_original
+
+    behavior:
+      skip_reference_matching: true
+      force_priority: HIGH
+      force_confidence: 0.0
+      force_reason_code: dummy_entry_detected
+      force_evidence_type: dummy
+
+    fallback_debit_account_preference:
+      - "旅費交通費"
+      - "交際費"
+
+    fallback_selection_rule:
+      choose_first_existing_in_master: true
+      if_none_exist_choose_lexicographically_smallest_after_nfkc: true
+
+---
+
+# 30_normalization.yaml
+# 30_normalization.yaml
+normalization:
+  text:
+    unicode_normalization: NFKC
+    strip_spaces: true
+    collapse_whitespace: true
+  t_number:
+    regex: "T\d{13}"
+  vendor_name_extraction:
+    source_column_1b: 17
+    splitters_in_priority_order:
+      - " / "
+      - "/"
+      - " | "
+      - "|"
+      - " : "
+      - "："
+    forbidden_splitters:
+      - "-"
+      - "ー"  # long vowel mark
+      - " "
+vendor_name_cleanup:
+    # Apply after vendor_name_extraction + text normalization.
+    remove_legal_entity_suffixes:
+      - "株式会社"
+      - "（株）"
+      - "(株)"
+      - "有限会社"
+      - "合同会社"
+      - "合名会社"
+      - "合資会社"
+    remove_legal_entity_prefixes:
+      - "株式会社"
+      - "（株）"
+      - "(株)"
+    strip_punctuation:
+      - "　"
+      - " "
+      - "・"
+
+
+# v1.10 addition: strip Japanese legal-entity designators (会社種別) from the start/end of the normalized entity string.
+# Goal: improve reference matching stability when input includes a legal form but reference does not (or vice versa).
+entity_legal_form_stripping:
+  enabled: true
+  apply_to_fields:
+    - normalized_counterparty_key
+    - normalized_summary_for_lookup
+  algorithm:
+    - step: "after_nfkc_and_whitespace_normalization"
+    - step: "strip_known_legal_forms_at_start_and_end_iteratively"
+    - step: "collapse_whitespace_and_punctuation_again"
+  legal_forms_start:
+    # Common company forms
+    - "株式会社"
+    - "有限会社"
+    - "合同会社"
+    # Foundations/associations (common in counterparties)
+    - "一般財団法人"
+    - "公益財団法人"
+    - "一般社団法人"
+    - "公益社団法人"
+    # Professional/other法人
+    - "特定非営利活動法人"
+    - "NPO法人"
+    - "学校法人"
+    - "宗教法人"
+    - "医療法人"
+    - "社会福祉法人"
+    - "独立行政法人"
+    - "国立大学法人"
+    - "地方独立行政法人"
+    - "弁護士法人"
+    - "税理士法人"
+    - "行政書士法人"
+    - "司法書士法人"
+    - "社会保険労務士法人"
+    - "監査法人"
+  legal_forms_end:
+    # Suffix variants without spaces are common (e.g., TVS REGZA株式会社)
+    - "株式会社"
+    - "有限会社"
+    - "合同会社"
+    - "一般財団法人"
+    - "公益財団法人"
+    - "一般社団法人"
+    - "公益社団法人"
+    - "特定非営利活動法人"
+    - "NPO法人"
+    - "学校法人"
+    - "宗教法人"
+    - "医療法人"
+    - "社会福祉法人"
+    - "独立行政法人"
+    - "国立大学法人"
+    - "地方独立行政法人"
+    - "弁護士法人"
+    - "税理士法人"
+    - "行政書士法人"
+    - "司法書士法人"
+    - "社会保険労務士法人"
+    - "監査法人"
+  abbreviated_forms_start:
+    - "（株）"
+    - "(株)"
+    - "（有）"
+    - "(有)"
+  abbreviated_forms_end:
+    - "（株）"
+    - "(株)"
+    - "（有）"
+    - "(有)"
+  safeguards:
+    # Do not strip if the result becomes empty
+    keep_original_if_empty: true
+    # Do not strip short tokens if it would remove the entire string (e.g., "株式会社" only)
+    keep_original_if_length_lt: 2
+    # Stop stripping after N iterations to prevent runaway
+    max_iterations: 4
+
+---
+
+# 40_reference_index.yaml
+# 40_reference_index.yaml
+reference_index:
+  keys:
+    - t_number
+    - vendor_name_normalized
+  aggregates:
+    - debit_account
+    - debit_tax_category
+    - tax_rate_bucket
+
+
+# v1.11: T番号の「科目分岐（同一Tで借方が複数）」を事前計算し、優先度設計に利用する。
+# NOTE: T番号は参照データ（リファレンス）の摘要/取引先情報から抽出されたものを前提とする。
+derived:
+  t_number_stats:
+    compute_for_each_t_number:
+      fields:
+        - distinct_debit_accounts_count
+        - debit_account_counts          # {account: count}
+        - sample_count_total            # sum of counts
+        - top_account
+        - top_count
+        - p_majority                    # top_count / sample_count_total
+        - has_sensitive_account         # any account in risk_tier_high list
+    flags:
+      is_ambiguous_if_distinct_accounts_gte: 2
+      is_close_split_if_p_majority_lt: 0.70
+    output_contract:
+      # The agent must treat these stats as part of the effective reference index.
+      # For a given input row with T番号=T, it can look up:
+      # - t_stats.is_ambiguous
+      # - t_stats.p_majority
+      # - t_stats.has_sensitive_account
+      # - t_stats.distinct_debit_accounts_count
+      # - t_stats.top_account
+      # - t_stats.debit_account_counts
+      storage: "in-memory map keyed by T_number"
+
+---
+
+# 50_scoring_and_thresholds.yaml
+# 50_scoring_and_thresholds.yaml
+scoring:
+  confidence:
+    base_components:
+      p_majority: true
+      sample_count: true
+      key_strength: true
+    key_strength_weights:
+      t_number: 1.00
+      vendor_name: 0.90
+      keyword: 0.70
+      semantic: 0.50
+
+  evidence_type_labels_ja:
+    t_number: "T番号一致"
+    vendor_name: "取引先名一致（正規化）"
+    keyword: "キーワード分類"
+    semantic: "意味類似（フォールバック）"
+
+  always_render_evidence_summary_japanese: true
+
+
+
+# v1.11: T番号一致は最強根拠。参照件数が少ないことだけでHIGHにしない。
+t_number_policy_v1_11:
+  confidence_floor_when_unambiguous: 0.90
+  # Unambiguous = same T number maps to exactly 1 debit account in reference.
+  unambiguous:
+    set_priority: LOW
+    suppress_reason_codes:
+      - low_samples
+      - low_confidence
+  # Ambiguous = same T number maps to 2+ debit accounts in reference.
+  ambiguous:
+    default_priority: MED
+    add_reason_codes:
+      - t_number_ambiguous_accounts
+    high_if_any:
+      - t_number_close_split
+      - t_number_sensitive_account_in_variants
+      - amount_ge_high_value_threshold
+    thresholds:
+      close_split_p_majority_lt: 0.70
+      high_value_amount_jpy: 50000
+
+priority_rules:
+  # Produce HIGH/MED/LOW, but do NOT reorder output.
+  high_if_any:
+    - invalid_account
+    - external_lookup_no_signal
+    - external_lookup_used
+    - evidence_type_is_semantic
+    - confidence_lt_0_35
+    - risk_tier_high
+    - mixed_tax_rates_and_not_dominated
+    - mixed_debit_accounts_and_not_dominated
+  med_if_any:
+    - sample_count_lt_3
+    - keyword_fallback_global_used
+    - external_lookup_skipped_by_gate
+    - external_lookup_attempted
+    - risk_tier_med
+    - mixed_flags_but_dominated
+  low_default: true
+
+mixed_dominance_rule:
+  dominated_if:
+    p_majority_gte: 0.95
+    sample_count_gte: 20
+
+---
+
+# 60_account_risk_policy.yaml
+# 60_account_risk_policy.yaml
+account_risk_policy:
+  tiers:
+    high:
+      - "福利厚生費"
+    med:
+      - "交際費"
+  notes:
+    - "Risk tier affects PRIORITY only (ALWAYS_REPLACE remains)."
+
+---
+
+# 70_external_lookup_policy.yaml
+# 70_external_lookup_policy.yaml
+external_lookup_policy:
+  enabled: true
+
+  # External lookup is allowed ONLY in the following situations (treat as OR):
+  use_only_when:
+    - "no_reference_hits"
+    - "keyword_fallback_global_used"
+
+  # External lookup is NOT used to override strong internal evidence; it is used only to improve cases with weak/absent evidence.
+  purpose:
+    - "entity_type_classification"
+    - "key_enrichment_only"
+
+  triggers:
+    - name: keyword_fallback_global
+      enabled: true
+      max_lookups_per_row: 1
+
+      # Mandatory: when triggered and not gated, ALWAYS execute exactly one lookup for observability.
+      mandatory_attempt_if_not_skipped: true
+
+      when:
+        evidence_type: "keyword"
+        hint_contains: "参照なし→全体最多"
+
+      # Gate: skip external lookup when summary clearly indicates travel/transport/parking.
+      skip_if_summary_contains_any:
+        - "鉄道"
+        - "地下鉄"
+        - "東武"
+        - "JR"
+        - "東京地下鉄"
+        - "タクシー"
+        - "バス"
+        - "高速"
+        - "ETC"
+        - "パーク"
+        - "パーキング"
+        - "駐車"
+        - "タイムズ"
+
+      action:
+        method: "web_search_one_shot"
+        query_template_ja: "{SUMMARY} は何の団体/会社か"
+
+      logging:
+        # These reason codes MUST be written to the report for every triggered row:
+        # - If gated: write skipped_by_gate
+        # - If executed: write attempted
+        # - If executed but no decisive signal: write no_signal
+        # - If executed and decisive signal used: write used
+        reason_codes:
+          attempted: external_lookup_attempted
+          skipped_by_gate: external_lookup_skipped_by_gate
+          no_signal: external_lookup_no_signal
+          used: external_lookup_used
+
+      output_use:
+        # Change the debit account ONLY when confidence is high and the inferred account exists in the effective account master.
+        allowed_to_change_account_only_if_high_confidence: true
+
+        # If the lookup yields no decisive signal, DO NOT change the account, but DO write external_lookup_no_signal.
+        require_decisive_signal_to_change: true
+
+        # For safety, rows that are actually influenced by external lookup should be HIGH priority.
+        set_priority_when_used: HIGH
+
+        # v1.9.2: If lookup was attempted but no decisive signal was obtained, keep the ORIGINAL debit account.
+        # This avoids mechanically applying the global-most-frequent fallback in high-uncertainty cases.
+        no_signal_behavior:
+          keep_original_debit_account: true
+          set_priority: HIGH
+          set_confidence: 0.0
+
+---
+
+# 80_validation_checks.yaml
+# 80_validation_checks.yaml
+# NOTE: token_1b[i] means the i-th CSV column using 1-based indexing.
+# After splitting a line by comma into 25 tokens, token_1b[i] == tokens[i-1].
+validation_checks:
+  fatal_conditions:
+    - name: column_count_not_25
+      check: split_by_comma_token_count != 25
+    - name: record_type_not_2000
+      check: token_1b[1] != "\"2000\""
+    - name: summary_column_looks_like_memo
+      check: token_1b[17] startswith "\"BELLE|" OR token_1b[17] startswith "\"FIX=" OR token_1b[17] contains "|BELLE|" OR token_1b[17] contains "FBK="
+    - name: attempted_change_outside_debit_account
+      check: any token differs except index_1b==5
+    - name: replacement_contains_forbidden_char
+      check: replacement_value contains any forbidden character
+
+  fail_closed_behavior:
+    if_any_fatal: "do_not_emit_csv"
+    always_emit_report: true
+
+---
+
+# 90_report_spec.yaml
+# 90_report_spec.yaml
+report_spec:
+  workbook:
+    sheet_names:
+      run_summary: "実行サマリ"
+      review_list: "要確認一覧"
+  review_list:
+    order: input_row_order
+    columns:
+      - key: row_no
+        header: "行番号"
+      - key: date
+        header: "取引日"
+      - key: amount
+        header: "金額"
+      - key: summary
+        header: "摘要"
+      - key: debit_before
+        header: "借方勘定科目（置換前）"
+      - key: debit_after
+        header: "借方勘定科目（置換後）"
+      - key: confidence
+        header: "確度"
+      - key: evidence_summary
+        header: "根拠要約"
+      - key: reasons
+        header: "要確認理由"
+      - key: priority
+        header: "優先度"
+      - key: action
+        header: "推奨アクション"
+
+  rendering:
+    reasons_language: ja
+    evidence_summary_language: ja
+    reason_code_to_japanese:
+      low_samples: "参照件数が少ない"
+      low_confidence: "確度が低い"
+      mixed_tax_rates: "税率・税区分が混在"
+      mixed_debit_accounts: "科目が混在"
+      risk_high: "高リスク科目"
+      risk_med: "注意科目"
+      invalid_account: "科目マスタに存在しない"
+      external_lookup_used: "外部補助を使用"
+      external_lookup_attempted: "外部参照を試行"
+      external_lookup_no_signal: "外部参照したが有効情報なし（置換しない）"
+      external_lookup_skipped_by_gate: "外部参照をゲートで抑止（交通系など）"
+      evidence_type_is_semantic: "意味類似（フォールバック）"
+      dummy_entry_detected: "ダミー仕訳（OCR取得不能）"
+      no_change_top_equals_before: "推定結果が元科目と同一"
+      keyword_fallback_global_used: "キーワード分類フォールバック（参照なし→全体最多）"
+      t_number_ambiguous_accounts: "同一T番号で科目が複数（分岐あり）"
+      t_number_close_split: "同一T番号で科目が拮抗（最多比率<70%）"
+      t_number_sensitive_account_in_variants: "同一T番号の分岐に高リスク科目を含む"
+      amount_ge_high_value_threshold: "高額（閾値以上）"
+    render_reason_token:
+      format: "{JP}（{CODE}）"
+
+    # ALWAYS render evidence summary in Japanese. Never emit English-only summaries.
+    evidence_summary_template_ja:
+      t_number: "キー: T番号一致（{T}）／参照: {N}件／最多: {TOP} {TOPN}/{N}（{PCT}％）"
+      vendor_name: "キー: 取引先名一致（正規化）（{VENDOR}）／参照: {N}件／最多: {TOP} {TOPN}/{N}（{PCT}％）"
+      keyword: "キー: キーワード分類／ヒント: {HINT}／推定: {TOP}"
+      semantic: "キー: 意味類似（フォールバック）／ヒント: {HINT}／推定: {TOP}"
+      dummy: "キー: ダミー仕訳（OCR取得不能）／判定: 摘要がダミーマーカーと完全一致／最終借方: {TOP}"
+
+    recommended_action_template_ja:
+      high: "原本確認と必要に応じて後続修正"
+      med: "後で確認推奨"
+      low: "原則確認不要（任意で抽出チェック）"
+
+---
+
+# 95_regression_tests_spec.yaml
+# 95_regression_tests_spec.yaml
+regression_tests:
+  enabled: true
+  note: "Maintain a small golden set and verify stability after ruleset changes."
+  additional_cases:
+    - name: external_lookup_no_signal_keeps_original
+      description: "When reason includes external_lookup_no_signal, output CSV must keep debit account unchanged and report priority HIGH with confidence 0.0."
+
+
+# v1.10: legal entity designator stripping (会社種別除去)
+- name: legal_form_stripping_prefix_yugen
+  input_summary: "有限会社 佐藤紙工"
+  expected_normalized_counterparty_key: "佐藤紙工"
+- name: legal_form_stripping_suffix_kabu
+  input_summary: "TVS REGZA株式会社"
+  expected_normalized_counterparty_key: "TVS REGZA"
+- name: legal_form_stripping_prefix_ippan_zaidan
+  input_summary: "一般財団法人民事法務協会"
+  expected_normalized_counterparty_key: "民事法務協会"
+
+
+# v1.11: T番号分岐（同一Tで借方が複数）統計の利用
+- name: t_number_unambiguous_priority_low
+  given:
+    evidence_type: t_number
+    t_stats:
+      distinct_debit_accounts_count: 1
+      p_majority: 1.0
+      has_sensitive_account: false
+    sample_count: 1
+    confidence_before_floor: 0.40
+  expect:
+    confidence_min_applied: 0.90
+    priority: LOW
+    reasons_not_include:
+      - low_samples
+      - low_confidence
+- name: t_number_ambiguous_default_med
+  given:
+    evidence_type: t_number
+    t_stats:
+      distinct_debit_accounts_count: 2
+      p_majority: 0.86
+      has_sensitive_account: true
+    amount_jpy: 1000
+  expect:
+    priority: HIGH
+    reasons_include:
+      - t_number_ambiguous_accounts
+      - t_number_sensitive_account_in_variants
+
+---
+
+# 99_data_policy.yaml
+# 99_data_policy.yaml
+data_policy:
+  principle:
+    - "Do not retain customer files beyond the current run."
+    - "Do not include sensitive source identifiers in external browsing queries."

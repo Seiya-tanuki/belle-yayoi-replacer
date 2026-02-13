@@ -1,0 +1,445 @@
+{
+  "schema": "belle.category_defaults.v1",
+  "version": "1.14",
+  "created_at": "2026-02-13T12:09:35.860255+00:00",
+  "defaults": {
+    "cvs": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "supermarket": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "discount_store": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "drugstore": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "homecenter": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "workwear": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "hundred_yen": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "electronics_retail": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "furniture_home": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "variety_store": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "bookstore_media": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "sports_outdoor": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "amazon_retail": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "rakuten_ec": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "yahoo_shopping": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "mercari": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "monotaro": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "askul_lohaco": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "zozo": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "qoo10": {
+      "debit_account": "消耗品費",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "cafe_chain": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "fastfood_chain": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "family_restaurant_chain": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "bento_takeout": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "bakery_donut_sweets": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "food_delivery": {
+      "debit_account": "会議費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "sushi_chain": {
+      "debit_account": "交際費",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default"
+    },
+    "izakaya_chain": {
+      "debit_account": "交際費",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default"
+    },
+    "ticketing": {
+      "debit_account": "交際費",
+      "confidence": 0.4,
+      "priority": "HIGH",
+      "reason_code": "category_default"
+    },
+    "cinema": {
+      "debit_account": "交際費",
+      "confidence": 0.4,
+      "priority": "HIGH",
+      "reason_code": "category_default"
+    },
+    "gas_station": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "auto_service": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "parking": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "car_rental": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "hotel_chain": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "airline": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "railway_transport": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "toll_road": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "travel_agency_offline": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "travel_booking_online": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "ride_hailing_taxi": {
+      "debit_account": "旅費交通費",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "courier_postal": {
+      "debit_account": "荷造運賃",
+      "confidence": 0.55,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "gym_fitness": {
+      "debit_account": "福利厚生費",
+      "confidence": 0.45,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "laundry_cleaning": {
+      "debit_account": "福利厚生費",
+      "confidence": 0.45,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "aws": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "google_services": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "microsoft_services": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "adobe": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "collaboration_tools": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "dev_tools": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "ai_services": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "app_store_digital": {
+      "debit_account": "通信費",
+      "confidence": 0.5,
+      "priority": "MED",
+      "reason_code": "category_default"
+    },
+    "ads_google": {
+      "debit_account": "広告宣伝費",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "ads_meta": {
+      "debit_account": "広告宣伝費",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "ads_yahoo_line": {
+      "debit_account": "広告宣伝費",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "paypay": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "rakuten_pay": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "paypal": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "stripe": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "square": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "gmo_pg": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "line_pay": {
+      "debit_account": "支払手数料",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "national_tax": {
+      "debit_account": "租税公課",
+      "confidence": 0.65,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "local_tax": {
+      "debit_account": "租税公課",
+      "confidence": 0.65,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "pension": {
+      "debit_account": "法定福利費",
+      "confidence": 0.65,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "health_insurance": {
+      "debit_account": "法定福利費",
+      "confidence": 0.65,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "labor_insurance": {
+      "debit_account": "法定福利費",
+      "confidence": 0.65,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "electric_utility": {
+      "debit_account": "水道光熱費",
+      "confidence": 0.7,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "gas_utility": {
+      "debit_account": "水道光熱費",
+      "confidence": 0.7,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "water_utility": {
+      "debit_account": "水道光熱費",
+      "confidence": 0.7,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "telecom_carrier": {
+      "debit_account": "通信費",
+      "confidence": 0.7,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "internet_provider": {
+      "debit_account": "通信費",
+      "confidence": 0.7,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    }
+  },
+  "global_fallback": {
+    "debit_account": "雑費",
+    "confidence": 0.35,
+    "priority": "HIGH",
+    "reason_code": "global_fallback"
+  }
+}

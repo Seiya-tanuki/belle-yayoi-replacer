@@ -1,0 +1,7976 @@
+{
+  "schema": "bizcat_seed_ja_v1",
+  "version": "1.14",
+  "created_at": "2026-02-13T12:09:54.743944+00:00",
+  "design_goals": {
+    "agent_first": true,
+    "human_readability": "ignored",
+    "bias": "high_precision_seed",
+    "expected_category_count": 72
+  },
+  "normalization": {
+    "n0": {
+      "name": "nfkc_upper_alnum",
+      "steps": [
+        "unicode_nfkc",
+        "uppercase_latin",
+        "drop_unicode_categories: Z*, P*, S*, C*"
+      ],
+      "example": {
+        "raw": "SQ *ABC / セブン-イレブン",
+        "n0": "SQABCセブンイレブン"
+      }
+    },
+    "n1": {
+      "name": "nfkc_upper_keep_basic",
+      "steps": [
+        "unicode_nfkc",
+        "uppercase_latin",
+        "collapse_whitespace_to_single_space",
+        "drop_control_chars",
+        "trim"
+      ],
+      "example": {
+        "raw": "SQ *ABC / APPLE.COM/BILL",
+        "n1": "SQ *ABC / APPLE.COM/BILL"
+      }
+    }
+  },
+  "matching_contract": {
+    "strategy": "longest_first_substring",
+    "fields": [
+      "n0",
+      "n1"
+    ],
+    "term_row_format": [
+      "field",
+      "needle",
+      "category_id",
+      "weight",
+      "type"
+    ],
+    "term_types": {
+      "S": "substring"
+    },
+    "negative_filter": "If any negative_term of the matched category is present in the same normalized field, ignore that category for this input.",
+    "scoring": {
+      "category_score": "max_over_terms(weight * (len(needle)/12.0))",
+      "tie_breakers": [
+        "higher_category_score",
+        "longer_needle",
+        "higher_precision_hint"
+      ],
+      "reject_if": [
+        "no_terms_matched -> UNCLASSIFIED",
+        "top_two_scores_within_ratio <= 1.05 -> AMBIGUOUS"
+      ]
+    }
+  },
+  "categories": [
+    {
+      "id": 1,
+      "key": "cvs",
+      "kind": "merchant",
+      "label": "CONVENIENCE_STORE",
+      "precision_hint": 0.985,
+      "osm_tags": [
+        [
+          "shop",
+          "convenience"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "セブン銀行",
+          "ローソン銀行"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 2,
+      "key": "supermarket",
+      "kind": "merchant",
+      "label": "SUPERMARKET_GMS",
+      "precision_hint": 0.975,
+      "osm_tags": [
+        [
+          "shop",
+          "supermarket"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 3,
+      "key": "discount_store",
+      "kind": "merchant",
+      "label": "DISCOUNT_STORE",
+      "precision_hint": 0.965,
+      "osm_tags": [
+        [
+          "shop",
+          "discount"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 4,
+      "key": "drugstore",
+      "kind": "merchant",
+      "label": "DRUGSTORE",
+      "precision_hint": 0.975,
+      "osm_tags": [
+        [
+          "shop",
+          "chemist"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 5,
+      "key": "homecenter",
+      "kind": "merchant",
+      "label": "HOME_CENTER",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "shop",
+          "doityourself"
+        ],
+        [
+          "shop",
+          "hardware"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 6,
+      "key": "workwear",
+      "kind": "merchant",
+      "label": "WORKWEAR",
+      "precision_hint": 0.98,
+      "osm_tags": [
+        [
+          "shop",
+          "clothes"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 7,
+      "key": "hundred_yen",
+      "kind": "merchant",
+      "label": "HUNDRED_YEN_SHOP",
+      "precision_hint": 0.985,
+      "osm_tags": [
+        [
+          "shop",
+          "variety_store"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 8,
+      "key": "electronics_retail",
+      "kind": "merchant",
+      "label": "ELECTRONICS_RETAIL",
+      "precision_hint": 0.98,
+      "osm_tags": [
+        [
+          "shop",
+          "electronics"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 9,
+      "key": "furniture_home",
+      "kind": "merchant",
+      "label": "FURNITURE_HOME",
+      "precision_hint": 0.975,
+      "osm_tags": [
+        [
+          "shop",
+          "furniture"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 10,
+      "key": "variety_store",
+      "kind": "merchant",
+      "label": "VARIETY_HOME_GOODS",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "shop",
+          "variety_store"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 11,
+      "key": "bookstore_media",
+      "kind": "merchant",
+      "label": "BOOKSTORE_MEDIA",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "shop",
+          "books"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 12,
+      "key": "sports_outdoor",
+      "kind": "merchant",
+      "label": "SPORTS_OUTDOOR",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "shop",
+          "sports"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 13,
+      "key": "cafe_chain",
+      "kind": "merchant",
+      "label": "CAFE_CHAIN",
+      "precision_hint": 0.98,
+      "osm_tags": [
+        [
+          "amenity",
+          "cafe"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 14,
+      "key": "fastfood_chain",
+      "kind": "merchant",
+      "label": "FASTFOOD_CHAIN",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "amenity",
+          "fast_food"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 15,
+      "key": "family_restaurant_chain",
+      "kind": "merchant",
+      "label": "FAMILY_RESTAURANT_CHAIN",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "amenity",
+          "restaurant"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 16,
+      "key": "sushi_chain",
+      "kind": "merchant",
+      "label": "SUSHI_CHAIN",
+      "precision_hint": 0.98,
+      "osm_tags": [
+        [
+          "amenity",
+          "restaurant"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 17,
+      "key": "izakaya_chain",
+      "kind": "merchant",
+      "label": "IZAKAYA_CHAIN",
+      "precision_hint": 0.965,
+      "osm_tags": [
+        [
+          "amenity",
+          "bar"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 18,
+      "key": "bento_takeout",
+      "kind": "merchant",
+      "label": "BENTO_TAKEOUT",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 19,
+      "key": "bakery_donut_sweets",
+      "kind": "merchant",
+      "label": "BAKERY_DONUT_SWEETS",
+      "precision_hint": 0.965,
+      "osm_tags": [
+        [
+          "shop",
+          "bakery"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 20,
+      "key": "gas_station",
+      "kind": "merchant",
+      "label": "GAS_STATION",
+      "precision_hint": 0.98,
+      "osm_tags": [
+        [
+          "amenity",
+          "fuel"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 21,
+      "key": "auto_service",
+      "kind": "merchant",
+      "label": "AUTO_SERVICE_PARTS",
+      "precision_hint": 0.975,
+      "osm_tags": [
+        [
+          "shop",
+          "car_repair"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 22,
+      "key": "parking",
+      "kind": "merchant",
+      "label": "PARKING",
+      "precision_hint": 0.975,
+      "osm_tags": [
+        [
+          "amenity",
+          "parking"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 23,
+      "key": "car_rental",
+      "kind": "merchant",
+      "label": "CAR_RENTAL",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 24,
+      "key": "courier_postal",
+      "kind": "merchant",
+      "label": "COURIER_POSTAL",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 25,
+      "key": "hotel_chain",
+      "kind": "merchant",
+      "label": "HOTEL_CHAIN",
+      "precision_hint": 0.97,
+      "osm_tags": [
+        [
+          "tourism",
+          "hotel"
+        ]
+      ],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 26,
+      "key": "airline",
+      "kind": "merchant",
+      "label": "AIRLINE",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 27,
+      "key": "railway_transport",
+      "kind": "merchant",
+      "label": "RAILWAY_TRANSPORT",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 28,
+      "key": "toll_road",
+      "kind": "merchant",
+      "label": "TOLL_ROAD",
+      "precision_hint": 0.95,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 29,
+      "key": "travel_agency_offline",
+      "kind": "merchant",
+      "label": "TRAVEL_AGENCY_OFFLINE",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 30,
+      "key": "ticketing",
+      "kind": "merchant",
+      "label": "TICKETING",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 31,
+      "key": "cinema",
+      "kind": "merchant",
+      "label": "CINEMA",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 32,
+      "key": "gym_fitness",
+      "kind": "merchant",
+      "label": "GYM_FITNESS",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 33,
+      "key": "laundry_cleaning",
+      "kind": "merchant",
+      "label": "LAUNDRY_CLEANING",
+      "precision_hint": 0.96,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 34,
+      "key": "amazon_retail",
+      "kind": "platform",
+      "label": "AMAZON_RETAIL",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "AWS",
+          "AMAZONWEBSERVICES",
+          "AMAZONWEBSERVICES"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 35,
+      "key": "aws",
+      "kind": "platform",
+      "label": "AWS_CLOUD",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 36,
+      "key": "rakuten_ec",
+      "kind": "platform",
+      "label": "RAKUTEN_EC",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "楽天ペイ",
+          "RAKUTENPAY",
+          "RAKUTENPAY",
+          "楽天カード",
+          "RAKUTENCARD",
+          "楽天トラベル",
+          "RAKUTENTRAVEL"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 37,
+      "key": "yahoo_shopping",
+      "kind": "platform",
+      "label": "YAHOO_SHOPPING",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "YAHOOJAPAN",
+          "YAHOOJAPAN"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 38,
+      "key": "mercari",
+      "kind": "platform",
+      "label": "MERCARI",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 39,
+      "key": "monotaro",
+      "kind": "platform",
+      "label": "MONOTARO_B2B",
+      "precision_hint": 0.985,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 40,
+      "key": "askul_lohaco",
+      "kind": "platform",
+      "label": "ASKUL_LOHACO",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 41,
+      "key": "zozo",
+      "kind": "platform",
+      "label": "ZOZO",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 42,
+      "key": "qoo10",
+      "kind": "platform",
+      "label": "QOO10",
+      "precision_hint": 0.985,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 43,
+      "key": "food_delivery",
+      "kind": "platform",
+      "label": "FOOD_DELIVERY",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 44,
+      "key": "travel_booking_online",
+      "kind": "platform",
+      "label": "TRAVEL_BOOKING_ONLINE",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 45,
+      "key": "ride_hailing_taxi",
+      "kind": "platform",
+      "label": "RIDE_HAILING_TAXI_APP",
+      "precision_hint": 0.955,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "GO"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 46,
+      "key": "app_store_digital",
+      "kind": "platform",
+      "label": "APP_STORE_DIGITAL",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "APPLESTORE"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 47,
+      "key": "google_services",
+      "kind": "platform",
+      "label": "GOOGLE_SERVICES",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "GOOGLEADS",
+          "ADWORDS"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 48,
+      "key": "microsoft_services",
+      "kind": "platform",
+      "label": "MICROSOFT_SERVICES",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [
+          "XBOX"
+        ],
+        "n1": []
+      }
+    },
+    {
+      "id": 49,
+      "key": "adobe",
+      "kind": "platform",
+      "label": "ADOBE",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 50,
+      "key": "collaboration_tools",
+      "kind": "platform",
+      "label": "COLLAB_TOOLS",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 51,
+      "key": "dev_tools",
+      "kind": "platform",
+      "label": "DEV_TOOLS",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 52,
+      "key": "ai_services",
+      "kind": "platform",
+      "label": "AI_SERVICES",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 53,
+      "key": "ads_google",
+      "kind": "platform",
+      "label": "ADS_GOOGLE",
+      "precision_hint": 0.96,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 54,
+      "key": "ads_meta",
+      "kind": "platform",
+      "label": "ADS_META",
+      "precision_hint": 0.96,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 55,
+      "key": "ads_yahoo_line",
+      "kind": "platform",
+      "label": "ADS_YAHOO_LINE",
+      "precision_hint": 0.955,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 56,
+      "key": "paypay",
+      "kind": "payment",
+      "label": "PAYPAY",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 57,
+      "key": "rakuten_pay",
+      "kind": "payment",
+      "label": "RAKUTEN_PAY",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 58,
+      "key": "paypal",
+      "kind": "payment",
+      "label": "PAYPAL",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 59,
+      "key": "stripe",
+      "kind": "payment",
+      "label": "STRIPE",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 60,
+      "key": "square",
+      "kind": "payment",
+      "label": "SQUARE",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 61,
+      "key": "gmo_pg",
+      "kind": "payment",
+      "label": "GMO_PAYMENT_GATEWAY",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 62,
+      "key": "line_pay",
+      "kind": "payment",
+      "label": "LINE_PAY_DEPRECATED",
+      "precision_hint": 0.95,
+      "osm_tags": [],
+      "deprecated": true,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 63,
+      "key": "national_tax",
+      "kind": "government",
+      "label": "NATIONAL_TAX",
+      "precision_hint": 0.985,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 64,
+      "key": "local_tax",
+      "kind": "government",
+      "label": "LOCAL_TAX",
+      "precision_hint": 0.985,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 65,
+      "key": "pension",
+      "kind": "government",
+      "label": "PENSION",
+      "precision_hint": 0.985,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 66,
+      "key": "health_insurance",
+      "kind": "government",
+      "label": "HEALTH_INSURANCE",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 67,
+      "key": "labor_insurance",
+      "kind": "government",
+      "label": "LABOR_INSURANCE",
+      "precision_hint": 0.98,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 68,
+      "key": "electric_utility",
+      "kind": "utility",
+      "label": "ELECTRIC_UTILITY",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 69,
+      "key": "gas_utility",
+      "kind": "utility",
+      "label": "GAS_UTILITY",
+      "precision_hint": 0.975,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 70,
+      "key": "water_utility",
+      "kind": "utility",
+      "label": "WATER_UTILITY",
+      "precision_hint": 0.97,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 71,
+      "key": "telecom_carrier",
+      "kind": "utility",
+      "label": "TELECOM_CARRIER",
+      "precision_hint": 0.965,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    },
+    {
+      "id": 72,
+      "key": "internet_provider",
+      "kind": "utility",
+      "label": "INTERNET_PROVIDER",
+      "precision_hint": 0.955,
+      "osm_tags": [],
+      "deprecated": false,
+      "notes": "",
+      "negative_terms": {
+        "n0": [],
+        "n1": []
+      }
+    }
+  ],
+  "term_rows": [
+    [
+      "n1",
+      "GOOGLE*GOOGLE PLAY",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AMAZONMARKETPLACE",
+      34,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AMAZONWEBSERVICES",
+      35,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GMOPAYMENTGATEWAY",
+      61,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WASHINGTONHOTEL",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "ITUNES.COM/BILL",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOOGLEWORKSPACE",
+      47,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LAWSONSTORE100",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOYOTARENTACAR",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NIPPONRENTACAR",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NISSANRENTACAR",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TIMESCARRENTAL",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ANYTIMEFITNESS",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "APPLE.COM/BILL",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GMOペイメントゲートウェイ",
+      61,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NATURALLAWSON",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DAILYYAMAZAKI",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BASKINROBBINS",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "APOLLOSTATION",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UNITEDCINEMAS",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CENTRALSPORTS",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RAKUTENICHIBA",
+      36,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAHOOSHOPPING",
+      37,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RAKUTENTRAVEL",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CREATIVECLOUD",
+      49,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ADOBECREATIVE",
+      49,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RAKUTENMOBILE",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOWERRECORDS",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FIRSTKITCHEN",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ORIXRENTACAR",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COMFORTHOTEL",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LAWSONTICKET",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KONAMISPORTS",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RAKUTENBOOKS",
+      36,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MICROSOFT365",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEVENELEVEN",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WORKMANPLUS",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MISTERDONUT",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KRISPYKREME",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DAIWAROYNET",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PRINCEHOTEL",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOHOCINEMAS",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エニタイムフィットネス",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RENAISSANCE",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "うさちゃんクリーニング",
+      33,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAHOOショッピング",
+      37,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOOGLECLOUD",
+      47,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FACEBOOKADS",
+      54,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ローソンストア100",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FAMILYMART",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DONQUIJOTE",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MEGAドンキホーテ",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ホームセンタームサシ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KINOKUNIYA",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SPORTSDEPO",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スポーツオーソリティ",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BURGERKING",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JOLLYPASTA",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GENKISUSHI",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TORIKIZOKU",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HOTTOMOTTO",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CHATERAISE",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "オリックスレンタカー",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タイムズカーレンタル",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "バジェットレンタカー",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUPERHOTEL",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JRHOKKAIDO",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOKYOMETRO",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NISHITETSU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AEONCINEMA",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "109CINEMAS",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AMAZONCOJP",
+      34,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAYMALL",
+      37,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BOOKINGCOM",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOOGLEPLAY",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CONFLUENCE",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "GOOGLE ADS",
+      53,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "GOOGLE*ADS",
+      53,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAYCARD",
+      56,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RAKUTENPAY",
+      57,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GMOPAYMENT",
+      61,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ナチュラルローソン",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEICOMART",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スーパービバホーム",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WORKMAN女子",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YODOBASHI",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BICCAMERA",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "STARBUCKS",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SAINTMARC",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MCDONALDS",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MOSBURGER",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FRESHNESS",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ファーストキッチン",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YOSHINOYA",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SAIZERIYA",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ROYALHOST",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HAMASUSHI",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "クリスピークリーム",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アポロステーション",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YELLOWHAT",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "名鉄協商パーキング",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ニッポンレンタカー",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOYOKOINN",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "リッチモンドホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コンフォートホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HOTELMETS",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "STARFLYER",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JRCENTRAL",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "近畿日本ツーリスト",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TICKETPIA",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ユナイテッドシネマ",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セントラルスポーツ",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HAKUYOSHA",
+      33,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ポニークリーニング",
+      33,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヤフーショッピング",
+      37,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAYモール",
+      37,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エアビーアンドビー",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JAPANTAXI",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOOGLEONE",
+      47,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MICROSOFT",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OFFICE365",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ZOOMVIDEO",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LINEWORKS",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ATLASSIAN",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BITBUCKET",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ANTHROPIC",
+      52,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "GOOGLEADS",
+      53,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "INSTAGRAM",
+      54,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAYカード",
+      56,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GMOとくとくBB",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ファミリーマート",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MINISTOP",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "デイリーヤマザキ",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イトーヨーカドー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ココカラファイン",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マツキヨココカラ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドラッグコスモス",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CREATESD",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DCMホーマック",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "VIVAHOME",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ワークマンプラス",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MONTBELL",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サンマルクカフェ",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MCDONALD",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LOTTERIA",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KENTUCKY",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COCOICHI",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JONATHAN",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "びっくりドンキー",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ミスタードーナツ",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "IDEMITSU",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AUTOBACS",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "トヨタレンタカー",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FUKUYAMA",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "APAHOTEL",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ROUTEINN",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DORMYINN",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ダイワロイネット",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "RICHMOND",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ワシントンホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SOLASEED",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スターフライヤー",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JRKYUSHU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KINTETSU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MEITETSU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "クラブツーリズム",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ローソンチケット",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CNプレイガイド",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOHOシネマズ",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOLDSGYM",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AWSJAPAN",
+      35,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MONOTARO",
+      39,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ZOZOTOWN",
+      41,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UBEREATS",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DEMAECAN",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UBERTAXI",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "APPSTORE",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ONEDRIVE",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CHATWORK",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FACEBOOK",
+      54,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAHOOADS",
+      55,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "全国健康保険協会",
+      66,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SOFTBANK",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UQMOBILE",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ASAHINET",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セブンイレブン",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "7ELEVEN",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NEWDAYS",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セイコーマート",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マックスバリュ",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MAXVALU",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヨークベニマル",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "まいばすけっと",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OKSTORE",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MEGAドンキ",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マツモトキヨシ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUNDRUG",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TSURUHA",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "クスリのアオキ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョイフル本田",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WORKMAN",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ワークマン女子",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヨドバシカメラ",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KSDENKI",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TSUTAYA",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MARUZEN",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JUNKUDO",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BOOKOFF",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タワーレコード",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スターバックス",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HOSHINO",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GONGCHA",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "バーガーキング",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "フレッシュネス",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ウェンディーズ",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MATSUYA",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COCO壱番屋",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロイヤルホスト",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JOYFULL",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョリーパスタ",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SHABUYO",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUSHIRO",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CHOUSHI",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ほっかほっか亭",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "オートバックス",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イエローハット",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タイヤガーデン",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DRDRIVE",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "三井のリパーク",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日産レンタカー",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "クロネコヤマト",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スーパーホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "プリンスホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SKYMARK",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジェットスター",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JETSTAR",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SOTETSU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HANSHIN",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "高速道路通行料",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エイチアイエス",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "109シネマズ",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コナミスポーツ",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TIPNESS",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョイフィット",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MERCARI",
+      38,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ウーバーイーツ",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "EXPEDIA",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エクスペディア",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ADOBECC",
+      49,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DROPBOX",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KINTONE",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DISCORD",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CHATGPT",
+      52,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "ADWORDS",
+      53,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "METAADS",
+      54,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LINEADS",
+      55,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "PAYPAL*",
+      58,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "STRIPE*",
+      59,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LINEPAY",
+      62,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YMOBILE",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BIGLOBE",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LAWSON",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ミニストップ",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ニューデイズ",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "POPLAR",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "くらしハウス",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SAVEON",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヨークマート",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUMMIT",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "業務スーパー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COSTCO",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドンキホーテ",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ダイレックス",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "THEBIG",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ROGERS",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WELCIA",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サンドラッグ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コスモス薬品",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COSMOS",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KOHNAN",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KOMERI",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コメリパワー",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アークランズ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ビックカメラ",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAMADA",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ケーズデンキ",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JOSHIN",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NOJIMA",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KOJIMA",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NITORI",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "島忠ホームズ",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "紀伊國屋書店",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スポーツデポ",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "石井スポーツ",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DOUTOR",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TULLYS",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KOMEDA",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PRONTO",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "VELOCE",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マクドナルド",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "モスバーガー",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUBWAY",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ケンタッキー",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WENDYS",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DOMDOM",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUKIYA",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BAMYAN",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ビッグボーイ",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BIGBOY",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OOTOYA",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WATAMI",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ほっともっと",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "オリジン弁当",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ORIGIN",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "本家かまどや",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サーティワン",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "シャトレーゼ",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GODIVA",
+      19,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KYGNUS",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PARK24",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "REPARK",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NPC24H",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BUDGET",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAMATO",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SAGAWA",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JPPOST",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドーミーイン",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ホテルメッツ",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スカイマーク",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ソラシドエア",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ZIPAIR",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JREAST",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JRWEST",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ODAKYU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KEIKYU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KEIHAN",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HANKYU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NANKAI",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "チケットぴあ",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イオンシネマ",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ティップネス",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ゴールドジム",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JOYFIT",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ホワイト急便",
+      33,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AMAZON",
+      34,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "楽天ブックス",
+      36,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MERPAY",
+      38,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LOHACO",
+      40,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AIRBNB",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "楽天トラベル",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOTAXI",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タクシーGO",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ITUNES",
+      46,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GSUITE",
+      47,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NOTION",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CYBOZU",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GITHUB",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GITLAB",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OPENAI",
+      52,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CLAUDE",
+      52,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LINE広告",
+      55,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAY",
+      56,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PAYPAL",
+      58,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "STRIPE",
+      59,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SQUARE",
+      60,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日本年金機構",
+      65,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "健康保険組合",
+      66,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "国民健康保険",
+      66,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NTTドコモ",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DOCOMO",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ソフトバンク",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "楽天モバイル",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セーブオン",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DAIEI",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEIYU",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東急ストア",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "VALOR",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OKストア",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DONKI",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "トライアル",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TRIAL",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DIREX",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロヂャース",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ウエルシア",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "クリエイト",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEIMS",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "Vドラッグ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "VDRUG",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "カワチ薬品",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CAINZ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KONAN",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ホーマック",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NAFCO",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ビバホーム",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HOMES",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ワークマン",
+      6,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DAISO",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SERIA",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "キャンドゥ",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "CANDO",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WATTS",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FLETS",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MEETS",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヤマダ電機",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エディオン",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "EDION",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョーシン",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ACTUS",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HANDS",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東急ハンズ",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PLAZA",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジュンク堂",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ブックオフ",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ALPEN",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "XEBIO",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ベローチェ",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロッテリア",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サブウェイ",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GUSTO",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サイゼリヤ",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DENNY",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョナサン",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "バーミヤン",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジョイフル",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COCOS",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YAYOI",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "かっぱ寿司",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KAPPA",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UOBEI",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "串カツ田中",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ENEOS",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "COSMO",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SHELL",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジェームス",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JAMES",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TIMES",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヤマト運輸",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ゆうパック",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEINO",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FEDEX",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アパホテル",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ルートイン",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "全日本空輸",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PEACH",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AIRDO",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジップエア",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ジェイエア",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JR東日本",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JR西日本",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JR北海道",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東京メトロ",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "都営地下鉄",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOKYU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SEIBU",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NEXCO",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "阪急交通社",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "EPLUS",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イープラス",
+      30,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MOVIX",
+      31,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ルネサンス",
+      32,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "モノタロウ",
+      39,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ASKUL",
+      40,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "QOO10",
+      42,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "キューテン",
+      42,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AGODA",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JALAN",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GOアプリ",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AZURE",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TEAMS",
+      48,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ADOBE",
+      49,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SLACK",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヤフー広告",
+      55,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GMOPG",
+      61,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ラインペイ",
+      62,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "源泉所得税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "固定資産税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "年金事務所",
+      65,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "年金保険料",
+      65,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "協会けんぽ",
+      66,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "健康保険料",
+      66,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TEPCO",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KEPCO",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "北海道電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FLETS",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SONET",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NIFTY",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "PLALA",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コミュファ",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ローソン",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "生活彩家",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AEON",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ダイエー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LIFE",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "サミット",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マルエツ",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "いなげや",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ヤオコー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "成城石井",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コストコ",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "オーケー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LAMU",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ザビッグ",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マツキヨ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スギ薬局",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "SUGI",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セイムス",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "富士薬品",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ゲンキー",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "キリン堂",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "カインズ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コーナン",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ダイソー",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "フレッツ",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LABI",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "IKEA",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アクタス",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "LOFT",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "無印良品",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "MUJI",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "紀伊国屋",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "モンベル",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アルペン",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "好日山荘",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドトール",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タリーズ",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "プロント",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "星乃珈琲",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "上島珈琲",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ゴンチャ",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドムドム",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "デニーズ",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "しゃぶ葉",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "やよい軒",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "スシロー",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "くら寿司",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KURA",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "はま寿司",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "元気寿司",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "千年の宴",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "磯丸水産",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "塚田農場",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エネオス",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "キグナス",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JASS",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タイヤ館",
+      21,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "タイムズ",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "リパーク",
+      22,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AVIS",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エイビス",
+      23,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "佐川急便",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日本郵便",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "西濃運輸",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "福山通運",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東横イン",
+      25,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日本航空",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "エアドゥ",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "IBEX",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JAIR",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JR東海",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JR九州",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "TOEI",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KEIO",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "首都高速",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "阪神高速",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "本四高速",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "通行料金",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日本旅行",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AMZN",
+      34,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "楽天市場",
+      36,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "メルカリ",
+      38,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "メルペイ",
+      38,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アスクル",
+      40,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ZOZO",
+      41,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "WOLT",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ウォルト",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "じゃらん",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "IKYU",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DIDI",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UBER",
+      45,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ZOOM",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JIRA",
+      51,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "META",
+      54,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "楽天ペイ",
+      57,
+      1.0,
+      "S"
+    ],
+    [
+      "n1",
+      "SQ *",
+      60,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "厚生年金",
+      65,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "国民年金",
+      65,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "労働保険",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "雇用保険",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "労災保険",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東京電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "関西電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "中部電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東北電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "九州電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "中国電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "四国電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "北陸電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "沖縄電力",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "電気料金",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "電力料金",
+      68,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東京ガス",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "大阪ガス",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東邦ガス",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "西部ガス",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ガス料金",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "都市ガス",
+      69,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "上下水道",
+      70,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "水道料金",
+      70,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KDDI",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "フレッツ",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JCOM",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NURO",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ポプラ",
+      1,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イオン",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ライフ",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "バロー",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロピア",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドンキ",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ラムー",
+      3,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ツルハ",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "薬王堂",
+      4,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DCM",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "カーマ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ダイキ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コメリ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ナフコ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ムサシ",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "セリア",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ワッツ",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ミーツ",
+      7,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ノジマ",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コジマ",
+      8,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ニトリ",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "イケア",
+      9,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ハンズ",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロフト",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "プラザ",
+      10,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ツタヤ",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "有隣堂",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HMV",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ゼビオ",
+      12,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コメダ",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UCC",
+      13,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "マック",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KFC",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "吉野家",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "すき家",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ガスト",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ココス",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "大戸屋",
+      15,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "魚べい",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "銚子丸",
+      16,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "鳥貴族",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "白木屋",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "金の蔵",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "日本亭",
+      18,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "コスモ",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "シェル",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "郵便局",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "DHL",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UPS",
+      24,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ANA",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JAL",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ピーチ",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "FDA",
+      26,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "小田急",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "首都高",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "料金所",
+      28,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "JTB",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "HIS",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "NTA",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "KNT",
+      29,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "白洋舎",
+      33,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AWS",
+      35,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ロハコ",
+      40,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "出前館",
+      43,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "アゴダ",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "GCP",
+      47,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "BOX",
+      50,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "YDN",
+      55,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "国税庁",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "税務署",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "法人税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "消費税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "印紙税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "所得税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "事業税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "住民税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "労働局",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "労基署",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "水道局",
+      70,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "下水道",
+      70,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ドコモ",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "OCN",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "IIJ",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "ぷらら",
+      72,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "西友",
+      2,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "島忠",
+      5,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "丸善",
+      11,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "松屋",
+      14,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "和民",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "笑笑",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "魚民",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "庄や",
+      17,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "出光",
+      20,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "京王",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "東急",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "西武",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "京急",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "相鉄",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "近鉄",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "京阪",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "阪急",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "阪神",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "名鉄",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "南海",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "西鉄",
+      27,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "一休",
+      44,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "国税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "納税",
+      63,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "都税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "道税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "府税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "県税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "市税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "区税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "町税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "村税",
+      64,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "労災",
+      67,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "AU",
+      71,
+      1.0,
+      "S"
+    ],
+    [
+      "n0",
+      "UQ",
+      71,
+      1.0,
+      "S"
+    ]
+  ],
+  "term_buckets_prefix2": {
+    "n0": {
+      "AM": [
+        1,
+        2,
+        71,
+        344,
+        567
+      ],
+      "GM": [
+        3,
+        14,
+        80,
+        129,
+        472
+      ],
+      "WA": [
+        4,
+        310,
+        400
+      ],
+      "GO": [
+        6,
+        46,
+        74,
+        118,
+        169,
+        211,
+        317,
+        350,
+        466
+      ],
+      "LA": [
+        7,
+        31,
+        261,
+        500,
+        513
+      ],
+      "TO": [
+        8,
+        27,
+        41,
+        59,
+        67,
+        102,
+        168,
+        452,
+        560
+      ],
+      "NI": [
+        9,
+        10,
+        68,
+        289,
+        485
+      ],
+      "TI": [
+        11,
+        109,
+        242,
+        435
+      ],
+      "AN": [
+        12,
+        125,
+        661
+      ],
+      "NA": [
+        15,
+        337,
+        392
+      ],
+      "DA": [
+        16,
+        39,
+        373,
+        396
+      ],
+      "BA": [
+        17,
+        306
+      ],
+      "AP": [
+        18,
+        154,
+        176
+      ],
+      "UN": [
+        19
+      ],
+      "CE": [
+        20
+      ],
+      "RA": [
+        21,
+        23,
+        26,
+        33,
+        79
+      ],
+      "YA": [
+        22,
+        45,
+        180,
+        284,
+        323,
+        425
+      ],
+      "CR": [
+        24,
+        137
+      ],
+      "AD": [
+        25,
+        248,
+        469
+      ],
+      "FI": [
+        28
+      ],
+      "OR": [
+        29,
+        313
+      ],
+      "CO": [
+        30,
+        75,
+        146,
+        216,
+        270,
+        278,
+        424,
+        431
+      ],
+      "KO": [
+        32,
+        279,
+        280,
+        288,
+        296,
+        390
+      ],
+      "MI": [
+        34,
+        37,
+        119,
+        131
+      ],
+      "SE": [
+        35,
+        82,
+        374,
+        385,
+        397,
+        438,
+        453
+      ],
+      "WO": [
+        36,
+        84,
+        200,
+        573
+      ],
+      "KR": [
+        38
+      ],
+      "PR": [
+        40,
+        297
+      ],
+      "エニ": [
+        42
+      ],
+      "RE": [
+        43,
+        320
+      ],
+      "うさ": [
+        44
+      ],
+      "FA": [
+        47,
+        49,
+        179
+      ],
+      "ロー": [
+        48,
+        166,
+        488
+      ],
+      "DO": [
+        50,
+        156,
+        294,
+        304,
+        369,
+        378
+      ],
+      "ME": [
+        51,
+        164,
+        194,
+        244,
+        254,
+        346,
+        402,
+        581
+      ],
+      "ホー": [
+        52,
+        391
+      ],
+      "KI": [
+        53,
+        163,
+        250
+      ],
+      "SP": [
+        54
+      ],
+      "スポ": [
+        55,
+        292
+      ],
+      "BU": [
+        56,
+        322
+      ],
+      "JO": [
+        57,
+        147,
+        218,
+        286,
+        342
+      ],
+      "GE": [
+        58
+      ],
+      "HO": [
+        60,
+        105,
+        210,
+        394
+      ],
+      "CH": [
+        61,
+        178,
+        222,
+        252
+      ],
+      "オリ": [
+        62,
+        312
+      ],
+      "タイ": [
+        63,
+        226,
+        544,
+        545
+      ],
+      "バジ": [
+        64
+      ],
+      "SU": [
+        65,
+        196,
+        221,
+        268,
+        301,
+        305,
+        504
+      ],
+      "JR": [
+        66,
+        107,
+        162,
+        331,
+        332,
+        447,
+        448,
+        449,
+        558,
+        559
+      ],
+      "AE": [
+        69,
+        490
+      ],
+      "10": [
+        70,
+        240
+      ],
+      "PA": [
+        72,
+        78,
+        115,
+        128,
+        319,
+        361,
+        362
+      ],
+      "BO": [
+        73,
+        207,
+        678
+      ],
+      "ナチ": [
+        81
+      ],
+      "スー": [
+        83,
+        231
+      ],
+      "YO": [
+        85,
+        93
+      ],
+      "BI": [
+        86,
+        124,
+        260,
+        308
+      ],
+      "ST": [
+        87,
+        106,
+        363
+      ],
+      "SA": [
+        88,
+        94,
+        266,
+        324
+      ],
+      "MC": [
+        89,
+        143
+      ],
+      "MO": [
+        90,
+        141,
+        171,
+        458
+      ],
+      "FR": [
+        91
+      ],
+      "ファ": [
+        92,
+        130
+      ],
+      "RO": [
+        95,
+        155,
+        274
+      ],
+      "HA": [
+        96,
+        112,
+        237,
+        336,
+        408
+      ],
+      "クリ": [
+        97,
+        384
+      ],
+      "アポ": [
+        98
+      ],
+      "YE": [
+        99
+      ],
+      "名鉄": [
+        100,
+        714
+      ],
+      "ニッ": [
+        101
+      ],
+      "リッ": [
+        103
+      ],
+      "コン": [
+        104
+      ],
+      "近畿": [
+        108
+      ],
+      "ユナ": [
+        110
+      ],
+      "セン": [
+        111
+      ],
+      "ポニ": [
+        113
+      ],
+      "ヤフ": [
+        114,
+        471
+      ],
+      "エア": [
+        116,
+        555
+      ],
+      "JA": [
+        117,
+        434,
+        465,
+        543,
+        557,
+        662
+      ],
+      "OF": [
+        120
+      ],
+      "ZO": [
+        121,
+        172,
+        572,
+        579
+      ],
+      "LI": [
+        122,
+        255,
+        258,
+        360,
+        492
+      ],
+      "AT": [
+        123
+      ],
+      "IN": [
+        127
+      ],
+      "デイ": [
+        132
+      ],
+      "イト": [
+        133
+      ],
+      "ココ": [
+        134,
+        648
+      ],
+      "マツ": [
+        135,
+        195,
+        502
+      ],
+      "ドラ": [
+        136
+      ],
+      "DC": [
+        138,
+        621
+      ],
+      "VI": [
+        139
+      ],
+      "ワー": [
+        140,
+        201,
+        395
+      ],
+      "サン": [
+        142,
+        276
+      ],
+      "LO": [
+        144,
+        347,
+        516
+      ],
+      "KE": [
+        145,
+        334,
+        335,
+        481,
+        561
+      ],
+      "びっ": [
+        148
+      ],
+      "ミス": [
+        149
+      ],
+      "ID": [
+        150
+      ],
+      "AU": [
+        151,
+        729
+      ],
+      "トヨ": [
+        152
+      ],
+      "FU": [
+        153
+      ],
+      "ダイ": [
+        157,
+        272,
+        491,
+        511,
+        623
+      ],
+      "RI": [
+        158
+      ],
+      "ワシ": [
+        159
+      ],
+      "SO": [
+        160,
+        182,
+        236,
+        484
+      ],
+      "スタ": [
+        161,
+        209
+      ],
+      "クラ": [
+        165
+      ],
+      "CN": [
+        167
+      ],
+      "AW": [
+        170,
+        673
+      ],
+      "UB": [
+        173,
+        175,
+        578
+      ],
+      "DE": [
+        174,
+        420
+      ],
+      "ON": [
+        177
+      ],
+      "全国": [
+        181
+      ],
+      "UQ": [
+        183,
+        730
+      ],
+      "AS": [
+        184,
+        461
+      ],
+      "セブ": [
+        185
+      ],
+      "7E": [
+        186
+      ],
+      "NE": [
+        187,
+        454
+      ],
+      "セイ": [
+        188,
+        505
+      ],
+      "マッ": [
+        189,
+        643
+      ],
+      "MA": [
+        190,
+        205,
+        215
+      ],
+      "ヨー": [
+        191,
+        267
+      ],
+      "まい": [
+        192
+      ],
+      "OK": [
+        193,
+        377
+      ],
+      "TS": [
+        197,
+        204
+      ],
+      "クス": [
+        198
+      ],
+      "ジョ": [
+        199,
+        219,
+        243,
+        406,
+        421,
+        423
+      ],
+      "ヨド": [
+        202
+      ],
+      "KS": [
+        203
+      ],
+      "JU": [
+        206
+      ],
+      "タワ": [
+        208
+      ],
+      "バー": [
+        212,
+        422
+      ],
+      "フレ": [
+        213,
+        512,
+        609
+      ],
+      "ウェ": [
+        214
+      ],
+      "ロイ": [
+        217
+      ],
+      "SH": [
+        220,
+        432
+      ],
+      "ほっ": [
+        223,
+        311
+      ],
+      "オー": [
+        224,
+        499
+      ],
+      "イエ": [
+        225
+      ],
+      "DR": [
+        227,
+        249
+      ],
+      "三井": [
+        228
+      ],
+      "日産": [
+        229
+      ],
+      "クロ": [
+        230
+      ],
+      "プリ": [
+        232
+      ],
+      "SK": [
+        233
+      ],
+      "ジェ": [
+        234,
+        433,
+        446
+      ],
+      "JE": [
+        235
+      ],
+      "高速": [
+        238
+      ],
+      "エイ": [
+        239,
+        548
+      ],
+      "コナ": [
+        241
+      ],
+      "ウー": [
+        245
+      ],
+      "EX": [
+        246
+      ],
+      "エク": [
+        247
+      ],
+      "DI": [
+        251,
+        381,
+        577
+      ],
+      "YM": [
+        259
+      ],
+      "ミニ": [
+        262
+      ],
+      "ニュ": [
+        263
+      ],
+      "PO": [
+        264
+      ],
+      "くら": [
+        265,
+        534
+      ],
+      "業務": [
+        269
+      ],
+      "ドン": [
+        271,
+        617
+      ],
+      "TH": [
+        273
+      ],
+      "WE": [
+        275,
+        303
+      ],
+      "コス": [
+        277,
+        498,
+        656
+      ],
+      "コメ": [
+        281,
+        624,
+        641
+      ],
+      "アー": [
+        282
+      ],
+      "ビッ": [
+        283,
+        307
+      ],
+      "ケー": [
+        285
+      ],
+      "NO": [
+        287,
+        354
+      ],
+      "島忠": [
+        290,
+        697
+      ],
+      "紀伊": [
+        291,
+        519
+      ],
+      "石井": [
+        293
+      ],
+      "TU": [
+        295
+      ],
+      "VE": [
+        298
+      ],
+      "マク": [
+        299
+      ],
+      "モス": [
+        300
+      ],
+      "ケン": [
+        302
+      ],
+      "OO": [
+        309
+      ],
+      "本家": [
+        314
+      ],
+      "サー": [
+        315
+      ],
+      "シャ": [
+        316
+      ],
+      "KY": [
+        318
+      ],
+      "NP": [
+        321
+      ],
+      "JP": [
+        325
+      ],
+      "ドー": [
+        326
+      ],
+      "ホテ": [
+        327
+      ],
+      "スカ": [
+        328
+      ],
+      "ソラ": [
+        329
+      ],
+      "ZI": [
+        330
+      ],
+      "OD": [
+        333
+      ],
+      "チケ": [
+        338
+      ],
+      "イオ": [
+        339,
+        613
+      ],
+      "ティ": [
+        340
+      ],
+      "ゴー": [
+        341
+      ],
+      "ホワ": [
+        343
+      ],
+      "楽天": [
+        345,
+        349,
+        371,
+        568,
+        582
+      ],
+      "AI": [
+        348,
+        444
+      ],
+      "タク": [
+        351
+      ],
+      "IT": [
+        352
+      ],
+      "GS": [
+        353
+      ],
+      "CY": [
+        355
+      ],
+      "GI": [
+        356,
+        357
+      ],
+      "OP": [
+        358
+      ],
+      "CL": [
+        359
+      ],
+      "SQ": [
+        364
+      ],
+      "日本": [
+        365,
+        550,
+        554,
+        566,
+        655
+      ],
+      "健康": [
+        366,
+        479
+      ],
+      "国民": [
+        367,
+        585
+      ],
+      "NT": [
+        368,
+        670
+      ],
+      "ソフ": [
+        370
+      ],
+      "セー": [
+        372
+      ],
+      "東急": [
+        375,
+        409,
+        706
+      ],
+      "VA": [
+        376
+      ],
+      "トラ": [
+        379
+      ],
+      "TR": [
+        380
+      ],
+      "ロヂ": [
+        382
+      ],
+      "ウエ": [
+        383
+      ],
+      "Vド": [
+        386
+      ],
+      "VD": [
+        387
+      ],
+      "カワ": [
+        388
+      ],
+      "CA": [
+        389,
+        399
+      ],
+      "ビバ": [
+        393
+      ],
+      "キャ": [
+        398
+      ],
+      "FL": [
+        401,
+        483
+      ],
+      "ヤマ": [
+        403,
+        436
+      ],
+      "エデ": [
+        404
+      ],
+      "ED": [
+        405
+      ],
+      "AC": [
+        407
+      ],
+      "PL": [
+        410,
+        486
+      ],
+      "ジュ": [
+        411
+      ],
+      "ブッ": [
+        412
+      ],
+      "AL": [
+        413
+      ],
+      "XE": [
+        414
+      ],
+      "ベロ": [
+        415
+      ],
+      "ロッ": [
+        416
+      ],
+      "サブ": [
+        417
+      ],
+      "GU": [
+        418
+      ],
+      "サイ": [
+        419
+      ],
+      "かっ": [
+        426
+      ],
+      "KA": [
+        427
+      ],
+      "UO": [
+        428
+      ],
+      "串カ": [
+        429
+      ],
+      "EN": [
+        430
+      ],
+      "ゆう": [
+        437
+      ],
+      "FE": [
+        439
+      ],
+      "アパ": [
+        440
+      ],
+      "ルー": [
+        441
+      ],
+      "全日": [
+        442
+      ],
+      "PE": [
+        443
+      ],
+      "ジッ": [
+        445
+      ],
+      "東京": [
+        450,
+        589,
+        600
+      ],
+      "都営": [
+        451
+      ],
+      "阪急": [
+        455,
+        712
+      ],
+      "EP": [
+        456
+      ],
+      "イー": [
+        457
+      ],
+      "ルネ": [
+        459
+      ],
+      "モノ": [
+        460
+      ],
+      "QO": [
+        462
+      ],
+      "キュ": [
+        463
+      ],
+      "AG": [
+        464
+      ],
+      "AZ": [
+        467
+      ],
+      "TE": [
+        468,
+        480
+      ],
+      "SL": [
+        470
+      ],
+      "ライ": [
+        473,
+        614
+      ],
+      "源泉": [
+        474
+      ],
+      "固定": [
+        475
+      ],
+      "年金": [
+        476,
+        477
+      ],
+      "協会": [
+        478
+      ],
+      "北海": [
+        482
+      ],
+      "コミ": [
+        487
+      ],
+      "生活": [
+        489
+      ],
+      "サミ": [
+        493
+      ],
+      "マル": [
+        494
+      ],
+      "いな": [
+        495
+      ],
+      "ヤオ": [
+        496
+      ],
+      "成城": [
+        497
+      ],
+      "ザビ": [
+        501
+      ],
+      "スギ": [
+        503
+      ],
+      "富士": [
+        506
+      ],
+      "ゲン": [
+        507
+      ],
+      "キリ": [
+        508
+      ],
+      "カイ": [
+        509
+      ],
+      "コー": [
+        510
+      ],
+      "IK": [
+        514,
+        576
+      ],
+      "アク": [
+        515
+      ],
+      "無印": [
+        517
+      ],
+      "MU": [
+        518
+      ],
+      "モン": [
+        520
+      ],
+      "アル": [
+        521
+      ],
+      "好日": [
+        522
+      ],
+      "ドト": [
+        523
+      ],
+      "タリ": [
+        524
+      ],
+      "プロ": [
+        525
+      ],
+      "星乃": [
+        526
+      ],
+      "上島": [
+        527
+      ],
+      "ゴン": [
+        528
+      ],
+      "ドム": [
+        529
+      ],
+      "デニ": [
+        530
+      ],
+      "しゃ": [
+        531
+      ],
+      "やよ": [
+        532
+      ],
+      "スシ": [
+        533
+      ],
+      "KU": [
+        535
+      ],
+      "はま": [
+        536
+      ],
+      "元気": [
+        537
+      ],
+      "千年": [
+        538
+      ],
+      "磯丸": [
+        539
+      ],
+      "塚田": [
+        540
+      ],
+      "エネ": [
+        541
+      ],
+      "キグ": [
+        542
+      ],
+      "リパ": [
+        546
+      ],
+      "AV": [
+        547
+      ],
+      "佐川": [
+        549
+      ],
+      "西濃": [
+        551
+      ],
+      "福山": [
+        552
+      ],
+      "東横": [
+        553
+      ],
+      "IB": [
+        556
+      ],
+      "首都": [
+        562,
+        666
+      ],
+      "阪神": [
+        563,
+        713
+      ],
+      "本四": [
+        564
+      ],
+      "通行": [
+        565
+      ],
+      "メル": [
+        569,
+        570
+      ],
+      "アス": [
+        571
+      ],
+      "ウォ": [
+        574
+      ],
+      "じゃ": [
+        575
+      ],
+      "JI": [
+        580
+      ],
+      "厚生": [
+        584
+      ],
+      "労働": [
+        586,
+        688
+      ],
+      "雇用": [
+        587
+      ],
+      "労災": [
+        588,
+        728
+      ],
+      "関西": [
+        590
+      ],
+      "中部": [
+        591
+      ],
+      "東北": [
+        592
+      ],
+      "九州": [
+        593
+      ],
+      "中国": [
+        594
+      ],
+      "四国": [
+        595
+      ],
+      "北陸": [
+        596
+      ],
+      "沖縄": [
+        597
+      ],
+      "電気": [
+        598
+      ],
+      "電力": [
+        599
+      ],
+      "大阪": [
+        601
+      ],
+      "東邦": [
+        602
+      ],
+      "西部": [
+        603
+      ],
+      "ガス": [
+        604,
+        647
+      ],
+      "都市": [
+        605
+      ],
+      "上下": [
+        606
+      ],
+      "水道": [
+        607,
+        690
+      ],
+      "KD": [
+        608
+      ],
+      "JC": [
+        610
+      ],
+      "NU": [
+        611
+      ],
+      "ポプ": [
+        612
+      ],
+      "バロ": [
+        615
+      ],
+      "ロピ": [
+        616
+      ],
+      "ラム": [
+        618
+      ],
+      "ツル": [
+        619
+      ],
+      "薬王": [
+        620
+      ],
+      "カー": [
+        622
+      ],
+      "ナフ": [
+        625
+      ],
+      "ムサ": [
+        626
+      ],
+      "セリ": [
+        627
+      ],
+      "ワッ": [
+        628
+      ],
+      "ミー": [
+        629
+      ],
+      "ノジ": [
+        630
+      ],
+      "コジ": [
+        631
+      ],
+      "ニト": [
+        632
+      ],
+      "イケ": [
+        633
+      ],
+      "ハン": [
+        634
+      ],
+      "ロフ": [
+        635
+      ],
+      "プラ": [
+        636
+      ],
+      "ツタ": [
+        637
+      ],
+      "有隣": [
+        638
+      ],
+      "HM": [
+        639
+      ],
+      "ゼビ": [
+        640
+      ],
+      "UC": [
+        642
+      ],
+      "KF": [
+        644
+      ],
+      "吉野": [
+        645
+      ],
+      "すき": [
+        646
+      ],
+      "大戸": [
+        649
+      ],
+      "魚べ": [
+        650
+      ],
+      "銚子": [
+        651
+      ],
+      "鳥貴": [
+        652
+      ],
+      "白木": [
+        653
+      ],
+      "金の": [
+        654
+      ],
+      "シェ": [
+        657
+      ],
+      "郵便": [
+        658
+      ],
+      "DH": [
+        659
+      ],
+      "UP": [
+        660
+      ],
+      "ピー": [
+        663
+      ],
+      "FD": [
+        664
+      ],
+      "小田": [
+        665
+      ],
+      "料金": [
+        667
+      ],
+      "JT": [
+        668
+      ],
+      "HI": [
+        669
+      ],
+      "KN": [
+        671
+      ],
+      "白洋": [
+        672
+      ],
+      "ロハ": [
+        674
+      ],
+      "出前": [
+        675
+      ],
+      "アゴ": [
+        676
+      ],
+      "GC": [
+        677
+      ],
+      "YD": [
+        679
+      ],
+      "国税": [
+        680,
+        718
+      ],
+      "税務": [
+        681
+      ],
+      "法人": [
+        682
+      ],
+      "消費": [
+        683
+      ],
+      "印紙": [
+        684
+      ],
+      "所得": [
+        685
+      ],
+      "事業": [
+        686
+      ],
+      "住民": [
+        687
+      ],
+      "労基": [
+        689
+      ],
+      "下水": [
+        691
+      ],
+      "ドコ": [
+        692
+      ],
+      "OC": [
+        693
+      ],
+      "II": [
+        694
+      ],
+      "ぷら": [
+        695
+      ],
+      "西友": [
+        696
+      ],
+      "丸善": [
+        698
+      ],
+      "松屋": [
+        699
+      ],
+      "和民": [
+        700
+      ],
+      "笑笑": [
+        701
+      ],
+      "魚民": [
+        702
+      ],
+      "庄や": [
+        703
+      ],
+      "出光": [
+        704
+      ],
+      "京王": [
+        705
+      ],
+      "西武": [
+        707
+      ],
+      "京急": [
+        708
+      ],
+      "相鉄": [
+        709
+      ],
+      "近鉄": [
+        710
+      ],
+      "京阪": [
+        711
+      ],
+      "南海": [
+        715
+      ],
+      "西鉄": [
+        716
+      ],
+      "一休": [
+        717
+      ],
+      "納税": [
+        719
+      ],
+      "都税": [
+        720
+      ],
+      "道税": [
+        721
+      ],
+      "府税": [
+        722
+      ],
+      "県税": [
+        723
+      ],
+      "市税": [
+        724
+      ],
+      "区税": [
+        725
+      ],
+      "町税": [
+        726
+      ],
+      "村税": [
+        727
+      ]
+    },
+    "n1": {
+      "GO": [
+        0,
+        76,
+        77,
+        126
+      ],
+      "IT": [
+        5
+      ],
+      "AP": [
+        13
+      ],
+      "AD": [
+        253
+      ],
+      "PA": [
+        256
+      ],
+      "ST": [
+        257
+      ],
+      "SQ": [
+        583
+      ]
+    }
+  },
+  "learned": {
+    "policy": {
+      "weight_for_learned_terms": 0.85,
+      "core_weight": 1.0,
+      "notes": "learned terms are appended into term_rows with weight < 1.0"
+    },
+    "provenance_registry": []
+  }
+}

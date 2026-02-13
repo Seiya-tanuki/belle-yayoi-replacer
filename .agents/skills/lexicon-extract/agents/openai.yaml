@@ -1,0 +1,5 @@
+interface:
+  display_name: "Lexicon extract"
+  short_description: "Extract unknown terms from ledger_train and grow lexicon/pending/label_queue.csv"
+policy:
+  allow_implicit_invocation: false

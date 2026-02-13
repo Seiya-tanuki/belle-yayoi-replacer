@@ -1,0 +1,6 @@
+﻿interface:
+  display_name: "Client cache builder"
+  short_description: "Build client_cache.json from ledger_ref CSVs"
+policy:
+  allow_implicit_invocation: false
+

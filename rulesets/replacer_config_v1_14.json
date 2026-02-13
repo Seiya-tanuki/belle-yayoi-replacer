@@ -1,0 +1,29 @@
+{
+  "schema": "belle.replacer_config.v1",
+  "version": "1.14",
+  "created_at": "2026-02-13T12:08:30.964756+00:00",
+  "csv_contract": {
+    "column_count": 25,
+    "debit_account_col_1b": 5,
+    "summary_col_1b": 17,
+    "memo_col_1b": 22,
+    "dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##",
+    "default_encoding": "cp932",
+    "line_ending_required": "CRLF"
+  },
+  "thresholds": {
+    "t_number_min_count": 1,
+    "vendor_key_min_count": 3,
+    "category_min_count": 3,
+    "vendor_key_p_majority_min": 0.7,
+    "category_p_majority_min": 0.7
+  },
+  "confidence": {
+    "t_number_strength": 0.95,
+    "vendor_key_strength": 0.85,
+    "category_strength": 0.65,
+    "default_strength": 0.55,
+    "global_fallback_strength": 0.35,
+    "learned_weight_multiplier": 0.85
+  }
+}
