@@ -23,8 +23,6 @@ Under `clients/<CLIENT_ID>/inputs/`:
 1. `kari_shiwake/`
 2. `ledger_ref/`
 
-`ledger_train` is deprecated and no longer an active source.
-
 ## Lexicon pending workflow
 
 1. `$yayoi-replacer` updates `client_cache` from `ledger_ref`.

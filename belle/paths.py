@@ -55,10 +55,6 @@ def get_ledger_ref_ingested_path(repo_root: Path, client_id: str) -> Path:
     return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref_ingested.json"
 
 
-def get_ledger_train_ingested_path(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_train_ingested.json"
-
-
 def get_lexicon_pending_dir(repo_root: Path) -> Path:
     return repo_root / "lexicon" / "pending"
 
