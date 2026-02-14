@@ -24,6 +24,8 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 import json
 
+from .io_atomic import atomic_write_text
+
 # ----------------------------
 # StatsEntry (distribution)
 # ----------------------------
@@ -202,8 +204,6 @@ class ClientCache:
                 "global": self.global_stats.to_obj(),
             },
         }
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
+        atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
 

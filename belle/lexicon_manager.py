@@ -136,6 +136,8 @@ LABEL_QUEUE_COLUMNS: List[str] = [
     "notes",
 ]
 
+LABEL_QUEUE_HEARTBEAT_INTERVAL_SEC = 30
+
 
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
@@ -211,10 +213,39 @@ def ensure_pending_workspace(
         save_label_queue_state(queue_state_path, {"version": "1.0", "clients_by_norm_key": {}})
 
 
-@dataclass(frozen=True)
+def _read_lock_owner_id(lock_path: Path) -> str:
+    try:
+        obj = json.loads(lock_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    return str(obj.get("owner_id") or "")
+
+
+@dataclass
 class LabelQueueLockToken:
     lock_path: Path
     owner_id: str
+    heartbeat_interval_sec: int = LABEL_QUEUE_HEARTBEAT_INTERVAL_SEC
+    last_heartbeat_mono: float = 0.0
+
+    def heartbeat(self, *, now_mono: Optional[float] = None) -> bool:
+        if now_mono is None:
+            now_mono = time.monotonic()
+        if _read_lock_owner_id(self.lock_path) != self.owner_id:
+            return False
+        try:
+            os.utime(self.lock_path, None)
+        except FileNotFoundError:
+            return False
+        self.last_heartbeat_mono = float(now_mono)
+        return True
+
+    def maybe_heartbeat(self, *, now_mono: Optional[float] = None) -> bool:
+        if now_mono is None:
+            now_mono = time.monotonic()
+        if (float(now_mono) - float(self.last_heartbeat_mono)) < float(self.heartbeat_interval_sec):
+            return False
+        return self.heartbeat(now_mono=now_mono)
 
 
 def _lock_metadata(*, owner_id: str, client_id: str, timeout_sec: int, stale_after_sec: int) -> Dict[str, Any]:
@@ -261,6 +292,7 @@ def acquire_label_queue_lock(
     client_id: str,
     timeout_sec: int = 120,
     stale_after_sec: int = 120,
+    heartbeat_interval_sec: int = LABEL_QUEUE_HEARTBEAT_INTERVAL_SEC,
 ) -> LabelQueueLockToken:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     owner_id = f"{client_id}:{os.getpid()}:{uuid4().hex}"
@@ -297,18 +329,22 @@ def acquire_label_queue_lock(
             except OSError:
                 pass
             raise
-        return LabelQueueLockToken(lock_path=lock_path, owner_id=owner_id)
+        now_mono = time.monotonic()
+        token = LabelQueueLockToken(
+            lock_path=lock_path,
+            owner_id=owner_id,
+            heartbeat_interval_sec=max(1, int(heartbeat_interval_sec)),
+            last_heartbeat_mono=float(now_mono),
+        )
+        token.heartbeat(now_mono=now_mono)
+        return token
 
 
 def release_label_queue_lock(token: LabelQueueLockToken) -> None:
     try:
         if not token.lock_path.exists():
             return
-        try:
-            obj = json.loads(token.lock_path.read_text(encoding="utf-8"))
-            owner_id = str(obj.get("owner_id") or "")
-        except Exception:
-            owner_id = ""
+        owner_id = _read_lock_owner_id(token.lock_path)
         if owner_id and owner_id != token.owner_id:
             return
         token.lock_path.unlink()
@@ -323,12 +359,14 @@ def label_queue_lock(
     client_id: str,
     timeout_sec: int = 120,
     stale_after_sec: int = 120,
+    heartbeat_interval_sec: int = LABEL_QUEUE_HEARTBEAT_INTERVAL_SEC,
 ) -> Iterable[LabelQueueLockToken]:
     token = acquire_label_queue_lock(
         lock_path=lock_path,
         client_id=client_id,
         timeout_sec=timeout_sec,
         stale_after_sec=stale_after_sec,
+        heartbeat_interval_sec=heartbeat_interval_sec,
     )
     try:
         yield token
@@ -342,6 +380,7 @@ def _merge_terms_into_queue(
     state: Dict[str, Any],
     client_id: str,
     terms_by_norm_key: Dict[str, Dict[str, Any]],
+    lock_token: Optional[LabelQueueLockToken] = None,
 ) -> Tuple[int, int]:
     clients_by_key: Dict[str, List[str]] = state.setdefault("clients_by_norm_key", {})
     new_keys = 0
@@ -349,6 +388,8 @@ def _merge_terms_into_queue(
     now = now_utc_iso()
 
     for norm_key, item in terms_by_norm_key.items():
+        if lock_token is not None:
+            lock_token.maybe_heartbeat()
         raw = str(item.get("raw_example") or "")
         ex_summary = str(item.get("example_summary") or "")
         suggested = str(item.get("suggested_category_key") or "")
@@ -469,7 +510,7 @@ def extract_unknown_terms_update_queue(
     updated_keys = 0
     if ledger_train_files and terms_by_norm:
         lock_path = queue_csv_path.parent / "locks" / "label_queue.lock"
-        with label_queue_lock(lock_path=lock_path, client_id=client_id):
+        with label_queue_lock(lock_path=lock_path, client_id=client_id) as lock_token:
             queue = load_label_queue(queue_csv_path)
             state = load_label_queue_state(queue_state_path)
             new_keys, updated_keys = _merge_terms_into_queue(
@@ -477,8 +518,11 @@ def extract_unknown_terms_update_queue(
                 state=state,
                 client_id=client_id,
                 terms_by_norm_key=terms_by_norm,
+                lock_token=lock_token,
             )
+            lock_token.maybe_heartbeat()
             write_label_queue(queue_csv_path, queue)
+            lock_token.maybe_heartbeat()
             save_label_queue_state(queue_state_path, state)
 
     return ExtractRunSummary(
@@ -721,13 +765,14 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
         client_id=client_id,
         timeout_sec=int(lock_timeout_sec),
         stale_after_sec=int(lock_stale_sec),
-    ):
+    ) as lock_token:
         manifest_locked = load_manifest_strict(manifest_path)
         ingested_locked = manifest_locked.get("ingested") or {}
 
         to_apply: List[str] = []
         scan_order = [sha for sha, _ in to_scan]
         for sha in scan_order:
+            lock_token.maybe_heartbeat()
             ent = ingested_locked.get(sha)
             if not isinstance(ent, dict):
                 continue
@@ -747,10 +792,14 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
                 state=state,
                 client_id=client_id,
                 terms_by_norm_key=terms_to_apply,
+                lock_token=lock_token,
             )
+            lock_token.maybe_heartbeat()
             write_label_queue(queue_csv_path, queue)
+            lock_token.maybe_heartbeat()
             save_label_queue_state(queue_state_path, state)
             try:
+                lock_token.maybe_heartbeat()
                 mark_ingested_entries_processed(
                     manifest_path=manifest_path,
                     sha256_list=to_apply,
@@ -764,6 +813,7 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
                 raise
             applied_shas = to_apply
         elif to_apply:
+            lock_token.maybe_heartbeat()
             mark_ingested_entries_processed(
                 manifest_path=manifest_path,
                 sha256_list=to_apply,
@@ -861,12 +911,13 @@ def apply_label_queue_adds(
         return ApplyRunSummary(added=0, skipped=0, removed_from_queue=0, errors=["label_queue.csv not found"])
 
     lock_path = queue_csv_path.parent / "locks" / "label_queue.lock"
-    with label_queue_lock(lock_path=lock_path, client_id="lexicon-apply"):
+    with label_queue_lock(lock_path=lock_path, client_id="lexicon-apply") as lock_token:
         lex_obj = json.loads(lexicon_path.read_text(encoding="utf-8"))
         cat_key_to_id = {c["key"]: int(c["id"]) for c in lex_obj.get("categories", [])}
 
         existing_by_needle: Dict[Tuple[str, str], List[int]] = {}
         for r in lex_obj.get("term_rows", []):
+            lock_token.maybe_heartbeat()
             try:
                 field, needle, cat_id, weight, typ = r
                 key = (str(field), str(needle))
@@ -882,6 +933,7 @@ def apply_label_queue_adds(
         applied_records: List[Dict[str, Any]] = []
 
         for norm_key, r in queue.items():
+            lock_token.maybe_heartbeat()
             action = (r.get("action") or "").strip().upper()
             if action != "ADD":
                 continue
@@ -932,24 +984,29 @@ def apply_label_queue_adds(
             applied_records.append({"status": "added", **reg})
 
         lex_obj["term_buckets_prefix2"] = _rebuild_prefix2_buckets(lex_obj.get("term_rows", []))
+        lock_token.maybe_heartbeat()
 
         tmp = lexicon_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(lex_obj, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(lexicon_path)
 
         for nk in to_delete:
+            lock_token.maybe_heartbeat()
             if nk in queue:
                 del queue[nk]
                 removed += 1
             if nk in clients_by_key:
                 del clients_by_key[nk]
 
+        lock_token.maybe_heartbeat()
         write_label_queue(queue_csv_path, queue)
+        lock_token.maybe_heartbeat()
         save_label_queue_state(queue_state_path, state)
 
         _ensure_dir(applied_log_path.parent)
         with applied_log_path.open("a", encoding="utf-8") as f:
             for rec in applied_records:
+                lock_token.maybe_heartbeat()
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     return ApplyRunSummary(added=added, skipped=skipped, removed_from_queue=removed, errors=errors)

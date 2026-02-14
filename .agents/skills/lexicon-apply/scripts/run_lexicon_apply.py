@@ -27,6 +27,10 @@ def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Pa
     return True
 
 
+def exit_code_from_summary_errors(errors: list[str]) -> int:
+    return 1 if errors else 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--learned-weight", type=float, default=0.85)
@@ -82,7 +86,7 @@ def main() -> int:
     print(f"[OK] added={summary.added} skipped={summary.skipped} removed_from_queue={summary.removed_from_queue}")
     if summary.errors:
         print("[ERR] " + " | ".join(summary.errors))
-    return 0
+    return exit_code_from_summary_errors(summary.errors)
 
 
 if __name__ == "__main__":

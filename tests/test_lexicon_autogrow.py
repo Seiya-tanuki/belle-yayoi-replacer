@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -16,7 +18,10 @@ from belle.ingest import ingest_csv_dir
 from belle.lexicon import load_lexicon
 from belle.lexicon_manager import (
     LABEL_QUEUE_COLUMNS,
+    _is_stale_lock,
+    acquire_label_queue_lock,
     ensure_lexicon_candidates_updated_from_ledger_ref,
+    release_label_queue_lock,
     save_label_queue_state,
     write_label_queue,
 )
@@ -51,7 +56,7 @@ def _write_yayoi_row(path: Path, *, summary: str, debit: str = "旅費交通費"
     cols[4] = debit
     cols[16] = summary
     cols[21] = "memo-not-used"
-    path.write_text(",".join(cols) + "\n", encoding="utf-8")
+    path.write_text(",".join(cols) + "\n", encoding="cp932")
 
 
 def _read_queue_count(queue_csv: Path, norm_key: str) -> int:
@@ -221,6 +226,46 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             self.assertNotIn("processed_to_label_queue_at", entry)
             self.assertNotIn("processed_to_label_queue_run_id", entry)
             self.assertNotIn("processed_to_label_queue_version", entry)
+
+
+class LabelQueueLockHeartbeatTests(unittest.TestCase):
+    def test_heartbeat_updates_mtime_and_prevents_stale_recovery(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            lock_path = Path(td) / "locks" / "label_queue.lock"
+            token = acquire_label_queue_lock(
+                lock_path=lock_path,
+                client_id="heartbeat-test",
+                timeout_sec=1,
+                stale_after_sec=1,
+            )
+            try:
+                stale_mtime = time.time() - 10
+                os.utime(lock_path, (stale_mtime, stale_mtime))
+                self.assertTrue(_is_stale_lock(lock_path, 1))
+
+                before = lock_path.stat().st_mtime
+                touched = token.heartbeat(now_mono=token.last_heartbeat_mono + 31)
+                after = lock_path.stat().st_mtime
+
+                self.assertTrue(touched)
+                self.assertGreater(after, before)
+                self.assertFalse(_is_stale_lock(lock_path, 1))
+            finally:
+                release_label_queue_lock(token)
+
+
+class LexiconApplyExitCodeTests(unittest.TestCase):
+    def test_exit_code_helper_returns_nonzero_when_errors_exist(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        script_path = repo_root / ".agents" / "skills" / "lexicon-apply" / "scripts" / "run_lexicon_apply.py"
+        spec = importlib.util.spec_from_file_location("run_lexicon_apply_script", script_path)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+
+        self.assertEqual(module.exit_code_from_summary_errors([]), 0)
+        self.assertEqual(module.exit_code_from_summary_errors(["x"]), 1)
 
 
 class YayoiReplacerFailClosedTests(unittest.TestCase):

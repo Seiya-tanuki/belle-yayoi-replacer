@@ -19,6 +19,7 @@ from belle.defaults import (
     merge_effective_defaults,
 )
 from belle.build_client_cache import ensure_client_cache_updated
+from belle.io_atomic import atomic_write_text
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import (
     ensure_client_system_dirs,
@@ -189,9 +190,13 @@ def main() -> int:
         run_manifest["warnings"] = warnings
 
     run_manifest_path = run_dir / "run_manifest.json"
-    run_manifest_path.write_text(json.dumps(run_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    atomic_write_text(
+        run_manifest_path,
+        json.dumps(run_manifest, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
     latest_path.parent.mkdir(parents=True, exist_ok=True)
-    latest_path.write_text(f"{run_id}\n", encoding="utf-8")
+    atomic_write_text(latest_path, f"{run_id}\n", encoding="utf-8")
 
     print(f"[OK] client={client_id} run_id={run_id} inputs={len(input_files)} outputs={len(run_manifest['outputs'])}")
     print(f"[OK] run_dir={run_dir}")
