@@ -6,12 +6,13 @@ _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
+import csv
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
-from belle.lexicon_manager import extract_unknown_terms_update_queue
+from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, extract_unknown_terms_update_queue
 from belle.ingest import ingest_csv_dir, save_manifest
 
 
@@ -36,14 +37,35 @@ def find_client_id_auto(repo_root: Path) -> str:
     raise SystemExit(f"Could not auto-detect client: multiple candidates found: {cands}. Use --client.")
 
 
+def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, queue_state: Path) -> None:
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    if not queue_csv.exists():
+        with queue_csv.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(LABEL_QUEUE_COLUMNS)
+    if not queue_state.exists():
+        queue_state.write_text(
+            json.dumps({"version": "1.0", "clients_by_norm_key": {}}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", default=None)
     ap.add_argument("--config", default="rulesets/replacer_config_v1_15.json", help="Used for dummy_summary_exact")
     ap.add_argument("--min-count-per-run", type=int, default=1)
+    ap.add_argument("--show-paths", action="store_true", help="Print queue/state paths and continue")
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
+    pending_dir = repo_root / "lexicon" / "pending"
+    queue_csv = pending_dir / "label_queue.csv"
+    queue_state = pending_dir / "label_queue_state.json"
+    ensure_pending_workspace(pending_dir, queue_csv, queue_state)
+    if args.show_paths:
+        print(f"[PATHS] queue_csv={queue_csv} queue_state={queue_state}")
+
     client_id = args.client or find_client_id_auto(repo_root)
 
     client_dir = repo_root / "clients" / client_id
@@ -98,11 +120,6 @@ def main() -> None:
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     dummy = (config.get("csv_contract") or {}).get("dummy_summary_exact") or "##DUMMY_OCR_UNREADABLE##"
-
-    # Global queue paths
-    pending_dir = repo_root / "lexicon" / "pending"
-    queue_csv = pending_dir / "label_queue.csv"
-    queue_state = pending_dir / "label_queue_state.json"
 
     # Run extraction
     summary = extract_unknown_terms_update_queue(

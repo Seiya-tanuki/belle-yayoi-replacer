@@ -6,16 +6,29 @@ _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
+import csv
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from belle.lexicon_manager import apply_label_queue_adds
+from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, apply_label_queue_adds
+
+
+def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Path) -> bool:
+    pending_dir.mkdir(parents=True, exist_ok=True)
+    applied_log.touch(exist_ok=True)
+    if queue_csv.exists():
+        return False
+    with queue_csv.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(LABEL_QUEUE_COLUMNS)
+    return True
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--learned-weight", type=float, default=0.85)
+    ap.add_argument("--show-paths", action="store_true", help="Print lexicon/pending read-write paths and continue")
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
@@ -24,6 +37,13 @@ def main() -> None:
     queue_csv = pending_dir / "label_queue.csv"
     queue_state = pending_dir / "label_queue_state.json"
     applied_log = pending_dir / "applied_log.jsonl"
+
+    created_queue = ensure_pending_workspace(pending_dir, queue_csv, applied_log)
+    if args.show_paths:
+        print(f"[PATHS] lexicon={lexicon_path} queue_csv={queue_csv} queue_state={queue_state} applied_log={applied_log}")
+    if created_queue:
+        print("[INFO] label_queue.csv が存在しなかったため初期化しました。適用対象はありません。")
+        return
 
     summary = apply_label_queue_adds(
         lexicon_path=lexicon_path,
@@ -50,7 +70,6 @@ def main() -> None:
             "applied_log": str(applied_log),
         },
     }
-    pending_dir.mkdir(parents=True, exist_ok=True)
     (pending_dir / f"apply_run_{ts}.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[OK] added={summary.added} skipped={summary.skipped} removed_from_queue={summary.removed_from_queue}")
