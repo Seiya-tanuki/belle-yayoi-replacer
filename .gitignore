@@ -19,6 +19,7 @@ tmp/
 # --- Runtime outputs (do not version) ---
 clients/**/outputs/
 clients/**/artifacts/telemetry/
+exports/
 
 # --- Lexicon pending (runtime-managed, not versioned) ---
 lexicon/pending/*.csv

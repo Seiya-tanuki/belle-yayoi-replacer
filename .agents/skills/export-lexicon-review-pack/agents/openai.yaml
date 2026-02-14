@@ -1,0 +1,5 @@
+interface:
+  display_name: "Lexicon review pack export"
+  short_description: "Export a fixed Lexicon Steward GPTs review pack zip with manifest"
+policy:
+  allow_implicit_invocation: false

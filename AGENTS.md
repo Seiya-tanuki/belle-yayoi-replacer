@@ -15,6 +15,7 @@
    3. `$client-cache-builder` : ledger_ref を取り込み client_cache キャッシュを増分更新
    4. `$lexicon-extract` : ledger_train から未登録語を抽出し label_queue.csv を育成
    5. `$lexicon-apply` : label_queue.csv の ADD 行だけを lexicon.json に反映
+   6. `$export-lexicon-review-pack` : label_queue のグローバルロックを取得したうえで、Lexicon Steward GPTs 向けの固定レビューZIPと MANIFEST を `exports/gpts_lexicon_review/` に出力する。
 
 ## 2) データ配置（client単位で取り違え防止）
 1. すべての入力/出力は `clients/<CLIENT_ID>/` 配下に閉じる。
