@@ -1,4 +1,4 @@
-﻿---
+---
 name: yayoi-replacer
 description: Replace ONLY the debit account (借方勘定科目, col 5) in Yayoi 25-col import CSV using lexicon + client_cache cache + defaults. Explicit invocation only.
 ---

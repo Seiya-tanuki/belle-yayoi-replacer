@@ -1,4 +1,4 @@
-﻿---
+---
 name: lexicon-extract
 description: Extract unknown terms from clients/<CLIENT_ID>/inputs/ledger_train and update lexicon/pending/label_queue.csv (cumulative). Explicit invocation only.
 ---

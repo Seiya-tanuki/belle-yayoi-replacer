@@ -1,4 +1,4 @@
-﻿---
+---
 name: client-cache-builder
 description: Update (append-only) clients/<CLIENT_ID>/artifacts/client_cache.json from inputs/ledger_ref (with sha256+rename ingestion). Explicit invocation only.
 ---
