@@ -434,6 +434,24 @@
       "confidence": 0.7,
       "priority": "LOW",
       "reason_code": "category_default"
+    },
+    "bank_transfer_fee": {
+      "debit_account": "\u652f\u6255\u624b\u6570\u6599",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "loan_interest": {
+      "debit_account": "\u652f\u6255\u5229\u606f",
+      "confidence": 0.6,
+      "priority": "LOW",
+      "reason_code": "category_default"
+    },
+    "financial_operation_ambiguous": {
+      "debit_account": "\u4eee\u6255\u91d1",
+      "confidence": 0.25,
+      "priority": "HIGH",
+      "reason_code": "category_default"
     }
   },
   "global_fallback": {
