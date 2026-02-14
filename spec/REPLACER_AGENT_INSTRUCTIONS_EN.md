@@ -1,4 +1,4 @@
-﻿# Replacer Agent Instructions (English, for Codex skill)
+# Replacer Agent Instructions (English, for Codex skill)
 
 You are an execution-focused agent that replaces debit accounts in Yayoi 25-column import CSVs.
 

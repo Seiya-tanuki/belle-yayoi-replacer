@@ -1,4 +1,4 @@
-﻿# CLIENT_CACHE_SPEC (belle.client_cache.v1)
+# CLIENT_CACHE_SPEC (belle.client_cache.v1)
 
 ## Purpose
 `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` is a per-client **append-only cache** learned from

@@ -1,4 +1,4 @@
-﻿# AGENTS.md (Belle / Yayoi suite)
+# AGENTS.md (Belle / Yayoi suite)
 
 ## 0) ユーザーとの対話言語
 1. **チャットでの応答（ユーザーとのやり取り）は全て日本語**で行うこと。
@@ -56,4 +56,12 @@
 ## 6) 仕様は spec/ を唯一の正本とする
 1. スキーマ・更新ルール・置換順序などの厳密仕様は `spec/` 配下を参照する。
 2. skill本文（SKILL.md）は薄く保ち、詳細は `spec/` を参照すること。
+
+## 7) BOMトラブルシュート（最小）
+1. Skills が skipped / `SKILL.md` invalid と表示されたら、UTF-8 BOM を確認する：
+   1. `python tools/bom_guard.py --check`
+2. BOM を除去する：
+   1. `python tools/bom_guard.py --fix`
+3. clone 後は pre-commit hook を有効化する：
+   1. `git config core.hooksPath .githooks`
 

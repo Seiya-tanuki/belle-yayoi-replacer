@@ -1,4 +1,4 @@
-﻿# LEXICON_PENDING_SPEC (label_queue)
+# LEXICON_PENDING_SPEC (label_queue)
 
 ## Purpose
 `lexicon/pending/label_queue.csv` is the **single global queue** of unknown (unlabeled) terms that were observed

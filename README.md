@@ -1,4 +1,4 @@
-﻿# Belle Yayoi Skillpack (Codex)
+# Belle Yayoi Skillpack (Codex)
 
 このリポジトリは、弥生会計インポート用の **25列CSV（仮仕訳）**のうち、
 **借方勘定科目（5列目）だけ**を推定置換するための Codex Skills セットです。

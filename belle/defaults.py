@@ -9,6 +9,7 @@ from typing import Dict, Any, Iterable
 import json
 
 CATEGORY_OVERRIDES_SCHEMA_V1 = "belle.category_overrides.v1"
+UTF8_BOM = b"\xEF\xBB\xBF"
 
 
 @dataclass(frozen=True)
@@ -53,8 +54,14 @@ def load_category_defaults(path: Path) -> CategoryDefaults:
 
 
 def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) -> Dict[str, str]:
+    raw_bytes = path.read_bytes()
+    has_utf8_bom = raw_bytes.startswith(UTF8_BOM)
+    parse_bytes = raw_bytes[len(UTF8_BOM):] if has_utf8_bom else raw_bytes
+
     try:
-        obj = json.loads(path.read_text(encoding="utf-8"))
+        obj = json.loads(parse_bytes.decode("utf-8"))
+    except UnicodeDecodeError as exc:
+        raise ValueError(f"Invalid UTF-8: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON: {exc}") from exc
 
@@ -92,6 +99,12 @@ def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) ->
         if not isinstance(debit, str) or not debit.strip():
             raise ValueError(f"overrides['{key}'].debit_account must be a non-empty string.")
         resolved[key] = debit
+
+    if has_utf8_bom:
+        # Tiny unit-style check: BOM + valid JSON should parse, validate, then write back bytes[3:].
+        path.write_bytes(parse_bytes)
+        print(f"[WARN] UTF-8 BOM detected and removed: {path}")
+
     return resolved
 
 

@@ -1,4 +1,4 @@
-﻿# CATEGORY_DEFAULTS_SPEC (belle.category_defaults.v1)
+# CATEGORY_DEFAULTS_SPEC (belle.category_defaults.v1)
 
 ## Purpose
 `defaults/category_defaults.json` provides a **global default debit account** per lexicon category.

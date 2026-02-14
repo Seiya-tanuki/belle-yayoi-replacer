@@ -1,4 +1,4 @@
-﻿# LEXICON_SPEC (belle.lexicon.v1)
+# LEXICON_SPEC (belle.lexicon.v1)
 
 ## Purpose
 `lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text (Yayoi summary / 摘要)

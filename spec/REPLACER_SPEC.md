@@ -1,4 +1,4 @@
-﻿# REPLACER_SPEC (belle.replacer.v2)
+# REPLACER_SPEC (belle.replacer.v2)
 
 ## Goal
 Replace ONLY the debit account field (借方勘定科目, 5th column) in Yayoi 25-column import CSV.

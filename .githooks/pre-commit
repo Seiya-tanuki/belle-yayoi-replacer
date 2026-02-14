@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v python >/dev/null 2>&1; then
+  echo "[ERROR] python is required for BOM guard pre-commit hook." >&2
+  exit 1
+fi
+
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -z "${repo_root}" ]]; then
+  echo "[ERROR] Failed to resolve repository root." >&2
+  exit 1
+fi
+
+cd "${repo_root}"
+python tools/bom_guard.py --check

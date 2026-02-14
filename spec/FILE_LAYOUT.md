@@ -1,4 +1,4 @@
-﻿# File layout contract (repo)
+# File layout contract (repo)
 
 This repository is designed for deterministic, shell-driven operation via Codex Agent Skills.
 All client data is isolated under `clients/<CLIENT_ID>/` to prevent cross-client file mixups.

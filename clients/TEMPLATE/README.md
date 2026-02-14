@@ -1,4 +1,4 @@
-﻿# TEMPLATE client folder
+# TEMPLATE client folder
 
 Copy this folder to create a new client:
 

@@ -1,4 +1,4 @@
-﻿interface:
+interface:
   display_name: "Yayoi replacer"
   short_description: "Replace debit accounts (col 5) in Yayoi import CSV using lexicon + client_cache + defaults"
 policy:
