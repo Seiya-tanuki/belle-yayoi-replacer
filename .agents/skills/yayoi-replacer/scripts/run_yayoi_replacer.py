@@ -36,24 +36,6 @@ def _list_input_files_with_txt(dir_path: Path):
     return sorted({p.resolve(): p for p in files}.values(), key=lambda p: p.name)
 
 
-def find_client_id_auto(repo_root: Path) -> str:
-    clients_dir = repo_root / "clients"
-    cands = []
-    if not clients_dir.exists():
-        raise SystemExit("clients/ directory not found.")
-    for tdir in clients_dir.iterdir():
-        if not tdir.is_dir() or tdir.name == "TEMPLATE":
-            continue
-        inp = tdir / "inputs" / "kari_shiwake"
-        if inp.exists() and _list_input_files_with_txt(inp):
-            cands.append(tdir.name)
-    if len(cands) == 1:
-        return cands[0]
-    if not cands:
-        raise SystemExit("Could not auto-detect client: no clients/<CLIENT_ID>/inputs/kari_shiwake/*.csv or *.txt found.")
-    raise SystemExit(f"Could not auto-detect client: multiple candidates found: {cands}. Use --client.")
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", help="Client ID under clients/<CLIENT_ID>/", default=None)
@@ -61,7 +43,11 @@ def main() -> int:
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
-    client_id = args.client or find_client_id_auto(repo_root)
+    client_id = (args.client or "").strip()
+    if not client_id:
+        print("[ERROR] 置換を実行するクライアントのディレクトリ名（--client）を指定してください。")
+        print("例: $yayoi-replacer --client <CLIENT_ID>")
+        return 2
 
     client_dir = get_client_root(repo_root, client_id)
     if not client_dir.exists():

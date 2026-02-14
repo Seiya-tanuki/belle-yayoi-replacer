@@ -1,68 +1,72 @@
 # AGENTS.md (Belle / Yayoi suite)
 
-## 0) ユーザーとの対話言語
-1. **チャットでの応答（ユーザーとのやり取り）は全て日本語**で行うこと。
-2. ただし、出力成果物（JSON/CSV等のファイル）内部の言語は、安定動作を優先して英語を基本としてよい。
-   1. 例外：辞書キーワード・勘定科目名・弥生CSVの内容は日本語のまま扱う。
+## 0) Chat Language
+1. All chat responses to the user must be in Japanese.
+2. Output artifact file contents (JSON/CSV, etc.) may use English for stability.
+   1. Exceptions: lexicon keywords, account names, and Yayoi CSV values remain Japanese when required.
 
-## 1) 運用前提（最重要）
-1. このリポジトリは **Codex Agent Skills** によって動作する。
-2. **必ず `$skill` を明示呼び出し**して作業を開始すること（暗黙起動は禁止）。
-   1. skills は `.agents/skills/*` に配置されている。
-3. スキルは責務ごとに分離されている（混線防止）：
-   1. `$client-register` : `clients/TEMPLATE/` を安全な顧客名で複製し `clients/<CLIENT_ID>/` を作成
-   2. `$yayoi-replacer` : 仮仕訳CSVの借方勘定科目（5列目）だけを置換
-   3. `$client-cache-builder` : ledger_ref を取り込み client_cache キャッシュを増分更新
-   4. `$lexicon-extract` : ledger_train から未登録語を抽出し label_queue.csv を育成
-   5. `$lexicon-apply` : label_queue.csv の ADD 行だけを lexicon.json に反映
-   6. `$export-lexicon-review-pack` : label_queue のグローバルロックを取得したうえで、Lexicon Steward GPTs 向けの固定レビューZIPと MANIFEST を `exports/gpts_lexicon_review/` に出力する。
+## 1) Operating Assumptions (Most Important)
+1. This repository is designed around Codex Agent Skills.
+2. Explicit skill invocation policy:
+   1. When the user wants to run a system function, the user explicitly invokes the corresponding skill with `$skill`.
+   2. Do not implicitly invoke skills on your own.
+   3. Only run a skill when the user explicitly requests it.
+3. Skills are split by responsibility:
+   1. `$client-register`: clone `clients/TEMPLATE/` into `clients/<CLIENT_ID>/` using a safe client name.
+   2. `$yayoi-replacer`: replace only debit account (column 5) in draft journal CSVs.
+   3. `$client-cache-builder`: ingest `ledger_ref` and incrementally update `client_cache`.
+   4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
+   5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
+   6. `$export-lexicon-review-pack`: acquire the global label_queue lock and export a fixed review ZIP + MANIFEST for Lexicon Steward GPTs under `exports/gpts_lexicon_review/`.
+4. Current runtime behavior:
+   1. The pipeline is ledger_ref-only.
+   2. `$yayoi-replacer` includes client_cache incremental update and lexicon candidate autogrow from `ledger_ref` before replacement.
 
-## 2) データ配置（client単位で取り違え防止）
-1. すべての入力/出力は `clients/<CLIENT_ID>/` 配下に閉じる。
-2. 入力の用途別ディレクトリ（固定）：
-   1. `inputs/kari_shiwake/` : 置換対象「仮仕訳CSV」
-   2. `inputs/ledger_ref/`   : 参照用「過去の実仕訳CSV」（client_cache作成・T番号統計）
-   3. `inputs/ledger_train/` : 学習用「過去の実仕訳CSV」（辞書learned育成）
-3. 生成物：
-   1. `outputs/runs/<RUN_ID>/*`（ユーザー向け成果物）
-   2. `outputs/LATEST.txt`（最新 RUN_ID）
-   3. `artifacts/cache/client_cache.json`（append-onlyキャッシュ）
-   4. `artifacts/ingest/ledger_ref_ingested.json`（ledger_ref取込マニフェスト）
-   5. `artifacts/ingest/ledger_train_ingested.json`（ledger_train取込マニフェスト）
-   6. `artifacts/telemetry/*`（内部ログ/メトリクス）
-4. 原則：
-   1. ユーザーは `outputs/runs/<RUN_ID>/` を参照すれば1実行分の成果物を取得できること。
-   2. `artifacts/*` はシステム管理領域として扱い、ユーザーの手編集対象にしないこと。
+## 2) Data Placement (Per Client, No Mix-ups)
+1. All per-client inputs/outputs live under `clients/<CLIENT_ID>/`.
+2. Inputs:
+   1. `inputs/kari_shiwake/`: target draft Yayoi CSV(s) for replacement.
+   2. `inputs/ledger_ref/`: historical finalized CSV(s) used for cache and statistics.
+3. User-facing outputs:
+   1. `outputs/runs/<RUN_ID>/*`: artifacts for one execution.
+   2. `outputs/LATEST.txt`: latest `RUN_ID`.
+4. System-managed artifacts:
+   1. `artifacts/cache/client_cache.json`: append-only client cache.
+   2. `artifacts/ingest/ledger_ref_ingested.json`: ledger_ref ingest manifest.
+   3. `artifacts/telemetry/*`: internal logs/metrics.
+5. Principles:
+   1. Users should be able to fetch one full run from `outputs/runs/<RUN_ID>/`.
+   2. `artifacts/*` is system-owned; users should not manually edit it.
 
-## 3) 重要な安全制約（弥生インポートを壊さない）
-1. 弥生会計インポートCSVは **25列固定**で扱う。
-2. 置換エージェント（$yayoi-replacer）が変更してよいのは **借方勘定科目（5列目）のみ**。
-3. それ以外の列（摘要/税区分/メモ等）は **一切変更しない**（バイト同一を目標）。
-4. 解析・推定に使用してよいのは **摘要（17列目）のみ**。
-   1. 仕訳メモ（22列目）は推定に使用しない（禁止）。
-5. `##DUMMY_OCR_UNREADABLE##` はダミー行として扱い、置換は行わずレビュー優先度を上げる。
+## 3) Critical Safety Constraints (Do Not Break Yayoi Import)
+1. Yayoi import CSV must be treated as fixed 25 columns.
+2. `$yayoi-replacer` may change only debit account (column 5).
+3. All other columns (summary/tax/memo/etc.) must remain unchanged (byte-identical target).
+4. Inference may use only summary (column 17).
+5. Memo (column 22) must not be used for inference.
+6. `##DUMMY_OCR_UNREADABLE##` must be treated as a dummy row: do not replace it and raise review priority.
+7. Yayoi CSV read/write must remain cp932-compatible.
 
-## 4) ネットワークアクセス
-1. このプロジェクトは **外部Webアクセスなし**で完結する前提。
-2. `lexicon/lexicon.json` と `clients/<CLIENT_ID>/artifacts/*` のローカル情報だけで決定論的に処理する。
+## 4) Network Access
+1. This project is intended to run without external web access.
+2. Decisions must be deterministic from local data (`lexicon/lexicon.json`, `clients/<CLIENT_ID>/artifacts/*`, and local inputs).
 
-## 5) 正本ファイルとキャッシュ
-1. 共通辞書（単一正本）：`lexicon/lexicon.json`（core + learned）
-2. 未登録語キュー（ユーザーが時々編集する）：`lexicon/pending/label_queue.csv`
-3. デフォルト科目：`defaults/category_defaults.json`
-4. client差分キャッシュ：`clients/<CLIENT_ID>/artifacts/cache/client_cache.json`
-   1. client_cache は **再生成ではなく増分更新（append-only）**を基本とする。
-   2. ledger_ref の取込状況は `artifacts/ingest/ledger_ref_ingested.json` と `client_cache.applied_ledger_ref_sha256` で管理する。
+## 5) Source Files and Cache
+1. Shared lexicon source of truth: `lexicon/lexicon.json` (core + learned).
+2. Pending queue (occasionally edited by users): `lexicon/pending/label_queue.csv`.
+3. Default account mappings: `defaults/category_defaults.json`.
+4. Client delta cache: `clients/<CLIENT_ID>/artifacts/cache/client_cache.json`.
+   1. `client_cache` is append-only incremental state (no destructive rebuild by default).
+   2. ledger_ref ingest/application state is tracked by `artifacts/ingest/ledger_ref_ingested.json` and `client_cache.applied_ledger_ref_sha256`.
 
-## 6) 仕様は spec/ を唯一の正本とする
-1. スキーマ・更新ルール・置換順序などの厳密仕様は `spec/` 配下を参照する。
-2. skill本文（SKILL.md）は薄く保ち、詳細は `spec/` を参照すること。
+## 6) spec/ Is the Source of Truth
+1. For schemas, update rules, and replacement order, always follow `spec/`.
+2. Keep skill docs (`SKILL.md`) concise and defer strict behavior to `spec/`.
 
-## 7) BOMトラブルシュート（最小）
-1. Skills が skipped / `SKILL.md` invalid と表示されたら、UTF-8 BOM を確認する：
+## 7) BOM Troubleshooting (Minimal)
+1. If Skills are skipped or `SKILL.md` is reported invalid, check UTF-8 BOM:
    1. `python tools/bom_guard.py --check`
-2. BOM を除去する：
+2. Remove BOM if needed:
    1. `python tools/bom_guard.py --fix`
-3. clone 後は pre-commit hook を有効化する：
+3. After clone, enable pre-commit hook:
    1. `git config core.hooksPath .githooks`
-

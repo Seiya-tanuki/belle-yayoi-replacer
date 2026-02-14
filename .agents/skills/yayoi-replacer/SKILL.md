@@ -7,6 +7,12 @@ description: Replace ONLY the debit account (借方勘定科目, col 5) in Yayoi
 
 Deterministic debit-account replacement for Yayoi import CSVs.
 
+## 必須引数（最初に確認）
+1. `--client <CLIENT_ID>` は必須です。
+2. 入力フォルダは次の2つが必要です。
+   1. `clients/<CLIENT_ID>/inputs/kari_shiwake/`
+   2. `clients/<CLIENT_ID>/inputs/ledger_ref/`
+
 ## Preconditions
 1. Work under a single client folder: `clients/<CLIENT_ID>/`
 2. Put input CSV(s) in: `clients/<CLIENT_ID>/inputs/kari_shiwake/`
