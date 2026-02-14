@@ -436,19 +436,19 @@
       "reason_code": "category_default"
     },
     "bank_transfer_fee": {
-      "debit_account": "\u652f\u6255\u624b\u6570\u6599",
+      "debit_account": "支払手数料",
       "confidence": 0.6,
       "priority": "LOW",
       "reason_code": "category_default"
     },
     "loan_interest": {
-      "debit_account": "\u652f\u6255\u5229\u606f",
+      "debit_account": "支払利息",
       "confidence": 0.6,
       "priority": "LOW",
       "reason_code": "category_default"
     },
     "financial_operation_ambiguous": {
-      "debit_account": "\u4eee\u6255\u91d1",
+      "debit_account": "仮払金",
       "confidence": 0.25,
       "priority": "HIGH",
       "reason_code": "category_default"
