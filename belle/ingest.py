@@ -20,6 +20,8 @@ from typing import Dict, Any, List, Tuple, Optional
 import json
 import hashlib
 
+from .io_atomic import atomic_write_text
+
 
 def now_utc_compact() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -34,10 +36,7 @@ def sha256_file(path: Path) -> str:
 
 
 def _atomic_write_json(path: Path, obj: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def load_manifest(path: Path, *, client_id: str, kind: str) -> Dict[str, Any]:

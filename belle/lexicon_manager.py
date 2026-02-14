@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Iterable
 import copy
 import csv
+import io
 import json
 import os
 import random
@@ -27,6 +28,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 from .ingest import ingest_csv_dir, load_manifest_strict, mark_ingested_entries_processed
+from .io_atomic import atomic_write_text
 from .lexicon import Lexicon, match_summary
 from .paths import (
     get_artifacts_telemetry_dir,
@@ -157,24 +159,24 @@ def load_label_queue(path: Path) -> Dict[str, Dict[str, str]]:
 
 def write_label_queue(path: Path, rows: Dict[str, Dict[str, str]]) -> None:
     _ensure_dir(path.parent)
-    tmp = path.with_suffix(".csv.tmp")
-    with tmp.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=LABEL_QUEUE_COLUMNS)
-        writer.writeheader()
+    buf = io.StringIO(newline="")
+    writer = csv.DictWriter(buf, fieldnames=LABEL_QUEUE_COLUMNS)
+    writer.writeheader()
 
-        def keyfn(item: Tuple[str, Dict[str, str]]) -> Tuple[int, str]:
-            nk, r = item
-            try:
-                c = int(float(r.get("count_total") or 0))
-            except Exception:
-                c = 0
-            return (-c, nk)
+    def keyfn(item: Tuple[str, Dict[str, str]]) -> Tuple[int, str]:
+        nk, r = item
+        try:
+            c = int(float(r.get("count_total") or 0))
+        except Exception:
+            c = 0
+        return (-c, nk)
 
-        for nk, r in sorted(rows.items(), key=keyfn):
-            out = {k: (r.get(k) or "") for k in LABEL_QUEUE_COLUMNS}
-            out["norm_key"] = nk
-            writer.writerow(out)
-    tmp.replace(path)
+    for nk, r in sorted(rows.items(), key=keyfn):
+        out = {k: (r.get(k) or "") for k in LABEL_QUEUE_COLUMNS}
+        out["norm_key"] = nk
+        writer.writerow(out)
+
+    atomic_write_text(path, buf.getvalue(), encoding="utf-8", newline="")
 
 
 def load_label_queue_state(path: Path) -> Dict[str, Any]:
@@ -191,9 +193,7 @@ def load_label_queue_state(path: Path) -> Dict[str, Any]:
 
 def save_label_queue_state(path: Path, obj: Dict[str, Any]) -> None:
     _ensure_dir(path.parent)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
-    tmp.replace(path)
+    atomic_write_text(path, json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def ensure_pending_workspace(
@@ -206,9 +206,7 @@ def ensure_pending_workspace(
     pending_dir.mkdir(parents=True, exist_ok=True)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     if not queue_csv_path.exists():
-        with queue_csv_path.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(LABEL_QUEUE_COLUMNS)
+        write_label_queue(queue_csv_path, {})
     if not queue_state_path.exists():
         save_label_queue_state(queue_state_path, {"version": "1.0", "clients_by_norm_key": {}})
 

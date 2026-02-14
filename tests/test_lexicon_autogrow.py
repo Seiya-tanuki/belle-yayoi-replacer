@@ -9,10 +9,17 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
+from belle.ingest import ingest_csv_dir
 from belle.lexicon import load_lexicon
-from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
+from belle.lexicon_manager import (
+    LABEL_QUEUE_COLUMNS,
+    ensure_lexicon_candidates_updated_from_ledger_ref,
+    save_label_queue_state,
+    write_label_queue,
+)
 
 
 def _write_minimal_lexicon(lexicon_path: Path) -> None:
@@ -56,6 +63,33 @@ def _read_queue_count(queue_csv: Path, norm_key: str) -> int:
             if (row.get("norm_key") or "") == norm_key:
                 return int(row.get("count_total") or 0)
     return 0
+
+
+def _ingest_one_ledger_ref(repo_root: Path, *, client_id: str, summary: str) -> Path:
+    ledger_ref_dir = repo_root / "clients" / client_id / "inputs" / "ledger_ref"
+    _write_yayoi_row(ledger_ref_dir / "batch1.csv", summary=summary)
+    manifest_path = repo_root / "clients" / client_id / "artifacts" / "ingest" / "ledger_ref_ingested.json"
+    ingest_csv_dir(
+        dir_path=ledger_ref_dir,
+        manifest_path=manifest_path,
+        client_id=client_id,
+        kind="ledger_ref",
+        allow_rename=True,
+        include_glob="*.csv",
+    )
+    return manifest_path
+
+
+def _build_queue_row(norm_key: str, *, count_total: int) -> dict[str, str]:
+    row = {k: "" for k in LABEL_QUEUE_COLUMNS}
+    row["norm_key"] = norm_key
+    row["raw_example"] = f"{norm_key}_RAW"
+    row["example_summary"] = f"{norm_key}_SUMMARY"
+    row["count_total"] = str(count_total)
+    row["clients_seen"] = "1"
+    row["first_seen_at"] = "2026-01-01T00:00:00+00:00"
+    row["last_seen_at"] = "2026-01-01T00:00:00+00:00"
+    return row
 
 
 class LexiconAutogrowIdempotencyTests(unittest.TestCase):
@@ -104,6 +138,89 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             self.assertEqual(len(ingested_entries), 1)
             entry = next(iter(ingested_entries.values()))
             self.assertTrue(entry.get("processed_to_label_queue_at"))
+
+    def test_atomic_replace_failure_keeps_queue_and_state_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C1"
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="FAILURE SHOP / test")
+
+            queue_csv = repo_root / "lexicon" / "pending" / "label_queue.csv"
+            queue_state = repo_root / "lexicon" / "pending" / "label_queue_state.json"
+            write_label_queue(queue_csv, {"BASEKEY": _build_queue_row("BASEKEY", count_total=7)})
+            save_label_queue_state(
+                queue_state,
+                {
+                    "version": "1.0",
+                    "clients_by_norm_key": {
+                        "BASEKEY": {
+                            client_id: {"count_total": 7, "last_seen_at": "2026-01-01T00:00:00+00:00"}
+                        }
+                    },
+                },
+            )
+            queue_before = queue_csv.read_bytes()
+            state_before = queue_state.read_bytes()
+
+            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+            config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
+            real_replace = os.replace
+
+            def _replace_fail_on_queue(src: str | os.PathLike[str], dst: str | os.PathLike[str]) -> None:
+                if Path(dst).resolve() == queue_csv.resolve():
+                    raise OSError("simulated queue replace failure")
+                real_replace(src, dst)
+
+            with mock.patch("belle.io_atomic.os.replace", side_effect=_replace_fail_on_queue):
+                with self.assertRaises(OSError):
+                    ensure_lexicon_candidates_updated_from_ledger_ref(
+                        repo_root=repo_root,
+                        client_id=client_id,
+                        lex=lex,
+                        config=config,
+                        ingest_inputs=False,
+                        lock_timeout_sec=5,
+                        lock_stale_sec=5,
+                    )
+
+            self.assertEqual(queue_before, queue_csv.read_bytes())
+            self.assertEqual(state_before, queue_state.read_bytes())
+            self.assertEqual(list(queue_csv.parent.glob("label_queue.csv.tmp.*")), [])
+            self.assertEqual(list(queue_state.parent.glob("label_queue_state.json.tmp.*")), [])
+
+    def test_processed_marker_not_set_if_commit_fails_before_queue_state_write(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C1"
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            manifest_path = _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="MARKER SHOP / test")
+
+            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+            config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
+
+            with mock.patch(
+                "belle.lexicon_manager._merge_terms_into_queue",
+                side_effect=RuntimeError("simulated merge failure"),
+            ):
+                with self.assertRaises(RuntimeError):
+                    ensure_lexicon_candidates_updated_from_ledger_ref(
+                        repo_root=repo_root,
+                        client_id=client_id,
+                        lex=lex,
+                        config=config,
+                        ingest_inputs=False,
+                        lock_timeout_sec=5,
+                        lock_stale_sec=5,
+                    )
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            ingested_entries = manifest.get("ingested") or {}
+            self.assertEqual(len(ingested_entries), 1)
+            entry = next(iter(ingested_entries.values()))
+            self.assertNotIn("processed_to_label_queue_at", entry)
+            self.assertNotIn("processed_to_label_queue_run_id", entry)
+            self.assertNotIn("processed_to_label_queue_version", entry)
 
 
 class YayoiReplacerFailClosedTests(unittest.TestCase):
