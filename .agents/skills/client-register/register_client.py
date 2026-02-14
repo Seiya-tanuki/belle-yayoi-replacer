@@ -143,6 +143,19 @@ def main() -> int:
         print("[ERROR] `clients/TEMPLATE/` が見つかりません。テンプレート作成後に再実行してください。")
         return 2
 
+    required_dirs = [
+        template_dir / "outputs" / "runs",
+        template_dir / "artifacts" / "cache",
+        template_dir / "artifacts" / "ingest",
+        template_dir / "artifacts" / "telemetry",
+    ]
+    missing_required = [p for p in required_dirs if not p.exists()]
+    if missing_required:
+        print("[ERROR] `clients/TEMPLATE/` に必須ディレクトリが不足しています。")
+        for p in missing_required:
+            print(f"  - {_display_path(p, repo_root)}")
+        return 2
+
     print("新しい顧客ディレクトリを登録します。")
     print("`clients/TEMPLATE/` をコピーして `clients/<CLIENT_ID>/` を作成します。")
     print("※ スペースは利用できますが、ディレクトリ名では `_` に正規化されます。")

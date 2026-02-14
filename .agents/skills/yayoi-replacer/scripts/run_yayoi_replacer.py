@@ -13,6 +13,12 @@ from pathlib import Path
 from belle.lexicon import load_lexicon
 from belle.defaults import load_category_defaults
 from belle.build_client_cache import ensure_client_cache_updated
+from belle.paths import (
+    ensure_client_system_dirs,
+    get_client_root,
+    get_latest_path,
+    make_run_dir,
+)
 from belle.replacer import replace_yayoi_csv
 
 
@@ -48,18 +54,13 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     client_id = args.client or find_client_id_auto(repo_root)
 
-    client_dir = repo_root / "clients" / client_id
+    client_dir = get_client_root(repo_root, client_id)
     if not client_dir.exists():
         raise SystemExit(f"client dir not found: {client_dir}")
 
-    in_dir = client_dir / "inputs" / "kari_shiwake"
-    out_dir = client_dir / "outputs"
-    reports_dir = client_dir / "artifacts" / "reports"
-    artifacts_dir = client_dir / "artifacts"
+    ensure_client_system_dirs(repo_root, client_id)
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(parents=True, exist_ok=True)
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    in_dir = client_dir / "inputs" / "kari_shiwake"
 
     input_files = _list_input_files_with_txt(in_dir)
     if not input_files:
@@ -80,14 +81,16 @@ def main() -> None:
         lex=lex,
         config=config,
     )
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id, run_dir = make_run_dir(repo_root, client_id)
+    latest_path = get_latest_path(repo_root, client_id)
 
     run_manifest = {
         "schema": "belle.replacer_run.v2",
         "version": str(config.get("version") or "1.15"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "client_id": client_id,
+        "run_id": run_id,
+        "run_dir": str(run_dir),
         "client_cache_update": {
             "applied_new_files": len(tm_summary.applied_new_files),
             "rows_used_added": tm_summary.rows_used_added,
@@ -99,8 +102,10 @@ def main() -> None:
 
     warnings = []
 
-    for in_path in input_files:
-        out_path = out_dir / f"{in_path.stem}_replaced_{ts}.csv"
+    for idx, in_path in enumerate(input_files, start=1):
+        out_path = run_dir / f"{in_path.stem}_replaced_{run_id}.csv"
+        if out_path.exists():
+            out_path = run_dir / f"{in_path.stem}_replaced_{run_id}_{idx:02d}.csv"
         mf = replace_yayoi_csv(
             in_path=in_path,
             out_path=out_path,
@@ -108,7 +113,7 @@ def main() -> None:
             client_cache=tm,
             defaults=defaults,
             config=config,
-            reports_dir=reports_dir,
+            run_dir=run_dir,
         )
         run_manifest["outputs"].append(mf)
 
@@ -121,9 +126,14 @@ def main() -> None:
     if warnings:
         run_manifest["warnings"] = warnings
 
-    (reports_dir / f"run_manifest_{ts}.json").write_text(json.dumps(run_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    run_manifest_path = run_dir / "run_manifest.json"
+    run_manifest_path.write_text(json.dumps(run_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    latest_path.parent.mkdir(parents=True, exist_ok=True)
+    latest_path.write_text(f"{run_id}\n", encoding="utf-8")
 
-    print(f"[OK] client={client_id} inputs={len(input_files)} outputs={len(run_manifest['outputs'])}")
+    print(f"[OK] client={client_id} run_id={run_id} inputs={len(input_files)} outputs={len(run_manifest['outputs'])}")
+    print(f"[OK] run_dir={run_dir}")
+    print(f"[OK] run_manifest={run_manifest_path}")
     for o in run_manifest["outputs"]:
         print(f" - changed_ratio={o['changed_ratio']:.3f} output={o['output_file']}")
     if warnings:

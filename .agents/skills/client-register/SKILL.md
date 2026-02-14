@@ -24,3 +24,10 @@ description: Register a new client directory by copying clients/TEMPLATE to clie
 ```bash
 python3 .agents/skills/client-register/register_client.py
 ```
+
+## Template contract (must preserve)
+1. `clients/TEMPLATE/outputs/runs/` exists.
+2. `clients/TEMPLATE/artifacts/cache/` exists.
+3. `clients/TEMPLATE/artifacts/ingest/` exists.
+4. `clients/TEMPLATE/artifacts/telemetry/` exists.
+5. Use `.gitkeep` files as needed to keep empty directories in git.

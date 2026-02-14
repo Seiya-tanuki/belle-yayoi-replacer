@@ -1,7 +1,7 @@
 ﻿# CLIENT_CACHE_SPEC (belle.client_cache.v1)
 
 ## Purpose
-`clients/<CLIENT_ID>/artifacts/client_cache.json` is a per-client **append-only cache** learned from
+`clients/<CLIENT_ID>/artifacts/cache/client_cache.json` is a per-client **append-only cache** learned from
 historical finalized journals (`inputs/ledger_ref/`).
 
 It provides empirical debit-account distributions keyed by:
@@ -23,7 +23,7 @@ This supports stable replacement coverage across time.
 
 ## Ingestion and deduplication
 Each client has an ingest manifest:
-- `clients/<CLIENT_ID>/artifacts/ledger_ref_ingested.json`
+- `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
 
 Behavior:
 1. All `inputs/ledger_ref/*.csv` files are hashed (sha256).

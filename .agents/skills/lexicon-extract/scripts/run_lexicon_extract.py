@@ -14,6 +14,12 @@ from pathlib import Path
 from belle.lexicon import load_lexicon
 from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, extract_unknown_terms_update_queue
 from belle.ingest import ingest_csv_dir, save_manifest
+from belle.paths import (
+    ensure_client_system_dirs,
+    get_artifacts_telemetry_dir,
+    get_client_root,
+    get_ledger_train_ingested_path,
+)
 
 
 def _list_train_files_with_txt(dir_path: Path):
@@ -68,14 +74,13 @@ def main() -> None:
 
     client_id = args.client or find_client_id_auto(repo_root)
 
-    client_dir = repo_root / "clients" / client_id
+    client_dir = get_client_root(repo_root, client_id)
     train_dir = client_dir / "inputs" / "ledger_train"
-    artifacts_dir = client_dir / "artifacts"
-    reports_dir = artifacts_dir / "reports"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    ensure_client_system_dirs(repo_root, client_id)
+    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id)
+    telemetry_dir.mkdir(parents=True, exist_ok=True)
 
-    manifest_path = artifacts_dir / "ledger_train_ingested.json"
+    manifest_path = get_ledger_train_ingested_path(repo_root, client_id)
 
     # Load shared lexicon
     lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
@@ -158,7 +163,7 @@ def main() -> None:
             "train_ingest_manifest": str(manifest_path),
         },
     }
-    (reports_dir / f"lexicon_extract_run_{ts}.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    (telemetry_dir / f"lexicon_extract_run_{ts}.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[OK] client={client_id} processed_files={len(to_process)} new_keys={summary.new_norm_keys} updated_keys={summary.updated_norm_keys}")
     if summary.warnings:

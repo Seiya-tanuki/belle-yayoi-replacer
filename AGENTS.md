@@ -23,11 +23,15 @@
    2. `inputs/ledger_ref/`   : 参照用「過去の実仕訳CSV」（client_cache作成・T番号統計）
    3. `inputs/ledger_train/` : 学習用「過去の実仕訳CSV」（辞書learned育成）
 3. 生成物：
-   1. `artifacts/client_cache.json`（append-onlyキャッシュ）
-   2. `artifacts/ledger_ref_ingested.json`（ledger_ref取込マニフェスト）
-   3. `artifacts/ledger_train_ingested.json`（ledger_train取込マニフェスト）
-   4. `outputs/*`
-   5. `artifacts/reports/*`
+   1. `outputs/runs/<RUN_ID>/*`（ユーザー向け成果物）
+   2. `outputs/LATEST.txt`（最新 RUN_ID）
+   3. `artifacts/cache/client_cache.json`（append-onlyキャッシュ）
+   4. `artifacts/ingest/ledger_ref_ingested.json`（ledger_ref取込マニフェスト）
+   5. `artifacts/ingest/ledger_train_ingested.json`（ledger_train取込マニフェスト）
+   6. `artifacts/telemetry/*`（内部ログ/メトリクス）
+4. 原則：
+   1. ユーザーは `outputs/runs/<RUN_ID>/` を参照すれば1実行分の成果物を取得できること。
+   2. `artifacts/*` はシステム管理領域として扱い、ユーザーの手編集対象にしないこと。
 
 ## 3) 重要な安全制約（弥生インポートを壊さない）
 1. 弥生会計インポートCSVは **25列固定**で扱う。
@@ -45,9 +49,9 @@
 1. 共通辞書（単一正本）：`lexicon/lexicon.json`（core + learned）
 2. 未登録語キュー（ユーザーが時々編集する）：`lexicon/pending/label_queue.csv`
 3. デフォルト科目：`defaults/category_defaults.json`
-4. client差分キャッシュ：`clients/<CLIENT_ID>/artifacts/client_cache.json`
+4. client差分キャッシュ：`clients/<CLIENT_ID>/artifacts/cache/client_cache.json`
    1. client_cache は **再生成ではなく増分更新（append-only）**を基本とする。
-   2. ledger_ref の取込状況は `ledger_ref_ingested.json` と `client_cache.applied_ledger_ref_sha256` で管理する。
+   2. ledger_ref の取込状況は `artifacts/ingest/ledger_ref_ingested.json` と `client_cache.applied_ledger_ref_sha256` で管理する。
 
 ## 6) 仕様は spec/ を唯一の正本とする
 1. スキーマ・更新ルール・置換順序などの厳密仕様は `spec/` 配下を参照する。

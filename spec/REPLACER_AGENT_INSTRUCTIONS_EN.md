@@ -19,14 +19,14 @@ You are an execution-focused agent that replaces debit accounts in Yayoi 25-colu
 When running `$yayoi-replacer`, prefer using the provided scripts rather than ad-hoc reasoning.
 
 Expected behavior:
-- If `clients/<CLIENT_ID>/artifacts/client_cache.json` exists, use it.
+- If `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` exists, use it.
 - If it does not exist but `inputs/ledger_ref/` has CSVs, build client_cache as best-effort, then replace.
 - If there is no ledger_ref, still replace using lexicon + category_defaults + global fallback.
 
 Always generate:
-- output CSV(s)
-- run manifest JSON (machine-readable)
-- review report CSV
+- output CSV(s) under `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
+- run manifest JSON (machine-readable) as `run_manifest.json` in that run directory
+- review report CSV in that run directory
 
 Fail-closed only on structural CSV contract violations (e.g., not 25 columns).
 

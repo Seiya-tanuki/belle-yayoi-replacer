@@ -37,6 +37,9 @@ Columns:
 1. `$lexicon-extract`
    1. ingests `clients/<CLIENT_ID>/inputs/ledger_train/*.csv` (append-only batches)
    2. updates label_queue.csv cumulatively
+   3. writes internal client files under:
+      1. `clients/<CLIENT_ID>/artifacts/ingest/ledger_train_ingested.json`
+      2. `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_extract_run_<TS>.json`
 2. `$lexicon-apply`
    1. reads label_queue.csv
    2. applies only action=ADD rows into lexicon.json as learned term_rows

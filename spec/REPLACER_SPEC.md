@@ -51,9 +51,11 @@ suggestions as long as:
 2. low-confidence suggestions are clearly marked for review (review_report.csv)
 
 ## Outputs
-1. Replaced CSV under `clients/<CLIENT_ID>/outputs/`
-2. Per-file manifest JSON (counts by evidence type + simple analysis)
-3. Review report CSV (recommended)
-4. Run manifest JSON (batch-level)
+1. Create one run directory per execution: `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
+2. Replaced CSV(s) under that run directory
+3. Per-file manifest JSON(s) under that run directory
+4. Review report CSV(s) under that run directory
+5. Batch run manifest as `run_manifest.json` under that run directory
+6. Update `clients/<CLIENT_ID>/outputs/LATEST.txt` with the latest `RUN_ID`
 
 

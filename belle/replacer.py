@@ -308,14 +308,14 @@ def replace_yayoi_csv(
     client_cache: Optional[ClientCache],
     defaults: CategoryDefaults,
     config: Dict[str, Any],
-    reports_dir: Path,
+    run_dir: Path,
 ) -> Dict[str, Any]:
     """
     Replace debit account for a single input CSV.
     Produces:
     - out_path: replaced CSV
-    - reports_dir/<stem>_review_report.csv
-    - reports_dir/<stem>_manifest.json
+    - run_dir/<stem>_review_report.csv
+    - run_dir/<stem>_manifest.json
 
     Returns manifest dict.
     """
@@ -349,7 +349,7 @@ def replace_yayoi_csv(
     write_yayoi_csv(csv, out_path)
 
     # Review report CSV (UTF-8 for readability)
-    report_path = reports_dir / f"{in_path.stem}_review_report.csv"
+    report_path = run_dir / f"{in_path.stem}_review_report.csv"
     report_lines = []
     header = [
         "row_index_1b","summary","debit_before","debit_after","changed",
@@ -410,7 +410,7 @@ def replace_yayoi_csv(
             "rows_using_t_routes": int(rows_using_t_routes),
         },
     }
-    manifest_path = reports_dir / f"{in_path.stem}_manifest.json"
+    manifest_path = run_dir / f"{in_path.stem}_manifest.json"
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest["reports"]["manifest_json"] = str(manifest_path)
 

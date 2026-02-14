@@ -12,6 +12,10 @@ from pathlib import Path
 
 from belle.lexicon import load_lexicon
 from belle.build_client_cache import ensure_client_cache_updated
+from belle.paths import (
+    ensure_client_system_dirs,
+    get_artifacts_telemetry_dir,
+)
 
 
 def find_client_id_auto(repo_root: Path) -> str:
@@ -39,11 +43,9 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parents[4]
     client_id = args.client or find_client_id_auto(repo_root)
 
-    client_dir = repo_root / "clients" / client_id
-    artifacts_dir = client_dir / "artifacts"
-    reports_dir = artifacts_dir / "reports"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-    reports_dir.mkdir(parents=True, exist_ok=True)
+    ensure_client_system_dirs(repo_root, client_id)
+    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id)
+    telemetry_dir.mkdir(parents=True, exist_ok=True)
 
     lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
@@ -74,7 +76,7 @@ def main() -> None:
             "ingest_manifest": summary.ingest_manifest_path,
         },
     }
-    (reports_dir / f"client_cache_update_run_{ts}.json").write_text(json.dumps(out_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    (telemetry_dir / f"client_cache_update_run_{ts}.json").write_text(json.dumps(out_manifest, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[OK] client={client_id} applied_new_files={len(summary.applied_new_files)} t_numbers={len(tm.t_numbers)} t_by_cat={len(tm.t_numbers_by_category)} vendor_keys={len(tm.vendor_keys)} categories={len(tm.categories)}")
     if summary.warnings:

@@ -3,7 +3,7 @@
 ## Purpose
 `lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text (Yayoi summary / 摘要)
 to a **category**. Categories are later mapped to debit accounts via:
-1) per-client `client_cache.json` (learned from historical journals), and
+1) per-client `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` (learned from historical journals), and
 2) global `defaults/category_defaults.json` (fallback).
 
 This lexicon must be usable **offline** (no network).

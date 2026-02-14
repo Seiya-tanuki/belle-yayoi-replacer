@@ -23,6 +23,12 @@ from .text import extract_t_number, vendor_key_from_summary
 from .lexicon import Lexicon, match_summary
 from .client_cache import ClientCache, StatsEntry
 from .ingest import ingest_csv_dir
+from .paths import (
+    ensure_client_system_dirs,
+    get_client_cache_path,
+    get_client_root,
+    get_ledger_ref_ingested_path,
+)
 
 
 @dataclass
@@ -148,17 +154,15 @@ def ensure_client_cache_updated(
     """
     Ensure client_cache cache is up-to-date with append-only ledger_ref batches.
     This will:
-    - ingest ledger_ref/*.csv (sha256+rename) into artifacts/ledger_ref_ingested.json
-    - load/create artifacts/client_cache.json
+    - ingest ledger_ref/*.csv (sha256+rename) into artifacts/ingest/ledger_ref_ingested.json
+    - load/create artifacts/cache/client_cache.json
     - apply only not-yet-applied batches into client_cache (append-only)
     """
-    client_dir = repo_root / "clients" / client_id
+    ensure_client_system_dirs(repo_root, client_id)
+    client_dir = get_client_root(repo_root, client_id)
     ledger_ref_dir = client_dir / "inputs" / "ledger_ref"
-    artifacts_dir = client_dir / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-
-    client_cache_path = artifacts_dir / "client_cache.json"
-    ingest_manifest_path = artifacts_dir / "ledger_ref_ingested.json"
+    client_cache_path = get_client_cache_path(repo_root, client_id)
+    ingest_manifest_path = get_ledger_ref_ingested_path(repo_root, client_id)
 
     warnings: List[str] = []
     dummy = _get_dummy_summary(config)

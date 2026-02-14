@@ -13,8 +13,11 @@ Updates the global pending label queue (`lexicon/pending/label_queue.csv`) by sc
 ## Outputs
 - `lexicon/pending/label_queue.csv` (cumulative; do NOT delete manually)
 - `lexicon/pending/label_queue_state.json` (internal state; do NOT edit)
-- `clients/<CLIENT_ID>/artifacts/ledger_train_ingested.json` (ingest manifest)
-- `clients/<CLIENT_ID>/artifacts/reports/lexicon_extract_run_<TS>.json`
+- `clients/<CLIENT_ID>/artifacts/ingest/ledger_train_ingested.json` (ingest manifest)
+- `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_extract_run_<TS>.json` (internal run log)
+
+## Artifact policy
+- `artifacts/*` is system-managed. Do not edit manually.
 
 ## Execution
 ```bash
