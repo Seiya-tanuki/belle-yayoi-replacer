@@ -10,7 +10,7 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 ## Preconditions
 1. Work under a single client folder: `clients/<CLIENT_ID>/`
 2. Put input CSV(s) in: `clients/<CLIENT_ID>/inputs/kari_shiwake/`
-3. (Recommended) Put historical finalized CSV(s) in: `clients/<CLIENT_ID>/inputs/ledger_ref/` (append-only batches)
+3. Put historical finalized CSV(s) in: `clients/<CLIENT_ID>/inputs/ledger_ref/` (append-only batches)
 
 ## What this skill does
 1. Loads `lexicon/lexicon.json` (offline dictionary).
@@ -20,17 +20,21 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 5. **Updates client_cache cache**:
    1. Ingests `inputs/ledger_ref/*.csv` (sha256 + in-place rename)
    2. Applies only not-yet-applied batches into `artifacts/cache/client_cache.json` (append-only growth)
-6. Replaces **only** column 5 (借方勘定科目). No other columns are modified.
-7. Writes:
-   1. creates `RUN_ID` and run folder: `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
-   2. writes replaced CSV + per-file manifest JSON + review report CSV into that run folder
-   3. writes batch run manifest JSON as `run_manifest.json` into that run folder
-   4. updates `clients/<CLIENT_ID>/outputs/LATEST.txt` with the latest `RUN_ID`
-8. Artifacts are system-managed only:
+6. **Auto-grows pending lexicon candidates from `ledger_ref`**:
+   1. Processes only ingested sha entries not yet marked `processed_to_label_queue_at`
+   2. Updates `lexicon/pending/label_queue.csv` and `label_queue_state.json` under a global lock
+   3. Writes latest telemetry to `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_autogrow_latest.json`
+7. Replaces **only** column 5 (借方勘定科目). No other columns are modified.
+8. Writes:
+   1. Creates `RUN_ID` and run folder: `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
+   2. Writes replaced CSV + per-file manifest JSON + review report CSV into that run folder
+   3. Writes batch run manifest JSON as `run_manifest.json` into that run folder
+   4. Updates `clients/<CLIENT_ID>/outputs/LATEST.txt` with the latest `RUN_ID`
+9. Artifacts are system-managed only:
    1. `clients/<CLIENT_ID>/artifacts/cache/*`
    2. `clients/<CLIENT_ID>/artifacts/ingest/*`
    3. `clients/<CLIENT_ID>/artifacts/telemetry/*`
-   4. users should not manually edit artifacts files
+   4. Users should not manually edit artifact files
 
 ## User-editable defaults
 1. Edit only `clients/<CLIENT_ID>/config/category_overrides.json`.

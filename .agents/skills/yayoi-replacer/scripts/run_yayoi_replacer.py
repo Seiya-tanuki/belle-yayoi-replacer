@@ -7,6 +7,7 @@ sys.path.insert(0, str(_REPO_ROOT))
 
 import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from belle.defaults import (
     merge_effective_defaults,
 )
 from belle.build_client_cache import ensure_client_cache_updated
+from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import (
     ensure_client_system_dirs,
     get_category_overrides_path,
@@ -103,12 +105,35 @@ def main() -> int:
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
     # Ensure client_cache cache is updated BEFORE replacement.
-    tm, tm_summary = ensure_client_cache_updated(
-        repo_root=repo_root,
-        client_id=client_id,
-        lex=lex,
-        config=config,
-    )
+    try:
+        tm, tm_summary = ensure_client_cache_updated(
+            repo_root=repo_root,
+            client_id=client_id,
+            lex=lex,
+            config=config,
+        )
+    except Exception as exc:
+        print(f"[ERROR] client_cache 更新に失敗しました: {exc}")
+        return 1
+
+    # Fail-closed: autogrow must succeed before run dir creation.
+    try:
+        lock_timeout_sec = int(os.environ.get("BELLE_LABEL_QUEUE_LOCK_TIMEOUT_SEC", "120"))
+        lock_stale_sec = int(os.environ.get("BELLE_LABEL_QUEUE_LOCK_STALE_SEC", "120"))
+        autogrow_summary = ensure_lexicon_candidates_updated_from_ledger_ref(
+            repo_root=repo_root,
+            client_id=client_id,
+            lex=lex,
+            config=config,
+            ingest_inputs=False,
+            processed_version="autogrow.v1",
+            lock_timeout_sec=lock_timeout_sec,
+            lock_stale_sec=lock_stale_sec,
+        )
+    except Exception as exc:
+        print(f"[ERROR] label_queue 自動更新に失敗しました。出力は作成しません: {exc}")
+        return 1
+
     run_id, run_dir = make_run_dir(repo_root, client_id)
     latest_path = get_latest_path(repo_root, client_id)
 
@@ -123,6 +148,15 @@ def main() -> int:
             "applied_new_files": len(tm_summary.applied_new_files),
             "rows_used_added": tm_summary.rows_used_added,
             "warnings": tm_summary.warnings,
+        },
+        "lexicon_autogrow": {
+            "processed_files": autogrow_summary.processed_files,
+            "processed_rows": autogrow_summary.processed_rows,
+            "unclassified_rows_seen": autogrow_summary.unclassified_rows_seen,
+            "new_keys": autogrow_summary.new_keys,
+            "updated_keys": autogrow_summary.updated_keys,
+            "skipped_by_reason": autogrow_summary.skipped_by_reason,
+            "warnings": autogrow_summary.warnings,
         },
         "inputs": [str(p) for p in input_files],
         "outputs": [],

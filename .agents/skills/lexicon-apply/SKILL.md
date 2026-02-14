@@ -15,6 +15,7 @@ Applies `action=ADD` rows from the pending label queue into the canonical lexico
 - `lexicon/pending/label_queue.csv` (removes applied rows)
 - `lexicon/pending/label_queue_state.json` (removes applied keys)
 - `lexicon/pending/applied_log.jsonl` (append-only audit)
+- `lexicon/pending/locks/label_queue.lock` (same global lock used by extraction)
 - `lexicon/pending/apply_run_<TS>.json`
 
 ## Execution

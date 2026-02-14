@@ -14,7 +14,6 @@ Goals:
 This module is intentionally simple and deterministic.
 """
 
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
@@ -43,7 +42,7 @@ def _atomic_write_json(path: Path, obj: Dict[str, Any]) -> None:
 
 def load_manifest(path: Path, *, client_id: str, kind: str) -> Dict[str, Any]:
     """
-    kind: 'ledger_ref' or 'ledger_train' (for metadata only)
+    kind: metadata-only logical source name (example: 'ledger_ref')
     """
     if path.exists():
         try:
@@ -68,6 +67,29 @@ def load_manifest(path: Path, *, client_id: str, kind: str) -> Dict[str, Any]:
         "ingested": {},
         "ignored_duplicates": {},
     }
+    return obj
+
+
+def load_manifest_strict(path: Path) -> Dict[str, Any]:
+    """
+    Strict loader used by fail-closed workflows.
+
+    Raises:
+      - FileNotFoundError: manifest does not exist
+      - ValueError: malformed JSON or invalid shape
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"ingest manifest not found: {path}")
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse ingest manifest JSON: {path}") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"ingest manifest root must be object: {path}")
+    if not isinstance(obj.get("ingested"), dict):
+        raise ValueError(f"ingest manifest missing/invalid 'ingested': {path}")
+    if not isinstance(obj.get("ingested_order"), list):
+        raise ValueError(f"ingest manifest missing/invalid 'ingested_order': {path}")
     return obj
 
 
@@ -185,5 +207,38 @@ def ingest_csv_dir(
 
     _atomic_write_json(manifest_path, manifest)
     return manifest, new_shas, dup_shas
+
+
+def mark_ingested_entries_processed(
+    *,
+    manifest_path: Path,
+    sha256_list: List[str],
+    processed_at: str,
+    processed_run_id: Optional[str] = None,
+    processed_version: Optional[str] = None,
+) -> int:
+    """
+    Set processed markers on manifest.ingested entries.
+    This write is atomic and idempotent.
+    """
+    if not sha256_list:
+        return 0
+    manifest = load_manifest_strict(manifest_path)
+    ingested = manifest.get("ingested") or {}
+    marked = 0
+    for sha in sha256_list:
+        ent = ingested.get(str(sha))
+        if not isinstance(ent, dict):
+            continue
+        if ent.get("processed_to_label_queue_at"):
+            continue
+        ent["processed_to_label_queue_at"] = str(processed_at)
+        if processed_run_id:
+            ent["processed_to_label_queue_run_id"] = str(processed_run_id)
+        if processed_version:
+            ent["processed_to_label_queue_version"] = str(processed_version)
+        marked += 1
+    save_manifest(manifest_path, manifest)
+    return marked
 
 

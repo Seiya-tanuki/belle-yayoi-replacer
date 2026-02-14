@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import sys
 from pathlib import Path as _Path
+
 _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
@@ -14,8 +15,9 @@ from pathlib import Path
 from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, apply_label_queue_adds
 
 
-def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Path) -> bool:
+def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Path, lock_dir: Path) -> bool:
     pending_dir.mkdir(parents=True, exist_ok=True)
+    lock_dir.mkdir(parents=True, exist_ok=True)
     applied_log.touch(exist_ok=True)
     if queue_csv.exists():
         return False
@@ -25,7 +27,7 @@ def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Pa
     return True
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--learned-weight", type=float, default=0.85)
     ap.add_argument("--show-paths", action="store_true", help="Print lexicon/pending read-write paths and continue")
@@ -37,13 +39,17 @@ def main() -> None:
     queue_csv = pending_dir / "label_queue.csv"
     queue_state = pending_dir / "label_queue_state.json"
     applied_log = pending_dir / "applied_log.jsonl"
+    lock_dir = pending_dir / "locks"
 
-    created_queue = ensure_pending_workspace(pending_dir, queue_csv, applied_log)
+    created_queue = ensure_pending_workspace(pending_dir, queue_csv, applied_log, lock_dir)
     if args.show_paths:
-        print(f"[PATHS] lexicon={lexicon_path} queue_csv={queue_csv} queue_state={queue_state} applied_log={applied_log}")
+        print(
+            f"[PATHS] lexicon={lexicon_path} queue_csv={queue_csv} queue_state={queue_state} "
+            f"applied_log={applied_log} lock={lock_dir / 'label_queue.lock'}"
+        )
     if created_queue:
-        print("[INFO] label_queue.csv が存在しなかったため初期化しました。適用対象はありません。")
-        return
+        print("[INFO] label_queue.csv が未作成だったため初期化しました。適用対象はありません。")
+        return 0
 
     summary = apply_label_queue_adds(
         lexicon_path=lexicon_path,
@@ -68,6 +74,7 @@ def main() -> None:
             "lexicon": str(lexicon_path),
             "label_queue_csv": str(queue_csv),
             "applied_log": str(applied_log),
+            "label_queue_lock": str(lock_dir / "label_queue.lock"),
         },
     }
     (pending_dir / f"apply_run_{ts}.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -75,7 +82,8 @@ def main() -> None:
     print(f"[OK] added={summary.added} skipped={summary.skipped} removed_from_queue={summary.removed_from_queue}")
     if summary.errors:
         print("[ERR] " + " | ".join(summary.errors))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

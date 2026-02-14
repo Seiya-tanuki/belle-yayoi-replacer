@@ -59,6 +59,18 @@ def get_ledger_train_ingested_path(repo_root: Path, client_id: str) -> Path:
     return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_train_ingested.json"
 
 
+def get_lexicon_pending_dir(repo_root: Path) -> Path:
+    return repo_root / "lexicon" / "pending"
+
+
+def get_lexicon_pending_locks_dir(repo_root: Path) -> Path:
+    return get_lexicon_pending_dir(repo_root) / "locks"
+
+
+def get_label_queue_lock_path(repo_root: Path) -> Path:
+    return get_lexicon_pending_locks_dir(repo_root) / "label_queue.lock"
+
+
 def generate_run_id(*, now: Optional[datetime] = None) -> str:
     ts = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     suffix = token_hex(2).upper()

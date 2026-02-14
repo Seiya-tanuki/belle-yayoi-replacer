@@ -5,20 +5,19 @@ description: Register a new client directory by copying clients/TEMPLATE to clie
 
 # client-register
 
-新しい顧客ディレクトリを安全に作成するスキルです。
+Creates a new client workspace from the template.
 
-## 前提
-1. 必ず `$client-register` を明示呼び出しして使う。
-2. 実行はローカルファイル環境で行う（ネットワーク不要）。
+## Preconditions
+1. Explicitly invoke `$client-register`.
+2. Run in repo root.
 
-## 実行内容
-1. 入力名を検証し、Windows で安全な `CLIENT_ID` に正規化する。
-2. `clients/TEMPLATE/` を `clients/<CLIENT_ID>/` にコピーする。
-3. `clients/<CLIENT_ID>/config/category_overrides.json` を full-expanded で初期生成する。
-4. 次の投入先を案内する:
+## What this skill does
+1. Validates user input and canonicalizes to a Windows-safe `CLIENT_ID`.
+2. Copies `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.
+3. Generates full-expanded `clients/<CLIENT_ID>/config/category_overrides.json`.
+4. Prepares input directories:
    1. `inputs/kari_shiwake/`
    2. `inputs/ledger_ref/`
-   3. `inputs/ledger_train/`
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/config/` exists.
