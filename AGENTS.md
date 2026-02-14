@@ -10,10 +10,11 @@
 2. **必ず `$skill` を明示呼び出し**して作業を開始すること（暗黙起動は禁止）。
    1. skills は `.agents/skills/*` に配置されている。
 3. スキルは責務ごとに分離されている（混線防止）：
-   1. `$yayoi-replacer` : 仮仕訳CSVの借方勘定科目（5列目）だけを置換
-   2. `$client-cache-builder` : ledger_ref を取り込み client_cache キャッシュを増分更新
-   3. `$lexicon-extract` : ledger_train から未登録語を抽出し label_queue.csv を育成
-   4. `$lexicon-apply` : label_queue.csv の ADD 行だけを lexicon.json に反映
+   1. `$client-register` : `clients/TEMPLATE/` を安全な顧客名で複製し `clients/<CLIENT_ID>/` を作成
+   2. `$yayoi-replacer` : 仮仕訳CSVの借方勘定科目（5列目）だけを置換
+   3. `$client-cache-builder` : ledger_ref を取り込み client_cache キャッシュを増分更新
+   4. `$lexicon-extract` : ledger_train から未登録語を抽出し label_queue.csv を育成
+   5. `$lexicon-apply` : label_queue.csv の ADD 行だけを lexicon.json に反映
 
 ## 2) データ配置（client単位で取り違え防止）
 1. すべての入力/出力は `clients/<CLIENT_ID>/` 配下に閉じる。

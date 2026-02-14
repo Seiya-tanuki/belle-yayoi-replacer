@@ -1,0 +1,5 @@
+interface:
+  display_name: "Client register"
+  short_description: "Create clients/<CLIENT_ID> from clients/TEMPLATE with strict Windows-safe name validation"
+policy:
+  allow_implicit_invocation: false
