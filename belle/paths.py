@@ -71,6 +71,24 @@ def get_label_queue_lock_path(repo_root: Path) -> Path:
     return get_lexicon_pending_locks_dir(repo_root) / "label_queue.lock"
 
 
+def build_input_artifact_prefix(*, in_path: Path, input_index: int, run_id: str) -> str:
+    idx = int(input_index)
+    if idx < 1:
+        raise ValueError(f"input_index must be >= 1, got {input_index}")
+    rid = str(run_id).strip()
+    if not rid:
+        raise ValueError("run_id must be non-empty")
+    return f"{in_path.stem}_{idx:02d}_{rid}"
+
+
+def get_review_report_path(run_dir: Path, artifact_prefix: str) -> Path:
+    return run_dir / f"{artifact_prefix}_review_report.csv"
+
+
+def get_input_manifest_path(run_dir: Path, artifact_prefix: str) -> Path:
+    return run_dir / f"{artifact_prefix}_manifest.json"
+
+
 def generate_run_id(*, now: Optional[datetime] = None) -> str:
     ts = (now or datetime.now(timezone.utc)).strftime("%Y%m%dT%H%M%SZ")
     suffix = token_hex(2).upper()

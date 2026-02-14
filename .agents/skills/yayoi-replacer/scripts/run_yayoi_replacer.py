@@ -22,6 +22,7 @@ from belle.build_client_cache import ensure_client_cache_updated
 from belle.io_atomic import atomic_write_text
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import (
+    build_input_artifact_prefix,
     ensure_client_system_dirs,
     get_category_overrides_path,
     get_client_root,
@@ -155,6 +156,11 @@ def main() -> int:
         out_path = run_dir / f"{in_path.stem}_replaced_{run_id}.csv"
         if out_path.exists():
             out_path = run_dir / f"{in_path.stem}_replaced_{run_id}_{idx:02d}.csv"
+        artifact_prefix = build_input_artifact_prefix(
+            in_path=in_path,
+            input_index=idx,
+            run_id=run_id,
+        )
         mf = replace_yayoi_csv(
             in_path=in_path,
             out_path=out_path,
@@ -163,6 +169,7 @@ def main() -> int:
             defaults=defaults,
             config=config,
             run_dir=run_dir,
+            artifact_prefix=artifact_prefix,
         )
         run_manifest["outputs"].append(mf)
 
