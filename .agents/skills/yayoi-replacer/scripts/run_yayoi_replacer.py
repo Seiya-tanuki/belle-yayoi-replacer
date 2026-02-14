@@ -11,10 +11,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
-from belle.defaults import load_category_defaults
+from belle.defaults import (
+    generate_full_category_overrides,
+    load_category_defaults,
+    load_category_overrides,
+    merge_effective_defaults,
+)
 from belle.build_client_cache import ensure_client_cache_updated
 from belle.paths import (
     ensure_client_system_dirs,
+    get_category_overrides_path,
     get_client_root,
     get_latest_path,
     make_run_dir,
@@ -45,7 +51,7 @@ def find_client_id_auto(repo_root: Path) -> str:
     raise SystemExit(f"Could not auto-detect client: multiple candidates found: {cands}. Use --client.")
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", help="Client ID under clients/<CLIENT_ID>/", default=None)
     ap.add_argument("--config", help="Replacer config JSON path", default="rulesets/replacer_config_v1_15.json")
@@ -69,9 +75,31 @@ def main() -> None:
     lexicon_path = repo_root / "lexicon" / "lexicon.json"
     defaults_path = repo_root / "defaults" / "category_defaults.json"
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
+    overrides_path = get_category_overrides_path(repo_root, client_id)
 
     lex = load_lexicon(lexicon_path)
-    defaults = load_category_defaults(defaults_path)
+    global_defaults = load_category_defaults(defaults_path)
+    lexicon_category_keys = set(lex.categories_by_key.keys())
+
+    if not overrides_path.exists():
+        generate_full_category_overrides(
+            path=overrides_path,
+            client_id=client_id,
+            global_defaults=global_defaults,
+            lexicon_category_keys=lexicon_category_keys,
+        )
+
+    try:
+        override_debit_accounts = load_category_overrides(
+            path=overrides_path,
+            lexicon_category_keys=lexicon_category_keys,
+        )
+    except ValueError as exc:
+        print(f"[ERROR] category_overrides.json が不正です: {overrides_path}")
+        print(f"[ERROR] {exc}")
+        return 1
+
+    defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
     # Ensure client_cache cache is updated BEFORE replacement.
@@ -138,8 +166,9 @@ def main() -> None:
         print(f" - changed_ratio={o['changed_ratio']:.3f} output={o['output_file']}")
     if warnings:
         print("[WARN] " + " | ".join(warnings))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
 

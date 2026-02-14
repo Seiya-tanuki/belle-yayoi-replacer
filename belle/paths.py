@@ -11,6 +11,14 @@ def get_client_root(repo_root: Path, client_id: str) -> Path:
     return repo_root / "clients" / client_id
 
 
+def get_client_config_dir(repo_root: Path, client_id: str) -> Path:
+    return get_client_root(repo_root, client_id) / "config"
+
+
+def get_category_overrides_path(repo_root: Path, client_id: str) -> Path:
+    return get_client_config_dir(repo_root, client_id) / "category_overrides.json"
+
+
 def get_outputs_dir(repo_root: Path, client_id: str) -> Path:
     return get_client_root(repo_root, client_id) / "outputs"
 

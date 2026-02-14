@@ -144,6 +144,7 @@ def main() -> int:
         return 2
 
     required_dirs = [
+        template_dir / "config",
         template_dir / "outputs" / "runs",
         template_dir / "artifacts" / "cache",
         template_dir / "artifacts" / "ingest",
@@ -188,12 +189,33 @@ def main() -> int:
         return 1
 
     shutil.copytree(template_dir, destination)
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from belle.defaults import generate_full_category_overrides, load_category_defaults
+    from belle.lexicon import load_lexicon
+    from belle.paths import get_category_overrides_path
+
+    try:
+        lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+        global_defaults = load_category_defaults(repo_root / "defaults" / "category_defaults.json")
+        generate_full_category_overrides(
+            path=get_category_overrides_path(repo_root, result.canonical),
+            client_id=result.canonical,
+            global_defaults=global_defaults,
+            lexicon_category_keys=set(lex.categories_by_key.keys()),
+        )
+    except Exception as exc:
+        print("[ERROR] category_overrides.json の初期化に失敗しました。")
+        print(f"[ERROR] {exc}")
+        return 2
+
     created_path = _display_path(destination, repo_root)
     print(f"[OK] 作成完了: {created_path}")
     print("")
     print("次の手順:")
     print(f"- 入力ファイル配置先: {created_path}/inputs/kari_shiwake/, {created_path}/inputs/ledger_ref/, {created_path}/inputs/ledger_train/")
     print("- 次に使うスキル: $client-cache-builder, $yayoi-replacer, $lexicon-extract, $lexicon-apply")
+    print(f"- クライアント別設定: {created_path}/config/category_overrides.json")
     return 0
 
 

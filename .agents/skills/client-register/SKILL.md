@@ -7,27 +7,28 @@ description: Register a new client directory by copying clients/TEMPLATE to clie
 
 新しい顧客ディレクトリを安全に作成するスキルです。
 
-## 実行ルール
-1. **明示呼び出しのみ**: 必ず `$client-register` を指定して開始する。
-2. 外部ネットワークは使わず、ローカルファイル操作のみで完結する。
+## 前提
+1. 必ず `$client-register` を明示呼び出しして使う。
+2. 実行はローカルファイル環境で行う（ネットワーク不要）。
 
-## フロー
-1. 処理内容を日本語で案内する。
-2. `登録したい顧客名（ディレクトリ名に使います）` を1行で受け取る。
-3. 入力名を厳格に検証する（Windows/WSL 安全な名前）。
-4. 無効な場合は理由を表示し、別名で再実行するよう案内して終了する（何も作成しない）。
-5. 有効な場合は正規化後のディレクトリ名を表示する。
-6. `clients/TEMPLATE/` を `clients/<CANONICAL_NAME>/` へコピーする。
-7. 完了後に次の作業（inputs 配置先と次に使うスキル）を表示する。
+## 実行内容
+1. 入力名を検証し、Windows で安全な `CLIENT_ID` に正規化する。
+2. `clients/TEMPLATE/` を `clients/<CLIENT_ID>/` にコピーする。
+3. `clients/<CLIENT_ID>/config/category_overrides.json` を full-expanded で初期生成する。
+4. 次の投入先を案内する:
+   1. `inputs/kari_shiwake/`
+   2. `inputs/ledger_ref/`
+   3. `inputs/ledger_train/`
 
-## 実行コマンド
+## Template contract (must preserve)
+1. `clients/TEMPLATE/config/` exists.
+2. `clients/TEMPLATE/outputs/runs/` exists.
+3. `clients/TEMPLATE/artifacts/cache/` exists.
+4. `clients/TEMPLATE/artifacts/ingest/` exists.
+5. `clients/TEMPLATE/artifacts/telemetry/` exists.
+6. Use `.gitkeep` files as needed to keep empty directories in git.
+
+## Execution
 ```bash
 python3 .agents/skills/client-register/register_client.py
 ```
-
-## Template contract (must preserve)
-1. `clients/TEMPLATE/outputs/runs/` exists.
-2. `clients/TEMPLATE/artifacts/cache/` exists.
-3. `clients/TEMPLATE/artifacts/ingest/` exists.
-4. `clients/TEMPLATE/artifacts/telemetry/` exists.
-5. Use `.gitkeep` files as needed to keep empty directories in git.

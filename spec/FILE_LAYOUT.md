@@ -7,6 +7,8 @@ All client data is isolated under `clients/<CLIENT_ID>/` to prevent cross-client
 
 ```
 clients/<CLIENT_ID>/
+  config/
+    category_overrides.json # per-client editable full-expanded overrides
   inputs/
     kari_shiwake/      # Yayoi 25-col CSV to be replaced (target)
     ledger_ref/        # Historical finalized journal CSVs (append-only batches; T-number cache source)
@@ -45,7 +47,8 @@ clients/<CLIENT_ID>/
 
 1. `lexicon/lexicon.json` : single canonical category+terms dictionary (core + learned)
 2. `lexicon/pending/label_queue.csv` : pending unknown-term queue for user labeling
-3. `defaults/category_defaults.json` : default debit-account mapping per category (used when client_cache lacks evidence)
-4. `rulesets/` : versioned deterministic configuration snapshots (parameter defaults)
+3. `defaults/category_defaults.json` : global default debit-account mapping per category (shared baseline)
+4. `clients/<CLIENT_ID>/config/category_overrides.json` : per-client editable debit-account overlay (full-expanded)
+5. `rulesets/` : versioned deterministic configuration snapshots (parameter defaults)
 
 

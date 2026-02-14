@@ -14,6 +14,15 @@ Never change any other field. Preserve formatting as much as possible (byte-iden
 2. Debit account (5th) is read-only for 'before' value and replaced in output.
 3. Memo (22nd) must not be used.
 
+## Defaults overlay (runtime)
+1. Load global defaults from `defaults/category_defaults.json`.
+2. Load per-client overrides from `clients/<CLIENT_ID>/config/category_overrides.json`.
+3. Build `effective_defaults = merge(global_defaults, client_overrides)`:
+   1. Override only `debit_account` per `category_key`.
+   2. Keep global `confidence`, `priority`, and `reason_code` unchanged.
+4. If overrides file is missing, generate a full-expanded file and continue.
+5. If overrides file exists but is invalid (JSON/schema/keys/value), fail-closed and exit non-zero before creating `outputs/runs/<RUN_ID>/`.
+
 ## Deterministic decision order (strong -> weak)
 For each row, compute suggestion in this order:
 
@@ -39,10 +48,10 @@ For each row, compute suggestion in this order:
    2. if client_cache has category stats and meets thresholds -> use top_account
 
 6. category default route:
-   1. if a category matched but client evidence is weak/missing -> use defaults[category_key]
+   1. if a category matched but client evidence is weak/missing -> use effective_defaults[category_key]
 
 7. global fallback:
-   1. use defaults.global_fallback
+   1. use effective_defaults.global_fallback
 
 ## Notes on accuracy vs coverage
 The system is optimized for high replacement coverage. It is acceptable to output low-confidence
