@@ -1,0 +1,32 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+
+# --- Virtualenv ---
+.venv/
+venv/
+
+# --- Temp / Scratch ---
+tmp/
+.tmp*/
+*.tmp
+
+# --- Runtime outputs (do not version) ---
+clients/**/outputs/
+clients/**/artifacts/telemetry/
+
+# --- Lexicon pending (runtime-managed, not versioned) ---
+lexicon/pending/*.csv
+lexicon/pending/*.json
+lexicon/pending/*.jsonl
+lexicon/pending/locks/label_queue.lock
+
+# Keep placeholders
+!clients/TEMPLATE/**/.gitkeep
+!lexicon/pending/.gitkeep
+!lexicon/pending/locks/.gitkeep
