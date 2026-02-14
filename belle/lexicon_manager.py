@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 
 from .ingest import ingest_csv_dir, load_manifest_strict, mark_ingested_entries_processed
-from .io_atomic import atomic_write_text
+from .io_atomic import atomic_write_bytes, atomic_write_text
 from .lexicon import Lexicon, match_summary
 from .paths import (
     get_artifacts_telemetry_dir,
@@ -986,9 +986,8 @@ def apply_label_queue_adds(
         lex_obj["term_buckets_prefix2"] = _rebuild_prefix2_buckets(lex_obj.get("term_rows", []))
         lock_token.maybe_heartbeat()
 
-        tmp = lexicon_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(lex_obj, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(lexicon_path)
+        lexicon_payload = json.dumps(lex_obj, ensure_ascii=False, indent=2).encode("utf-8")
+        atomic_write_bytes(lexicon_path, lexicon_payload)
 
         for nk in to_delete:
             lock_token.maybe_heartbeat()
