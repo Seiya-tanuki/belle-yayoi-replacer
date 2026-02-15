@@ -29,5 +29,5 @@ Creates a new client workspace from the template.
 
 ## Execution
 ```bash
-python3 .agents/skills/client-register/register_client.py
+python .agents/skills/client-register/register_client.py
 ```

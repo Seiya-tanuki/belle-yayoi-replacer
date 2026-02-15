@@ -17,5 +17,5 @@ Exports a fixed read-only snapshot zip for Lexicon Steward GPTs.
 
 ## Execution
 ```bash
-python3 .agents/skills/export-lexicon-review-pack/scripts/export_pack.py
+python .agents/skills/export-lexicon-review-pack/scripts/export_pack.py
 ```

@@ -22,5 +22,5 @@ Updates the global pending label queue (`lexicon/pending/label_queue.csv`) by sc
 
 ## Execution
 ```bash
-python3 .agents/skills/lexicon-extract/scripts/run_lexicon_extract.py --client <CLIENT_ID>
+python .agents/skills/lexicon-extract/scripts/run_lexicon_extract.py --client <CLIENT_ID>
 ```

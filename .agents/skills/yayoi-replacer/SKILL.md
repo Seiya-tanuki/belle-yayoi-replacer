@@ -61,5 +61,5 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 
 ## Execution
 ```bash
-python3 .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLIENT_ID>
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLIENT_ID>
 ```

@@ -28,6 +28,6 @@ Updates the per-client append-only cache `clients/<CLIENT_ID>/artifacts/cache/cl
 
 ## Execution
 ```bash
-python3 .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID>
+python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID>
 ```
 

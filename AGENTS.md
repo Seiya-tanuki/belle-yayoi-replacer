@@ -11,13 +11,14 @@
    1. When the user wants to run a system function, the user explicitly invokes the corresponding skill with `$skill`.
    2. Do not implicitly invoke skills on your own.
    3. Only run a skill when the user explicitly requests it.
-3. Skills are split by responsibility:
+3. Available Skills (split by responsibility):
    1. `$client-register`: clone `clients/TEMPLATE/` into `clients/<CLIENT_ID>/` using a safe client name.
    2. `$yayoi-replacer`: replace only debit account (column 5) in draft journal CSVs.
    3. `$client-cache-builder`: ingest `ledger_ref` and incrementally update `client_cache`.
    4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
    5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
    6. `$export-lexicon-review-pack`: acquire the global label_queue lock and export a fixed review ZIP + MANIFEST for Lexicon Steward GPTs under `exports/gpts_lexicon_review/`.
+   7. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
 4. Current runtime behavior:
    1. The pipeline is ledger_ref-only.
    2. `$yayoi-replacer` includes client_cache incremental update and lexicon candidate autogrow from `ledger_ref` before replacement.

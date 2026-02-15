@@ -20,5 +20,5 @@ Applies `action=ADD` rows from the pending label queue into the canonical lexico
 
 ## Execution
 ```bash
-python3 .agents/skills/lexicon-apply/scripts/run_lexicon_apply.py
+python .agents/skills/lexicon-apply/scripts/run_lexicon_apply.py
 ```

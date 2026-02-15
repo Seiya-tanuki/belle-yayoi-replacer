@@ -1,0 +1,5 @@
+interface:
+  display_name: "System diagnose"
+  short_description: "Run repository/system readiness diagnostics and export a Markdown report"
+policy:
+  allow_implicit_invocation: false
