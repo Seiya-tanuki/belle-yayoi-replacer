@@ -10,7 +10,7 @@ clients/<CLIENT_ID>/
   config/
     category_overrides.json         # per-client editable full-expanded overrides
   inputs/
-    kari_shiwake/                   # Yayoi 25-col CSV to be replaced (target)
+    kari_shiwake/                   # Yayoi 25-col CSV to be replaced (runごとに1ファイルのみ配置)
     ledger_ref/                     # Historical finalized journal CSVs (append-only batches)
   outputs/
     runs/
@@ -24,6 +24,8 @@ clients/<CLIENT_ID>/
     cache/
       client_cache.json             # append-only cache (system-managed)
     ingest/
+      kari_shiwake/                 # ingested 仮仕訳CSV保管先 (system-managed)
+      kari_shiwake_ingested.json    # sha256 ingest manifest for kari_shiwake (system-managed)
       ledger_ref_ingested.json      # sha256 ingest manifest for ledger_ref (system-managed)
     telemetry/
       lexicon_autogrow_latest.json  # latest autogrow summary (system-managed)
@@ -33,6 +35,10 @@ clients/<CLIENT_ID>/
 ## Input types (user-provided)
 
 1. **kari_shiwake CSV**: the file to process with `$yayoi-replacer`
+   1. `inputs/kari_shiwake/` には実行時点で **1ファイルのみ** を配置
+   2. 実行時に `artifacts/ingest/kari_shiwake/INGESTED_<UTC_TS>_<SHA8>.csv` へ move+rename される
+   3. run manifest (`outputs/runs/<RUN_ID>/run_manifest.json`) には
+      `inputs.kari_shiwake.{original_name, stored_name, sha256}` が記録される
 2. **ledger_ref CSV**: append-only batches used by `$client-cache-builder`, `$yayoi-replacer`, and `$lexicon-extract`
 
 ## Output vs artifacts policy

@@ -8,6 +8,16 @@ Never change any other field. Preserve formatting as much as possible (byte-iden
 1. CSV has **exactly 25 columns** per line.
 2. Default encoding is CP932 (Shift-JIS family). The replacer must preserve the original encoding.
 3. Line ending must remain CRLF when present in the input.
+4. `clients/<CLIENT_ID>/inputs/kari_shiwake/` is fail-closed:
+   1. 0 files -> error and exit non-zero before creating `outputs/runs/<RUN_ID>/`
+   2. 2+ files -> error and exit non-zero before creating `outputs/runs/<RUN_ID>/`
+   3. exactly 1 file -> ingest first, then replacement
+5. Kari-shiwake ingest (pre-run):
+   1. compute sha256
+   2. move+rename to `clients/<CLIENT_ID>/artifacts/ingest/kari_shiwake/INGESTED_<UTC_TS>_<SHA8>.csv`
+   3. append/update `clients/<CLIENT_ID>/artifacts/ingest/kari_shiwake_ingested.json`
+      (`schema: belle.kari_shiwake_ingest.v1`, dedupe by sha256, duplicate is renamed to `IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`)
+   4. replacer reads the ingested file path as the actual input
 
 ## Allowed inference fields
 1. Only 摘要 (17th column) may be used for inference.
@@ -66,5 +76,9 @@ suggestions as long as:
 4. Review report CSV(s) under that run directory
 5. Batch run manifest as `run_manifest.json` under that run directory
 6. Update `clients/<CLIENT_ID>/outputs/LATEST.txt` with the latest `RUN_ID`
+7. `run_manifest.json` must include:
+   1. `inputs.kari_shiwake.original_name`
+   2. `inputs.kari_shiwake.stored_name`
+   3. `inputs.kari_shiwake.sha256`
 
 

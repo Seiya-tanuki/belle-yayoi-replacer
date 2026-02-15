@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
+from belle.ingest import ingest_single_file
 from belle.defaults import (
     generate_full_category_overrides,
     load_category_defaults,
@@ -26,15 +27,27 @@ from belle.paths import (
     ensure_client_system_dirs,
     get_category_overrides_path,
     get_client_root,
+    get_kari_shiwake_ingest_dir,
+    get_kari_shiwake_ingested_path,
     get_latest_path,
     make_run_dir,
 )
 from belle.replacer import replace_yayoi_csv
 
 
-def _list_input_files_with_txt(dir_path: Path):
-    files = list(dir_path.glob("*.csv")) + list(dir_path.glob("*.txt"))
-    return sorted({p.resolve(): p for p in files}.values(), key=lambda p: p.name)
+def _list_kari_shiwake_input_files(dir_path: Path) -> list[Path]:
+    if not dir_path.exists():
+        return []
+    files = []
+    for p in dir_path.iterdir():
+        if not p.is_file():
+            continue
+        if p.name == ".gitkeep":
+            continue
+        if p.name.endswith(".tmp"):
+            continue
+        files.append(p)
+    return sorted(files, key=lambda x: x.name)
 
 
 def main() -> int:
@@ -57,10 +70,34 @@ def main() -> int:
     ensure_client_system_dirs(repo_root, client_id)
 
     in_dir = client_dir / "inputs" / "kari_shiwake"
+    input_dir_label = f"clients/{client_id}/inputs/kari_shiwake/"
+    input_files = _list_kari_shiwake_input_files(in_dir)
 
-    input_files = _list_input_files_with_txt(in_dir)
     if not input_files:
-        raise SystemExit(f"No input files found in {in_dir} (expected *.csv or *.txt).")
+        print(
+            "[ERROR] 置換対象の仮仕訳CSVが見つかりません。"
+            f"{input_dir_label} に1ファイル配置してください。"
+        )
+        return 1
+    if len(input_files) >= 2:
+        print("[ERROR] 置換対象の仮仕訳CSVが複数あります。1ファイルにしてください:")
+        for p in input_files:
+            print(f"  - {p.name}")
+        return 1
+
+    kari_input = input_files[0]
+    try:
+        _kari_manifest, kari_ingest = ingest_single_file(
+            source_path=kari_input,
+            store_dir=get_kari_shiwake_ingest_dir(repo_root, client_id),
+            manifest_path=get_kari_shiwake_ingested_path(repo_root, client_id),
+            client_id=client_id,
+            kind="kari_shiwake",
+            manifest_schema="belle.kari_shiwake_ingest.v1",
+        )
+    except Exception as exc:
+        print(f"[ERROR] 仮仕訳CSVの取り込みに失敗しました: {exc}")
+        return 1
 
     lexicon_path = repo_root / "lexicon" / "lexicon.json"
     defaults_path = repo_root / "defaults" / "category_defaults.json"
@@ -146,38 +183,43 @@ def main() -> int:
             "skipped_by_reason": autogrow_summary.skipped_by_reason,
             "warnings": autogrow_summary.warnings,
         },
-        "inputs": [str(p) for p in input_files],
+        "inputs": {
+            "kari_shiwake": {
+                "original_name": kari_ingest.original_name,
+                "stored_name": kari_ingest.stored_name,
+                "sha256": kari_ingest.sha256,
+            }
+        },
         "outputs": [],
     }
 
     warnings = []
 
-    for idx, in_path in enumerate(input_files, start=1):
-        out_path = run_dir / f"{in_path.stem}_replaced_{run_id}.csv"
-        if out_path.exists():
-            out_path = run_dir / f"{in_path.stem}_replaced_{run_id}_{idx:02d}.csv"
-        artifact_prefix = build_input_artifact_prefix(
-            in_path=in_path,
-            input_index=idx,
-            run_id=run_id,
-        )
-        mf = replace_yayoi_csv(
-            in_path=in_path,
-            out_path=out_path,
-            lex=lex,
-            client_cache=tm,
-            defaults=defaults,
-            config=config,
-            run_dir=run_dir,
-            artifact_prefix=artifact_prefix,
-        )
-        run_manifest["outputs"].append(mf)
+    input_stem = Path(kari_ingest.original_name).stem or kari_ingest.stored_path.stem
+    in_path = kari_ingest.stored_path
+    out_path = run_dir / f"{input_stem}_replaced_{run_id}.csv"
+    artifact_prefix = build_input_artifact_prefix(
+        in_path=Path(kari_ingest.original_name),
+        input_index=1,
+        run_id=run_id,
+    )
+    mf = replace_yayoi_csv(
+        in_path=in_path,
+        out_path=out_path,
+        lex=lex,
+        client_cache=tm,
+        defaults=defaults,
+        config=config,
+        run_dir=run_dir,
+        artifact_prefix=artifact_prefix,
+    )
+    run_manifest["outputs"].append(mf)
 
-        # Simple sanity warnings: if T numbers exist but no T route used.
-        rows_with_t = int(mf.get("analysis", {}).get("rows_with_t_number", 0))
-        t_routes_used = int(mf.get("analysis", {}).get("rows_using_t_routes", 0))
-        if rows_with_t > 0 and t_routes_used == 0 and len(tm.t_numbers) > 0:
-            warnings.append(f"t_number_present_but_unused: file={in_path.name}")
+    # Simple sanity warnings: if T numbers exist but no T route used.
+    rows_with_t = int(mf.get("analysis", {}).get("rows_with_t_number", 0))
+    t_routes_used = int(mf.get("analysis", {}).get("rows_using_t_routes", 0))
+    if rows_with_t > 0 and t_routes_used == 0 and len(tm.t_numbers) > 0:
+        warnings.append(f"t_number_present_but_unused: file={kari_ingest.original_name}")
 
     if warnings:
         run_manifest["warnings"] = warnings
@@ -191,7 +233,7 @@ def main() -> int:
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(latest_path, f"{run_id}\n", encoding="utf-8")
 
-    print(f"[OK] client={client_id} run_id={run_id} inputs={len(input_files)} outputs={len(run_manifest['outputs'])}")
+    print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs={len(run_manifest['outputs'])}")
     print(f"[OK] run_dir={run_dir}")
     print(f"[OK] run_manifest={run_manifest_path}")
     for o in run_manifest["outputs"]:

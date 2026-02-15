@@ -55,6 +55,14 @@ def get_ledger_ref_ingested_path(repo_root: Path, client_id: str) -> Path:
     return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref_ingested.json"
 
 
+def get_kari_shiwake_ingest_dir(repo_root: Path, client_id: str) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id) / "kari_shiwake"
+
+
+def get_kari_shiwake_ingested_path(repo_root: Path, client_id: str) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id) / "kari_shiwake_ingested.json"
+
+
 def get_lexicon_pending_dir(repo_root: Path) -> Path:
     return repo_root / "lexicon" / "pending"
 
@@ -119,4 +127,5 @@ def ensure_client_system_dirs(repo_root: Path, client_id: str) -> None:
     get_outputs_runs_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_cache_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
+    get_kari_shiwake_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_telemetry_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)

@@ -15,7 +15,7 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 
 ## Preconditions
 1. Work under a single client folder: `clients/<CLIENT_ID>/`
-2. Put input CSV(s) in: `clients/<CLIENT_ID>/inputs/kari_shiwake/`
+2. Put exactly **one** input CSV in: `clients/<CLIENT_ID>/inputs/kari_shiwake/`
 3. Put historical finalized CSV(s) in: `clients/<CLIENT_ID>/inputs/ledger_ref/` (append-only batches)
 
 ## What this skill does
@@ -31,12 +31,17 @@ Deterministic debit-account replacement for Yayoi import CSVs.
    2. Updates `lexicon/pending/label_queue.csv` and `label_queue_state.json` under a global lock
    3. Writes latest telemetry to `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_autogrow_latest.json`
 7. Replaces **only** column 5 (借方勘定科目). No other columns are modified.
-8. Writes:
+8. Before replacement, ingests the kari_shiwake input:
+   1. Requires exactly one file in `inputs/kari_shiwake/` (0 or 2+ files are fail-closed)
+   2. Moves+renames it to `artifacts/ingest/kari_shiwake/INGESTED_<UTC_TS>_<SHA8>.csv`
+   3. Updates `artifacts/ingest/kari_shiwake_ingested.json` (sha256 append-only manifest)
+   4. Uses the ingested file as the actual replacement input
+9. Writes:
    1. Creates `RUN_ID` and run folder: `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
    2. Writes replaced CSV + per-file manifest JSON + review report CSV into that run folder
    3. Writes batch run manifest JSON as `run_manifest.json` into that run folder
    4. Updates `clients/<CLIENT_ID>/outputs/LATEST.txt` with the latest `RUN_ID`
-9. Artifacts are system-managed only:
+10. Artifacts are system-managed only:
    1. `clients/<CLIENT_ID>/artifacts/cache/*`
    2. `clients/<CLIENT_ID>/artifacts/ingest/*`
    3. `clients/<CLIENT_ID>/artifacts/telemetry/*`

@@ -15,10 +15,12 @@ This module is intentionally simple and deterministic.
 """
 
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 import json
 import hashlib
+import shutil
 
 from .io_atomic import atomic_write_text
 
@@ -112,6 +114,146 @@ def _unique_name(dir_path: Path, base_name: str) -> str:
         if not (dir_path / nn).exists():
             return nn
     raise RuntimeError(f"Could not allocate unique filename for {base_name}")
+
+
+def _move_with_fallback(src: Path, dst: Path) -> Path:
+    """
+    Move file with rename semantics.
+    - First try atomic/fast replace (same volume).
+    - Fall back to shutil.move for cross-volume moves.
+    """
+    try:
+        src.replace(dst)
+        return dst
+    except OSError:
+        moved = shutil.move(str(src), str(dst))
+        return Path(moved)
+
+
+def _count_rows_observed(path: Path) -> int:
+    """
+    Prefer Yayoi CSV row counting; fall back to non-empty physical lines.
+    """
+    try:
+        from .yayoi_csv import read_yayoi_csv
+
+        return int(len(read_yayoi_csv(path).rows))
+    except Exception:
+        rows = 0
+        with path.open("rb") as f:
+            for raw in f:
+                if raw.strip():
+                    rows += 1
+        return rows
+
+
+@dataclass
+class SingleFileIngestResult:
+    sha256: str
+    sha8: str
+    original_name: str
+    stored_name: str
+    ingested_at: str
+    byte_size: int
+    rows_observed: int
+    stored_path: Path
+    status: str
+
+
+def ingest_single_file(
+    *,
+    source_path: Path,
+    store_dir: Path,
+    manifest_path: Path,
+    client_id: str,
+    kind: str,
+    manifest_schema: Optional[str] = None,
+) -> Tuple[Dict[str, Any], SingleFileIngestResult]:
+    """
+    Ingest exactly one file by sha256 into store_dir.
+
+    Behavior:
+    - New sha: move+rename to INGESTED_{UTC_TS}_{SHA8}.csv and append manifest.ingested.
+    - Existing sha: move+rename to IGNORED_DUPLICATE_{UTC_TS}_{SHA8}.csv and append
+      manifest.ignored_duplicates[sha], while returning the canonical stored entry.
+    """
+    if not source_path.exists() or not source_path.is_file():
+        raise FileNotFoundError(f"ingest source file not found: {source_path}")
+
+    store_dir.mkdir(parents=True, exist_ok=True)
+    manifest = load_manifest(manifest_path, client_id=client_id, kind=kind)
+    if manifest_schema:
+        manifest["schema"] = str(manifest_schema)
+
+    ingested: Dict[str, Any] = manifest.setdefault("ingested", {})
+    ignored: Dict[str, Any] = manifest.setdefault("ignored_duplicates", {})
+    order: List[str] = manifest.setdefault("ingested_order", [])
+
+    original_name = source_path.name
+    sha = sha256_file(source_path)
+    sha8 = sha[:8].upper()
+    ts = now_utc_compact()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    byte_size = int(source_path.stat().st_size)
+    rows_observed = int(_count_rows_observed(source_path))
+
+    if sha in ingested:
+        duplicate_name = _unique_name(store_dir, f"IGNORED_DUPLICATE_{ts}_{sha8}.csv")
+        duplicate_path = _move_with_fallback(source_path, store_dir / duplicate_name)
+        ignored.setdefault(sha, []).append(
+            {
+                "ingested_at": now_iso,
+                "original_name": original_name,
+                "stored_name": duplicate_path.name,
+                "byte_size": byte_size,
+                "rows_observed": rows_observed,
+                "status": "ignored_duplicate",
+            }
+        )
+        existing = ingested.get(sha) or {}
+        existing_stored_name = str(existing.get("stored_name") or duplicate_path.name)
+        existing_stored_path = store_dir / existing_stored_name
+        if not existing_stored_path.exists():
+            existing_stored_name = duplicate_path.name
+            existing_stored_path = duplicate_path
+        save_manifest(manifest_path, manifest)
+        return manifest, SingleFileIngestResult(
+            sha256=sha,
+            sha8=sha8,
+            original_name=original_name,
+            stored_name=existing_stored_name,
+            ingested_at=str(existing.get("ingested_at") or now_iso),
+            byte_size=byte_size,
+            rows_observed=rows_observed,
+            stored_path=existing_stored_path,
+            status="duplicate_existing",
+        )
+
+    stored_name = _unique_name(store_dir, f"INGESTED_{ts}_{sha8}.csv")
+    stored_path = _move_with_fallback(source_path, store_dir / stored_name)
+    ingested[sha] = {
+        "sha256": sha,
+        "sha8": sha8,
+        "ingested_at": now_iso,
+        "original_name": original_name,
+        "stored_name": stored_path.name,
+        "byte_size": byte_size,
+        "rows_observed": rows_observed,
+        "status": "ingested",
+    }
+    order.append(sha)
+    save_manifest(manifest_path, manifest)
+    return manifest, SingleFileIngestResult(
+        sha256=sha,
+        sha8=sha8,
+        original_name=original_name,
+        stored_name=stored_path.name,
+        ingested_at=now_iso,
+        byte_size=byte_size,
+        rows_observed=rows_observed,
+        stored_path=stored_path,
+        status="ingested",
+    )
 
 
 def ingest_csv_dir(
