@@ -130,6 +130,21 @@ def _result_evidence(res: CommandResult) -> str:
     return f"exit={res.returncode}; {one_line}"
 
 
+def _parse_porcelain_paths(stdout: str) -> List[str]:
+    paths: List[str] = []
+    for raw_line in stdout.splitlines():
+        line = raw_line.rstrip("\r\n")
+        if not line:
+            continue
+        if line.startswith("?? "):
+            path = line[3:].strip()
+        else:
+            path = line[3:].strip() if len(line) >= 3 else ""
+        if path:
+            paths.append(path)
+    return paths
+
+
 def _detect_replacer_config(repo_root: Path) -> tuple[Path | None, str]:
     exact = repo_root / "rulesets" / "replacer_config_v1_15.json"
     if exact.exists():
@@ -289,6 +304,23 @@ def main() -> int:
         a3.returncode == 0,
         _result_evidence(a3),
         "Ensure git executable and repository state are accessible.",
+    )
+    repo_dirty = a3.returncode == 0 and bool(a3.stdout.strip())
+    dirty_paths = _parse_porcelain_paths(a3.stdout) if a3.returncode == 0 else []
+    dirty_snippet_lines = a3.stdout.splitlines()[:30] if repo_dirty else []
+    cleanliness_state = "Dirty" if repo_dirty else "Clean"
+    cleanliness_evidence = f"state: {cleanliness_state}; dirty paths: {len(dirty_paths)}"
+    if dirty_snippet_lines:
+        cleanliness_evidence += "\n" + "\n".join(dirty_snippet_lines)
+    add_soft(
+        "S5",
+        "Repo cleanliness (git status)",
+        a3.returncode == 0 and not repo_dirty,
+        cleanliness_evidence if a3.returncode == 0 else _result_evidence(a3),
+        "\u4f5c\u696d\u30c4\u30ea\u30fc\u3092\u30af\u30ea\u30fc\u30f3\u306b\u623b\u3057\u3066\u304f\u3060\u3055\u3044\u3002"
+        "\u5019\u88dc: \u5909\u66f4\u3092\u7834\u68c4 `git restore -SW .` / "
+        "\u4e00\u6642\u9000\u907f `git stash -u` / "
+        "\u30b3\u30df\u30c3\u30c8 `git add ...; git commit ...`\u3002",
     )
 
     a4 = run_and_store("A4", "git --version")
@@ -544,6 +576,13 @@ def main() -> int:
     report_lines.append("")
     report_lines.append("## 3) Soft checks")
     report_lines.extend(_make_table(soft_checks))
+    if a3.returncode == 0 and repo_dirty:
+        report_lines.append("")
+        report_lines.append("### Repo Cleanliness Remediation (JA)")
+        report_lines.append("- 作業ツリーをクリーンに戻す候補:")
+        report_lines.append("1. 変更を破棄: `git restore -SW .`")
+        report_lines.append("2. 一時退避: `git stash -u`")
+        report_lines.append("3. コミット: `git add ...; git commit ...`")
     report_lines.append("")
     report_lines.append("## 4) Top risks (top 10; severity + remediation)")
     if risks:
@@ -590,8 +629,11 @@ def main() -> int:
     latest_file = export_dir / "LATEST.txt"
     latest_tmp.write_text(f"{report_name}\n", encoding="utf-8", newline="\n")
     latest_tmp.replace(latest_file)
-
     print(f"判定: {go_text}")
+    if a3.returncode == 0 and repo_dirty:
+        print("[WARN] 作業ツリーに未コミットの変更があります（dirty）")
+        for path in dirty_paths[:10]:
+            print(f"- {path}")
     if risks:
         print("主なリスク:")
         for idx in range(2):
@@ -607,9 +649,9 @@ def main() -> int:
     if not go:
         next_step_ja = "Hardチェックの失敗を解消し、再診断してください。"
     elif risks:
-        next_step_ja = "Softチェックの警告項目を解消し、再診断してください。"
+        next_step_ja = "Softチェックの警告を解消し、再診断してください。"
     else:
-        next_step_ja = "現状の環境を維持し、変更後に再診断してください。"
+        next_step_ja = "現在の状態を維持し、必要時に再診断してください。"
     print(f"次の一手: {next_step_ja}")
     print(f"レポート: {report_path}")
     return 0 if go else 1
@@ -617,3 +659,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
