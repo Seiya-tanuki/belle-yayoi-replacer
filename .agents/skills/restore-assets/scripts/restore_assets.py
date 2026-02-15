@@ -24,6 +24,7 @@ from belle.paths import get_label_queue_lock_path
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
 ALLOWED_PREFIXES = ("clients/", "lexicon/pending/")
+TEMPLATE_CLIENT_NAME = "TEMPLATE"
 
 
 def _utc_now() -> datetime:
@@ -85,9 +86,11 @@ def _normalize_member_name(name: str, *, is_dir: bool) -> str:
         candidate = candidate[2:]
     if not candidate:
         raise ValueError(f"empty zip member name: {name!r}")
+
     pure = PurePosixPath(candidate)
     if pure.is_absolute() or ".." in pure.parts:
         raise ValueError(f"unsafe zip member path: {name!r}")
+
     normalized = pure.as_posix()
     if normalized in ("", "."):
         raise ValueError(f"invalid zip member path: {name!r}")
@@ -186,7 +189,7 @@ def _create_pre_restore_snapshot(repo_root: Path, backup_dir: Path) -> Path:
 
 def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
     with zipfile.ZipFile(zip_path, mode="r") as zf:
-        manifest_info = None
+        manifest_info: zipfile.ZipInfo | None = None
         zip_dirs: set[str] = set()
         zip_files: Dict[str, zipfile.ZipInfo] = {}
 
@@ -194,67 +197,67 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
             normalized = _normalize_member_name(info.filename, is_dir=info.is_dir())
             if normalized == "MANIFEST.json":
                 if info.is_dir():
-                    raise ValueError("MANIFEST.json がディレクトリです。")
+                    raise ValueError("MANIFEST.json must be a file")
                 manifest_info = info
                 continue
             if not _is_allowed_asset_path(normalized):
-                raise ValueError(f"許可されていないパスが含まれています: {normalized}")
+                raise ValueError(f"unexpected path in zip: {normalized}")
             if info.is_dir():
                 zip_dirs.add(normalized)
                 continue
             if normalized in zip_files:
-                raise ValueError(f"ZIP 内に重複ファイルがあります: {normalized}")
+                raise ValueError(f"duplicate file in zip: {normalized}")
             zip_files[normalized] = info
 
         if manifest_info is None:
-            raise ValueError("MANIFEST.json が見つかりません。")
+            raise ValueError("MANIFEST.json not found")
 
         has_clients_root = "clients/" in zip_dirs or any(p.startswith("clients/") for p in zip_files)
         has_pending_root = "lexicon/pending/" in zip_dirs or any(
             p.startswith("lexicon/pending/") for p in zip_files
         )
         if not has_clients_root:
-            raise ValueError("ZIP に clients/ ルートがありません。")
+            raise ValueError("clients/ root missing in zip")
         if not has_pending_root:
-            raise ValueError("ZIP に lexicon/pending/ ルートがありません。")
+            raise ValueError("lexicon/pending/ root missing in zip")
 
         try:
             manifest_obj = json.loads(zf.read(manifest_info).decode("utf-8"))
         except json.JSONDecodeError as exc:
-            raise ValueError(f"MANIFEST.json の JSON 解析に失敗しました: {exc}") from exc
+            raise ValueError(f"invalid MANIFEST.json: {exc}") from exc
 
         if manifest_obj.get("schema") != MANIFEST_SCHEMA:
             raise ValueError(
-                f"MANIFEST schema が不正です: {manifest_obj.get('schema')!r} != {MANIFEST_SCHEMA!r}"
+                f"manifest schema mismatch: {manifest_obj.get('schema')!r} != {MANIFEST_SCHEMA!r}"
             )
 
         manifest_files = manifest_obj.get("files")
         if not isinstance(manifest_files, list):
-            raise ValueError("MANIFEST.json の files が配列ではありません。")
+            raise ValueError("manifest files must be a list")
 
         expected: Dict[str, Tuple[str, int]] = {}
         hex64 = re.compile(r"^[0-9a-f]{64}$")
         for idx, item in enumerate(manifest_files, start=1):
             if not isinstance(item, dict):
-                raise ValueError(f"MANIFEST files[{idx}] がオブジェクトではありません。")
+                raise ValueError(f"manifest files[{idx}] must be an object")
             raw_path = item.get("path")
             raw_sha = item.get("sha256")
             raw_size = item.get("size_bytes")
             if not isinstance(raw_path, str):
-                raise ValueError(f"MANIFEST files[{idx}].path が文字列ではありません。")
+                raise ValueError(f"manifest files[{idx}].path must be a string")
             normalized_path = _normalize_member_name(raw_path, is_dir=False)
             if not _is_allowed_asset_path(normalized_path):
-                raise ValueError(f"MANIFEST files[{idx}] の path が許可範囲外です: {normalized_path}")
+                raise ValueError(f"manifest files[{idx}] path out of scope: {normalized_path}")
             if not isinstance(raw_sha, str) or not hex64.match(raw_sha):
-                raise ValueError(f"MANIFEST files[{idx}].sha256 が不正です。")
+                raise ValueError(f"manifest files[{idx}].sha256 must be hex-64")
             try:
                 declared_size = int(raw_size)
             except Exception as exc:
-                raise ValueError(f"MANIFEST files[{idx}].size_bytes が不正です。") from exc
+                raise ValueError(f"manifest files[{idx}].size_bytes must be an integer") from exc
             if declared_size < 0:
-                raise ValueError(f"MANIFEST files[{idx}].size_bytes が負数です。")
+                raise ValueError(f"manifest files[{idx}].size_bytes must be >= 0")
             if normalized_path in expected:
-                raise ValueError(f"MANIFEST に重複 path があります: {normalized_path}")
+                raise ValueError(f"duplicate path in manifest: {normalized_path}")
             expected[normalized_path] = (raw_sha, declared_size)
 
         zip_file_paths = set(zip_files.keys())
@@ -262,27 +265,27 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
         missing = sorted(expected_paths - zip_file_paths)
         extra = sorted(zip_file_paths - expected_paths)
         if missing:
-            raise ValueError(f"MANIFEST 記載ファイルが ZIP に存在しません: {missing[0]}")
+            raise ValueError(f"manifest entry missing in zip: {missing[0]}")
         if extra:
-            raise ValueError(f"MANIFEST 未記載ファイルが ZIP に存在します: {extra[0]}")
+            raise ValueError(f"zip file missing in manifest: {extra[0]}")
 
         total_bytes = 0
         for path, (declared_sha, declared_size) in expected.items():
             data = zf.read(zip_files[path])
             actual_size = len(data)
             if actual_size != declared_size:
-                raise ValueError(f"サイズ不一致: {path} manifest={declared_size} actual={actual_size}")
+                raise ValueError(f"size mismatch for {path}: manifest={declared_size} actual={actual_size}")
             actual_sha = _sha256_bytes(data)
             if actual_sha != declared_sha:
-                raise ValueError(f"sha256 不一致: {path}")
+                raise ValueError(f"sha256 mismatch for {path}")
             total_bytes += actual_size
 
         counts = manifest_obj.get("counts")
         if isinstance(counts, dict):
             if "files" in counts and int(counts["files"]) != len(expected):
-                raise ValueError("MANIFEST counts.files が files 件数と一致しません。")
+                raise ValueError("manifest counts.files mismatch")
             if "total_bytes" in counts and int(counts["total_bytes"]) != total_bytes:
-                raise ValueError("MANIFEST counts.total_bytes が実サイズ合計と一致しません。")
+                raise ValueError("manifest counts.total_bytes mismatch")
 
         clients_from_manifest = 0
         if isinstance(counts, dict) and "clients" in counts:
@@ -330,34 +333,158 @@ def _extract_to_staging(zip_path: Path, staging_dir: Path) -> None:
     (staging_dir / "lexicon" / "pending").mkdir(parents=True, exist_ok=True)
 
 
-def _apply_restore(repo_root: Path, staging_dir: Path) -> None:
+def _move_path(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.move(str(src), str(dst))
+
+
+def _remove_path(path: Path) -> None:
+    if not path.exists():
+        return
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path, ignore_errors=True)
+        return
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        pass
+
+
+def _restore_clients_with_swap(*, repo_root: Path, stage_clients: Path, restore_old_dir: Path) -> None:
+    dest_clients = repo_root / "clients"
+    dest_clients.mkdir(parents=True, exist_ok=True)
+    restore_old_dir.mkdir(parents=True, exist_ok=True)
+
+    existing_clients = sorted(
+        path for path in dest_clients.iterdir() if path.is_dir() and path.name != TEMPLATE_CLIENT_NAME
+    )
+    staged_clients = sorted(
+        path for path in stage_clients.iterdir() if path.is_dir() and path.name != TEMPLATE_CLIENT_NAME
+    )
+
+    moved_old: List[Tuple[Path, Path]] = []
+    moved_new: List[Path] = []
+
+    try:
+        for old_dir in existing_clients:
+            rollback_path = restore_old_dir / old_dir.name
+            if rollback_path.exists():
+                raise RuntimeError(f"rollback path already exists: {rollback_path}")
+            _move_path(old_dir, rollback_path)
+            moved_old.append((rollback_path, old_dir))
+
+        for staged_dir in staged_clients:
+            dest_dir = dest_clients / staged_dir.name
+            if dest_dir.exists():
+                raise RuntimeError(f"destination client already exists before restore: {dest_dir}")
+            _move_path(staged_dir, dest_dir)
+            moved_new.append(dest_dir)
+    except Exception:
+        for path in reversed(moved_new):
+            _remove_path(path)
+        for rollback_path, dest_path in reversed(moved_old):
+            if rollback_path.exists():
+                _move_path(rollback_path, dest_path)
+        raise
+
+
+def _restore_pending_with_swap(*, repo_root: Path, stage_pending: Path, restore_old_dir: Path) -> None:
+    dest_pending = repo_root / "lexicon" / "pending"
+    dest_pending.mkdir(parents=True, exist_ok=True)
+    (dest_pending / "locks").mkdir(parents=True, exist_ok=True)
+    restore_old_dir.mkdir(parents=True, exist_ok=True)
+
+    lock_path = get_label_queue_lock_path(repo_root)
+    moved_old: List[Tuple[Path, Path]] = []
+    moved_new: List[Path] = []
+
+    with label_queue_lock(
+        lock_path=lock_path,
+        client_id="restore-assets",
+        timeout_sec=60,
+        stale_after_sec=120,
+    ) as lock_token:
+        try:
+            for current in sorted(dest_pending.iterdir(), key=lambda p: p.name):
+                if current.name == ".gitkeep":
+                    continue
+                if current.name == "locks" and current.is_dir():
+                    for lock_item in sorted(current.iterdir(), key=lambda p: p.name):
+                        if lock_item.name == ".gitkeep":
+                            continue
+                        if lock_item.resolve() == lock_path.resolve():
+                            continue
+                        rollback_path = restore_old_dir / "locks" / lock_item.name
+                        _move_path(lock_item, rollback_path)
+                        moved_old.append((rollback_path, lock_item))
+                        lock_token.maybe_heartbeat()
+                    continue
+
+                rollback_path = restore_old_dir / current.name
+                _move_path(current, rollback_path)
+                moved_old.append((rollback_path, current))
+                lock_token.maybe_heartbeat()
+
+            for staged in sorted(stage_pending.iterdir(), key=lambda p: p.name):
+                if staged.name == ".gitkeep":
+                    continue
+                if staged.name == "locks" and staged.is_dir():
+                    for staged_lock_item in sorted(staged.iterdir(), key=lambda p: p.name):
+                        if staged_lock_item.name == ".gitkeep":
+                            continue
+                        if staged_lock_item.name.endswith(".lock"):
+                            continue
+                        dest_lock_item = dest_pending / "locks" / staged_lock_item.name
+                        if dest_lock_item.exists():
+                            raise RuntimeError(f"destination pending lock item already exists: {dest_lock_item}")
+                        _move_path(staged_lock_item, dest_lock_item)
+                        moved_new.append(dest_lock_item)
+                        lock_token.maybe_heartbeat()
+                    continue
+
+                dest_item = dest_pending / staged.name
+                if dest_item.exists():
+                    raise RuntimeError(f"destination pending item already exists: {dest_item}")
+                _move_path(staged, dest_item)
+                moved_new.append(dest_item)
+                lock_token.maybe_heartbeat()
+        except Exception:
+            for path in reversed(moved_new):
+                _remove_path(path)
+            for rollback_path, dest_path in reversed(moved_old):
+                if rollback_path.exists():
+                    _move_path(rollback_path, dest_path)
+            raise
+
+
+def _apply_restore(repo_root: Path, staging_dir: Path, restore_old_root: Path) -> None:
     stage_clients = staging_dir / "clients"
     stage_pending = staging_dir / "lexicon" / "pending"
     if not stage_clients.exists():
-        raise RuntimeError("ステージングに clients/ が存在しません。")
+        raise RuntimeError("staging missing clients/")
     if not stage_pending.exists():
-        raise RuntimeError("ステージングに lexicon/pending/ が存在しません。")
+        raise RuntimeError("staging missing lexicon/pending/")
 
-    dest_clients = repo_root / "clients"
-    dest_pending = repo_root / "lexicon" / "pending"
-
-    if dest_clients.exists():
-        shutil.rmtree(dest_clients)
-    if dest_pending.exists():
-        shutil.rmtree(dest_pending)
-
-    (repo_root / "lexicon").mkdir(parents=True, exist_ok=True)
-    shutil.copytree(stage_clients, dest_clients)
-    shutil.copytree(stage_pending, dest_pending)
+    restore_old_root.mkdir(parents=True, exist_ok=True)
+    _restore_clients_with_swap(
+        repo_root=repo_root,
+        stage_clients=stage_clients,
+        restore_old_dir=restore_old_root / "clients",
+    )
+    _restore_pending_with_swap(
+        repo_root=repo_root,
+        stage_pending=stage_pending,
+        restore_old_dir=restore_old_root / "lexicon_pending",
+    )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Restore field assets from a fixed-scope backup ZIP.")
-    parser.add_argument("--zip", required=True, dest="zip_path", help="バックアップ ZIP のパス")
+    parser.add_argument("--zip", required=True, dest="zip_path", help="Path to backup ZIP")
     parser.add_argument(
         "--force",
         action="store_true",
-        help="既存アセットを上書きする場合に必須",
+        help="Required when destination assets already contain data.",
     )
     return parser.parse_args()
 
@@ -373,16 +500,16 @@ def main() -> int:
         zip_path = (Path.cwd() / zip_path).resolve()
 
     if not zip_path.exists() or not zip_path.is_file():
-        print(f"[ERROR] ZIP が見つかりません: {zip_path}", file=sys.stderr)
+        print(f"[ERROR] zip not found: {zip_path}", file=sys.stderr)
         return 1
     if not zipfile.is_zipfile(zip_path):
-        print(f"[ERROR] ZIP 形式ではありません: {zip_path}", file=sys.stderr)
+        print(f"[ERROR] not a valid zip file: {zip_path}", file=sys.stderr)
         return 1
 
     try:
         restored_counts = _validate_backup_zip(zip_path)
     except Exception as exc:
-        print(f"[ERROR] バックアップ検証に失敗しました: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"[ERROR] backup validation failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
     clients_dir = repo_root / "clients"
@@ -390,9 +517,9 @@ def main() -> int:
     overwrite_needed = _dir_has_content(clients_dir) or _dir_has_content(pending_dir)
 
     if overwrite_needed and not args.force:
-        print("[SAFE-EXIT] 既存アセットが存在するため復元を中止しました。")
-        print("上書きする場合は `--force` を指定して再実行してください。")
-        print("検証は完了済みで、現行データには一切変更を加えていません。")
+        print("[SAFE-EXIT] restore would overwrite existing assets")
+        print("Use `--force` to continue.")
+        print("Validation passed and no data was changed.")
         return 2
 
     pre_restore_snapshot: Path | None = None
@@ -400,43 +527,43 @@ def main() -> int:
         try:
             pre_restore_snapshot = _create_pre_restore_snapshot(repo_root, backup_dir)
         except TimeoutError:
-            print("[ERROR] pre-restore スナップショット用 lock 取得に失敗しました。", file=sys.stderr)
+            print("[ERROR] failed to acquire lock for pre-restore snapshot", file=sys.stderr)
             return 1
         except Exception as exc:
-            print(
-                f"[ERROR] pre-restore スナップショット作成に失敗しました: {type(exc).__name__}: {exc}",
-                file=sys.stderr,
-            )
+            print(f"[ERROR] pre-restore snapshot failed: {type(exc).__name__}: {exc}", file=sys.stderr)
             return 1
 
     stage_ts = _utc_compact(_utc_now())
     staging_dir = backup_dir / f"restore_staging_{stage_ts}_{os.getpid()}"
+    restore_old_dir = backup_dir / f"restore_old_{stage_ts}_{os.getpid()}"
     try:
         _extract_to_staging(zip_path, staging_dir)
-        _apply_restore(repo_root, staging_dir)
+        _apply_restore(repo_root, staging_dir, restore_old_dir)
     except Exception as exc:
-        print(f"[ERROR] 復元処理に失敗しました: {type(exc).__name__}: {exc}", file=sys.stderr)
+        print(f"[ERROR] restore failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
     finally:
         if staging_dir.exists():
             shutil.rmtree(staging_dir, ignore_errors=True)
 
-    print("[OK] アセット復元が完了しました。")
-    print(f"[OK] 復元元ZIP: {zip_path.name}")
+    print("[OK] assets restore completed")
+    print(f"[OK] restored zip: {zip_path.name}")
     if pre_restore_snapshot is not None:
-        print(f"[OK] pre-restore スナップショット: {pre_restore_snapshot}")
+        print(f"[OK] pre-restore snapshot: {pre_restore_snapshot}")
     else:
-        print("[OK] pre-restore スナップショット: 既存アセットなしのため未作成")
+        print("[OK] pre-restore snapshot: skipped (destination empty)")
+    print(f"[OK] rollback assets: {restore_old_dir}")
     print(
-        "[OK] 復元件数: files={files}, clients={clients}, total_bytes={total_bytes}".format(
+        "[OK] restored counts: files={files}, clients={clients}, total_bytes={total_bytes}".format(
             files=restored_counts["files"],
             clients=restored_counts["clients"],
             total_bytes=restored_counts["total_bytes"],
         )
     )
-    print("[INFO] belle/ spec/ .agents/ defaults/ lexicon/lexicon.json tools/ などのコード領域は変更していません。")
+    print("[INFO] tracked code paths were not modified")
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
