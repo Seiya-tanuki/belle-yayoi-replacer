@@ -50,8 +50,10 @@ clients/<CLIENT_ID>/
 
 1. Tracked code/spec files remain git-managed (e.g. `belle/`, `spec/`, `.agents/`, `defaults/`, `tools/`, `lexicon/lexicon.json`).
 2. Field assets are runtime-managed and untracked/ignored:
-   1. `clients/**`
-   2. `lexicon/pending/**`
+   1. `clients/**` except `clients/TEMPLATE/**` (template scaffold stays tracked, including placeholder files)
+   2. `lexicon/pending/**` except placeholders:
+      - `lexicon/pending/.gitkeep`
+      - `lexicon/pending/locks/.gitkeep`
    3. `exports/**` (including `exports/backups/`)
 3. Backup/restore skills target only field assets and must never overwrite tracked code/spec files.
 

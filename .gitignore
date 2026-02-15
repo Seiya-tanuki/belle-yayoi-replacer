@@ -16,18 +16,16 @@ tmp/
 .tmp*/
 *.tmp
 
-# --- Runtime outputs (do not version) ---
-clients/**/outputs/
-clients/**/artifacts/telemetry/
-exports/
+# --- Field assets (runtime-managed, do not version) ---
+clients/**
+!clients/TEMPLATE/
+!clients/TEMPLATE/**
+exports/**
 
 # --- Lexicon pending (runtime-managed, not versioned) ---
-lexicon/pending/*.csv
-lexicon/pending/*.json
-lexicon/pending/*.jsonl
-lexicon/pending/locks/label_queue.lock
+lexicon/pending/**
 
 # Keep placeholders
-!clients/TEMPLATE/**/.gitkeep
 !lexicon/pending/.gitkeep
+!lexicon/pending/locks/
 !lexicon/pending/locks/.gitkeep
