@@ -181,6 +181,23 @@ def _probe_write_delete(target_dir: Path) -> tuple[bool, str]:
         return False, f"{type(exc).__name__}: {exc}"
 
 
+def _ensure_required_dirs(repo_root: Path) -> List[Path]:
+    required_rel_paths = [
+        Path("exports"),
+        Path("exports/system_diagnose"),
+        Path("exports/gpts_lexicon_review"),
+        Path("exports/backups"),
+        Path("lexicon/pending/locks"),
+    ]
+    created: List[Path] = []
+    for rel_path in required_rel_paths:
+        abs_path = repo_root / rel_path
+        if not abs_path.exists():
+            created.append(rel_path)
+        abs_path.mkdir(parents=True, exist_ok=True)
+    return created
+
+
 def _make_table(rows: Sequence[CheckResult]) -> List[str]:
     lines = [
         "| Check | Pass/Fail | Evidence |",
@@ -244,6 +261,7 @@ def _default_next_steps(go: bool, risks: Sequence[Risk]) -> List[str]:
 def main() -> int:
     repo_root = Path(__file__).resolve().parents[4]
     audit_time = _utc_now()
+    provisioned_dirs = _ensure_required_dirs(repo_root)
     command_logs: Dict[str, CommandResult] = {}
     hard_checks: List[CheckResult] = []
     soft_checks: List[CheckResult] = []
@@ -570,6 +588,10 @@ def main() -> int:
     report_lines.append(f"- Audit time (UTC): {_utc_iso(audit_time)}")
     report_lines.append(f"- HEAD commit: {head_commit or 'unknown'}")
     report_lines.append(f"- Go/No-Go: {go_text}")
+    report_lines.append(f"- Provisioned dirs (created now): {len(provisioned_dirs)}")
+    if provisioned_dirs:
+        for rel_path in provisioned_dirs:
+            report_lines.append(f"  - {rel_path.as_posix()}")
     report_lines.append("")
     report_lines.append("## 2) Hard checks")
     report_lines.extend(_make_table(hard_checks))
