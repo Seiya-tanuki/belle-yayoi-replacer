@@ -18,7 +18,9 @@
    4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
    5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
    6. `$export-lexicon-review-pack`: acquire the global label_queue lock and export a fixed review ZIP + MANIFEST for Lexicon Steward GPTs under `exports/gpts_lexicon_review/`.
-   7. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
+   7. `$backup-assets`: backup field assets (`clients/` + `lexicon/pending/`) into `exports/backups/` with MANIFEST.
+   8. `$restore-assets`: restore field assets (`clients/` + `lexicon/pending/`) from a backup ZIP with force/safety gates.
+   9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
 4. Current runtime behavior:
    1. The pipeline is ledger_ref-only.
    2. `$yayoi-replacer` includes client_cache incremental update and lexicon candidate autogrow from `ledger_ref` before replacement.

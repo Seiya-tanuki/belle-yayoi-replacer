@@ -1,0 +1,5 @@
+interface:
+  display_name: "Asset restore"
+  short_description: "Restore clients and lexicon/pending from backup ZIP"
+policy:
+  allow_implicit_invocation: false

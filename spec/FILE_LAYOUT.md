@@ -46,6 +46,15 @@ clients/<CLIENT_ID>/
 1. Users collect deliverables from `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`.
 2. `clients/<CLIENT_ID>/artifacts/*` is system-managed and should not be edited manually.
 
+## Asset separation (tracked vs field assets)
+
+1. Tracked code/spec files remain git-managed (e.g. `belle/`, `spec/`, `.agents/`, `defaults/`, `tools/`, `lexicon/lexicon.json`).
+2. Field assets are runtime-managed and untracked/ignored:
+   1. `clients/**`
+   2. `lexicon/pending/**`
+   3. `exports/**` (including `exports/backups/`)
+3. Backup/restore skills target only field assets and must never overwrite tracked code/spec files.
+
 ## Global / shared files
 
 1. `lexicon/lexicon.json`: single canonical category+terms dictionary (core + learned)
@@ -55,6 +64,7 @@ clients/<CLIENT_ID>/
 5. `defaults/category_defaults.json`: global default debit-account mapping per category
 6. `clients/<CLIENT_ID>/config/category_overrides.json`: per-client editable debit-account overlay
 7. `rulesets/`: versioned deterministic configuration snapshots
+8. `exports/backups/`: asset backup ZIPs and restore safety snapshots (runtime-managed)
 
 ## Ingest marker extension (`ledger_ref_ingested.json`)
 
