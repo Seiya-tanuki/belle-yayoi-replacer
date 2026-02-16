@@ -455,7 +455,7 @@
     }
   },
   "global_fallback": {
-    "debit_account": "雑費",
+    "debit_account": "仮払金",
     "confidence": 0.35,
     "priority": "HIGH",
     "reason_code": "global_fallback"

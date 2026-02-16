@@ -40,7 +40,7 @@ def load_category_defaults(path: Path) -> CategoryDefaults:
         )
     gf = obj.get("global_fallback") or {}
     global_rule = DefaultRule(
-        debit_account=str(gf.get("debit_account") or "雑費"),
+        debit_account=str(gf.get("debit_account") or "仮払金"),
         confidence=float(gf.get("confidence") or 0.35),
         priority=str(gf.get("priority") or "HIGH"),
         reason_code=str(gf.get("reason_code") or "global_fallback"),
