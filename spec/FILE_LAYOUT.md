@@ -10,8 +10,8 @@ clients/<CLIENT_ID>/
   config/
     category_overrides.json         # per-client editable full-expanded overrides
   inputs/
-    kari_shiwake/                   # Yayoi 25-col CSV to be replaced (runごとに1ファイルのみ配置)
-    ledger_ref/                     # Historical finalized journal CSVs (append-only batches)
+    kari_shiwake/                   # Yayoi 25-col CSV to be replaced (run-time requires exactly 1 file)
+    ledger_ref/                     # ledger_ref ingest inbox (drop new finalized journal CSV/TXT here)
   outputs/
     runs/
       <RUN_ID>/                     # e.g. 20260214T093015Z_7F3A
@@ -24,7 +24,8 @@ clients/<CLIENT_ID>/
     cache/
       client_cache.json             # append-only cache (system-managed)
     ingest/
-      kari_shiwake/                 # ingested 仮仕訳CSV保管先 (system-managed)
+      ledger_ref/                   # ingested ledger_ref snapshots (system-managed)
+      kari_shiwake/                 # ingested kari_shiwake snapshots (system-managed)
       kari_shiwake_ingested.json    # sha256 ingest manifest for kari_shiwake (system-managed)
       ledger_ref_ingested.json      # sha256 ingest manifest for ledger_ref (system-managed)
     telemetry/
@@ -35,11 +36,14 @@ clients/<CLIENT_ID>/
 ## Input types (user-provided)
 
 1. **kari_shiwake CSV**: the file to process with `$yayoi-replacer`
-   1. `inputs/kari_shiwake/` には実行時点で **1ファイルのみ** を配置
-   2. 実行時に `artifacts/ingest/kari_shiwake/INGESTED_<UTC_TS>_<SHA8>.csv` へ move+rename される
-   3. run manifest (`outputs/runs/<RUN_ID>/run_manifest.json`) には
-      `inputs.kari_shiwake.{original_name, stored_name, sha256}` が記録される
-2. **ledger_ref CSV**: append-only batches used by `$client-cache-builder`, `$yayoi-replacer`, and `$lexicon-extract`
+   1. Place exactly one file in `inputs/kari_shiwake/`.
+   2. At run-time it is moved+renamed to `artifacts/ingest/kari_shiwake/INGESTED_<UTC_TS>_<SHA8>.csv`.
+   3. `outputs/runs/<RUN_ID>/run_manifest.json` stores `inputs.kari_shiwake.{original_name,stored_name,sha256}`.
+2. **ledger_ref CSV/TXT**: append-only historical finalized batches used by `$client-cache-builder`, `$yayoi-replacer`, and `$lexicon-extract`
+   1. Put new files in `inputs/ledger_ref/`.
+   2. On successful ingest, each file is moved+renamed to `artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`.
+   3. Duplicate content is moved to `artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`.
+   4. `inputs/ledger_ref/` should be empty after successful ingest (except placeholders such as `.gitkeep`).
 
 ## Output vs artifacts policy
 
@@ -71,8 +75,9 @@ clients/<CLIENT_ID>/
 ## Ingest marker extension (`ledger_ref_ingested.json`)
 
 Each `ingested[sha256]` entry may include:
-1. `processed_to_label_queue_at` (ISO-8601 UTC)
-2. `processed_to_label_queue_run_id` (optional)
-3. `processed_to_label_queue_version` (optional)
+1. `stored_name` and `stored_relpath` (relative path from `clients/<CLIENT_ID>/`)
+2. `processed_to_label_queue_at` (ISO-8601 UTC)
+3. `processed_to_label_queue_run_id` (optional)
+4. `processed_to_label_queue_version` (optional)
 
 These fields are append-only markers used to guarantee idempotent label queue growth.

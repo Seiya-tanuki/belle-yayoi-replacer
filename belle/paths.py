@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from secrets import token_hex
-from typing import Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 
 def get_client_root(repo_root: Path, client_id: str) -> Path:
@@ -53,6 +53,10 @@ def get_client_cache_path(repo_root: Path, client_id: str) -> Path:
 
 def get_ledger_ref_ingested_path(repo_root: Path, client_id: str) -> Path:
     return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref_ingested.json"
+
+
+def get_ledger_ref_ingest_dir(repo_root: Path, client_id: str) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref"
 
 
 def get_kari_shiwake_ingest_dir(repo_root: Path, client_id: str) -> Path:
@@ -127,5 +131,27 @@ def ensure_client_system_dirs(repo_root: Path, client_id: str) -> None:
     get_outputs_runs_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_cache_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
+    get_ledger_ref_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_kari_shiwake_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_telemetry_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
+
+
+def resolve_ledger_ref_stored_path(repo_root: Path, client_id: str, entry: Dict[str, Any]) -> Optional[Path]:
+    client_root = get_client_root(repo_root, client_id)
+    stored_relpath = str(entry.get("stored_relpath") or "").strip()
+    if stored_relpath:
+        return client_root / Path(stored_relpath)
+
+    stored_name = str(entry.get("stored_name") or "").strip()
+    if not stored_name:
+        return None
+
+    ingest_candidate = get_ledger_ref_ingest_dir(repo_root, client_id) / stored_name
+    if ingest_candidate.exists():
+        return ingest_candidate
+
+    legacy_candidate = client_root / "inputs" / "ledger_ref" / stored_name
+    if legacy_candidate.exists():
+        return legacy_candidate
+
+    return ingest_candidate

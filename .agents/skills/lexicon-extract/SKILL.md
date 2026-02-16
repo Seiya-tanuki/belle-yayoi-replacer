@@ -1,24 +1,26 @@
 ---
 name: lexicon-extract
-description: Extract unknown terms from clients/<CLIENT_ID>/inputs/ledger_ref and grow lexicon/pending/label_queue.csv (cumulative). Explicit invocation only.
+description: Extract unknown terms from ledger_ref and grow lexicon/pending/label_queue.csv. Explicit invocation only.
 ---
 
 # lexicon-extract
 
-Updates the global pending label queue (`lexicon/pending/label_queue.csv`) by scanning per-client reference ledgers.
+Updates `lexicon/pending/label_queue.csv` by scanning per-client ledger_ref history.
 
 ## Inputs
-- `clients/<CLIENT_ID>/inputs/ledger_ref/*.csv` or `*.txt` (append-only batches)
+1. Put new `ledger_ref` CSV/TXT files in `clients/<CLIENT_ID>/inputs/ledger_ref/`.
 
 ## Outputs
-- `lexicon/pending/label_queue.csv` (cumulative; do NOT delete manually)
-- `lexicon/pending/label_queue_state.json` (internal state; do NOT edit)
-- `lexicon/pending/locks/label_queue.lock` (global lock file for queue/state mutation)
-- `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json` (ingest manifest with processed markers)
-- `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_autogrow_latest.json` (latest internal run summary)
+1. `lexicon/pending/label_queue.csv`
+2. `lexicon/pending/label_queue_state.json`
+3. `lexicon/pending/locks/label_queue.lock`
+4. `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
+5. `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_autogrow_latest.json`
 
-## Artifact policy
-- `artifacts/*` is system-managed. Do not edit manually.
+## Ingest behavior
+1. `inputs/ledger_ref/` is an ingest inbox.
+2. Successful ingest moves files into `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/`.
+3. Autogrow reads stored file paths from `ledger_ref_ingested.json` entries.
 
 ## Execution
 ```bash

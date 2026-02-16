@@ -2,13 +2,13 @@
 
 ## Purpose
 `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` is a per-client **append-only cache** learned from
-historical finalized journals (`inputs/ledger_ref/`).
+historical finalized journals (`ledger_ref`).
 
 It provides empirical debit-account distributions keyed by:
-1. **T-number** (`T\d{13}`) extracted from 摘要 (17th column)
-2. **T-number × category** (category inferred from lexicon using 摘要)
-3. **vendor_key** extracted from 摘要 (splitters + legal-form stripping)
-4. **category** inferred from lexicon using 摘要
+1. **T-number** (`T\d{13}`) extracted from summary (17th column)
+2. **T-number x category** (category inferred from lexicon using summary)
+3. **vendor_key** extracted from summary (splitters + legal-form stripping)
+4. **category** inferred from lexicon using summary
 5. **global** debit-account distribution (all rows)
 
 The replacer uses client_cache only when evidence is strong enough (gated by thresholds); otherwise it falls back to
@@ -19,18 +19,21 @@ The replacer uses client_cache only when evidence is strong enough (gated by thr
 2. Updates are applied by ingesting new ledger_ref batches and incrementing counts.
 3. Previously observed evidence must not disappear in an update.
 
-This supports stable replacement coverage across time.
-
 ## Ingestion and deduplication
 Each client has an ingest manifest:
 - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
 
 Behavior:
-1. All `inputs/ledger_ref/*.csv` files are hashed (sha256).
-2. New content is renamed in-place to: `INGESTED_<UTC_TS>_<SHA8>.csv`
-3. Duplicate content is renamed to: `IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv` and ignored.
-4. client_cache tracks which sha256 batches have already been applied via:
-   - `client_cache.applied_ledger_ref_sha256`
+1. New source files are placed in `clients/<CLIENT_ID>/inputs/ledger_ref/` (inbox).
+2. All `*.csv` and `*.txt` files in that inbox are hashed (sha256).
+3. New content is moved+renamed to:
+   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
+4. Duplicate content is moved+renamed to:
+   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
+5. Manifest `ingested[sha256]` records `stored_name` and `stored_relpath` (relative to `clients/<CLIENT_ID>/`).
+6. `client_cache` tracks already-applied batches via `client_cache.applied_ledger_ref_sha256`.
+
+After successful ingest, `inputs/ledger_ref/` should be empty (except placeholders such as `.gitkeep`).
 
 ## Schema (high level)
 Top-level keys:
@@ -39,7 +42,7 @@ Top-level keys:
 3. `client_id`
 4. `created_at`, `updated_at`
 5. `append_only`: bool
-6. `applied_ledger_ref_sha256`: `{ sha256 -> { applied_at, stored_name, rows_total, rows_used } }`
+6. `applied_ledger_ref_sha256`: `{ sha256 -> { applied_at, stored_name, stored_relpath, rows_total, rows_used } }`
 7. `decision_thresholds`: copy of thresholds for audit
 8. `stats`: distribution maps
 
@@ -49,7 +52,7 @@ Each stats entry stores:
 - `top_account`
 - `top_count`
 - `p_majority`
-- `debit_account_counts` (kept to support future explainability / audits)
+- `debit_account_counts` (kept to support explainability/audit)
 
 Maps:
 1. `t_numbers`: `{ "T123...": StatsEntry }`
@@ -59,8 +62,6 @@ Maps:
 5. `global`: StatsEntry
 
 ## Important invariants
-1. Only 摘要 (17th column) and 借方勘定科目 (5th column) are used.
-2. 仕訳メモ (22th column) MUST NOT be used.
+1. Only summary (17th column) and debit account (5th column) are used.
+2. Memo (22nd column) MUST NOT be used.
 3. Dummy summaries (`##DUMMY_OCR_UNREADABLE##`) are excluded from stats.
-
-

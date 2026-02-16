@@ -20,6 +20,18 @@ def _list_ref_files_with_txt(dir_path: Path):
     return sorted({p.resolve(): p for p in files}.values(), key=lambda p: p.name)
 
 
+def _has_ingested_manifest_entries(client_dir: Path) -> bool:
+    manifest_path = client_dir / "artifacts" / "ingest" / "ledger_ref_ingested.json"
+    if not manifest_path.exists():
+        return False
+    try:
+        obj = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    ingested = obj.get("ingested") or {}
+    return isinstance(ingested, dict) and bool(ingested)
+
+
 def find_client_id_auto(repo_root: Path) -> str:
     clients_dir = repo_root / "clients"
     cands = []
@@ -27,12 +39,15 @@ def find_client_id_auto(repo_root: Path) -> str:
         if not tdir.is_dir() or tdir.name == "TEMPLATE":
             continue
         ref = tdir / "inputs" / "ledger_ref"
-        if ref.exists() and _list_ref_files_with_txt(ref):
+        has_inbox_files = ref.exists() and bool(_list_ref_files_with_txt(ref))
+        if has_inbox_files or _has_ingested_manifest_entries(tdir):
             cands.append(tdir.name)
     if len(cands) == 1:
         return cands[0]
     if not cands:
-        raise SystemExit("Could not auto-detect client: no clients/<CLIENT_ID>/inputs/ledger_ref/*.csv or *.txt found.")
+        raise SystemExit(
+            "Could not auto-detect client: no ledger_ref inbox files or ingest manifest entries found."
+        )
     raise SystemExit(f"Could not auto-detect client: multiple candidates found: {cands}. Use --client.")
 
 

@@ -1,33 +1,34 @@
 ---
 name: client-cache-builder
-description: Update (append-only) clients/<CLIENT_ID>/artifacts/cache/client_cache.json from inputs/ledger_ref (with sha256+rename ingestion). Explicit invocation only.
+description: Update append-only client_cache.json from ledger_ref inbox files. Explicit invocation only.
 ---
 
 # client-cache-builder
 
-Updates the per-client append-only cache `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` from historical finalized journal CSVs.
+Updates `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` from historical finalized journal CSV/TXT files.
 
 ## Inputs
-1. `clients/<CLIENT_ID>/inputs/ledger_ref/*.csv` (append-only batches)
+1. Place new reference files in `clients/<CLIENT_ID>/inputs/ledger_ref/`.
 
 ## Outputs
-1. `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` (append-only cache; grows over time)
-2. `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json` (sha256 ingest manifest)
-3. `clients/<CLIENT_ID>/artifacts/telemetry/client_cache_update_run_<TS>.json` (internal run log)
+1. `clients/<CLIENT_ID>/artifacts/cache/client_cache.json`
+2. `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
+3. `clients/<CLIENT_ID>/artifacts/telemetry/client_cache_update_run_<TS>.json`
 
-## Artifact policy
-1. `artifacts/*` is system-managed.
-2. Users should not manually edit files under `artifacts/`.
+## Ingest behavior
+1. `inputs/ledger_ref/` is an inbox only.
+2. On ingest success, files are moved to:
+   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
+3. Duplicate sha files are moved to:
+   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
+4. Consumers read ingested files via paths recorded in `ledger_ref_ingested.json`.
 
 ## Notes
-1. Uses only:
-   1. 摘要 (17th col) to derive keys (T-number, vendor_key, category)
-   2. 借方勘定科目 (5th col) as the label distribution
-2. Does NOT use memo (22nd col).
-3. Will rename input files on ingest to `INGESTED_<UTC_TS>_<SHA8>.csv`.
+1. Uses only summary (17th col) and debit account (5th col).
+2. Memo (22nd col) is never used.
+3. `artifacts/*` is system-managed.
 
 ## Execution
 ```bash
 python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID>
 ```
-

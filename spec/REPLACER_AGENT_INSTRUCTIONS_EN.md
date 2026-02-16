@@ -20,7 +20,7 @@ When running `$yayoi-replacer`, prefer using the provided scripts rather than ad
 
 Expected behavior:
 - If `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` exists, use it.
-- If it does not exist but `inputs/ledger_ref/` has CSVs, build client_cache as best-effort, then replace.
+- If it does not exist, build client_cache from ingested ledger_ref history (`artifacts/ingest/ledger_ref_ingested.json`), ingesting new inbox files from `inputs/ledger_ref/` first.
 - If there is no ledger_ref, still replace using lexicon + category_defaults + global fallback.
 
 Always generate:

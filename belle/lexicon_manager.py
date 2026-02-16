@@ -34,7 +34,9 @@ from .paths import (
     get_artifacts_telemetry_dir,
     get_client_root,
     get_label_queue_lock_path,
+    get_ledger_ref_ingest_dir,
     get_ledger_ref_ingested_path,
+    resolve_ledger_ref_stored_path,
 )
 from .text import nfkc, normalize_n0, strip_legal_forms
 from .yayoi_csv import read_yayoi_csv, token_to_text
@@ -594,7 +596,8 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
       5) manifest marker write (same lock scope)
     """
     client_dir = get_client_root(repo_root, client_id)
-    ledger_ref_dir = client_dir / "inputs" / "ledger_ref"
+    ledger_ref_inbox_dir = client_dir / "inputs" / "ledger_ref"
+    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id)
     manifest_path = get_ledger_ref_ingested_path(repo_root, client_id)
     pending_dir = repo_root / "lexicon" / "pending"
     queue_csv_path = pending_dir / "label_queue.csv"
@@ -612,20 +615,24 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
 
     if ingest_inputs:
         ingest_csv_dir(
-            dir_path=ledger_ref_dir,
+            dir_path=ledger_ref_inbox_dir,
+            store_dir=ledger_ref_store_dir,
             manifest_path=manifest_path,
             client_id=client_id,
             kind="ledger_ref",
             allow_rename=True,
             include_glob="*.csv",
+            relpath_base_dir=client_dir,
         )
         ingest_csv_dir(
-            dir_path=ledger_ref_dir,
+            dir_path=ledger_ref_inbox_dir,
+            store_dir=ledger_ref_store_dir,
             manifest_path=manifest_path,
             client_id=client_id,
             kind="ledger_ref",
             allow_rename=True,
             include_glob="*.txt",
+            relpath_base_dir=client_dir,
         )
 
     manifest = load_manifest_strict(manifest_path)
@@ -640,11 +647,10 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
             continue
         if ent.get("processed_to_label_queue_at"):
             continue
-        stored_name = ent.get("stored_name")
-        if not stored_name:
-            warnings.append(f"missing_stored_name: sha={sha}")
+        csv_path = resolve_ledger_ref_stored_path(repo_root, client_id, ent)
+        if csv_path is None:
+            warnings.append(f"missing_stored_path: sha={sha}")
             continue
-        csv_path = ledger_ref_dir / str(stored_name)
         if not csv_path.exists():
             warnings.append(f"missing_ingested_file: sha={sha} expected={csv_path}")
             continue

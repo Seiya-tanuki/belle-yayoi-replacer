@@ -72,15 +72,19 @@ def _read_queue_count(queue_csv: Path, norm_key: str) -> int:
 
 def _ingest_one_ledger_ref(repo_root: Path, *, client_id: str, summary: str) -> Path:
     ledger_ref_dir = repo_root / "clients" / client_id / "inputs" / "ledger_ref"
+    client_dir = repo_root / "clients" / client_id
+    ledger_ref_store_dir = client_dir / "artifacts" / "ingest" / "ledger_ref"
     _write_yayoi_row(ledger_ref_dir / "batch1.csv", summary=summary)
     manifest_path = repo_root / "clients" / client_id / "artifacts" / "ingest" / "ledger_ref_ingested.json"
     ingest_csv_dir(
         dir_path=ledger_ref_dir,
+        store_dir=ledger_ref_store_dir,
         manifest_path=manifest_path,
         client_id=client_id,
         kind="ledger_ref",
         allow_rename=True,
         include_glob="*.csv",
+        relpath_base_dir=client_dir,
     )
     return manifest_path
 

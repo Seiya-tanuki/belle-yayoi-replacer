@@ -6,7 +6,7 @@ Client cache updater (append-only).
 
 This module implements the "client_cache is a cache" design:
 - ledger_ref/ is append-only batches (CSV).
-- We ingest (sha256 + in-place rename) into a manifest.
+- We ingest (sha256 + move+rename into artifacts/ingest/ledger_ref) into a manifest.
 - client_cache.json grows by applying only not-yet-applied batches.
 
 The replacer MUST call the ensure/update function before using client_cache,
@@ -27,7 +27,9 @@ from .paths import (
     ensure_client_system_dirs,
     get_client_cache_path,
     get_client_root,
+    get_ledger_ref_ingest_dir,
     get_ledger_ref_ingested_path,
+    resolve_ledger_ref_stored_path,
 )
 
 
@@ -154,13 +156,14 @@ def ensure_client_cache_updated(
     """
     Ensure client_cache cache is up-to-date with append-only ledger_ref batches.
     This will:
-    - ingest ledger_ref/*.csv (sha256+rename) into artifacts/ingest/ledger_ref_ingested.json
+    - ingest ledger_ref inbox files (sha256+move+rename) into artifacts/ingest/ledger_ref_ingested.json
     - load/create artifacts/cache/client_cache.json
     - apply only not-yet-applied batches into client_cache (append-only)
     """
     ensure_client_system_dirs(repo_root, client_id)
     client_dir = get_client_root(repo_root, client_id)
-    ledger_ref_dir = client_dir / "inputs" / "ledger_ref"
+    ledger_ref_inbox_dir = client_dir / "inputs" / "ledger_ref"
+    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id)
     client_cache_path = get_client_cache_path(repo_root, client_id)
     ingest_manifest_path = get_ledger_ref_ingested_path(repo_root, client_id)
 
@@ -171,20 +174,24 @@ def ensure_client_cache_updated(
     # Ingest (rename + manifest)
     # Accept both .csv and .txt for ledger_ref inputs.
     manifest, new_shas_csv, dup_shas_csv = ingest_csv_dir(
-        dir_path=ledger_ref_dir,
+        dir_path=ledger_ref_inbox_dir,
+        store_dir=ledger_ref_store_dir,
         manifest_path=ingest_manifest_path,
         client_id=client_id,
         kind="ledger_ref",
         allow_rename=True,
         include_glob="*.csv",
+        relpath_base_dir=client_dir,
     )
     manifest, new_shas_txt, dup_shas_txt = ingest_csv_dir(
-        dir_path=ledger_ref_dir,
+        dir_path=ledger_ref_inbox_dir,
+        store_dir=ledger_ref_store_dir,
         manifest_path=ingest_manifest_path,
         client_id=client_id,
         kind="ledger_ref",
         allow_rename=True,
         include_glob="*.txt",
+        relpath_base_dir=client_dir,
     )
     new_shas = new_shas_csv + new_shas_txt
     dup_shas = dup_shas_csv + dup_shas_txt
@@ -209,13 +216,21 @@ def ensure_client_cache_updated(
         if sha in (tm.applied_ledger_ref_sha256 or {}):
             continue
         entry = ingested.get(sha) or {}
-        stored_name = entry.get("stored_name")
-        if not stored_name:
+        p = resolve_ledger_ref_stored_path(repo_root, client_id, entry)
+        if p is None:
+            warnings.append(f"missing_stored_path: sha={sha}")
             continue
-        p = ledger_ref_dir / stored_name
         if not p.exists():
             warnings.append(f"missing_ingested_file: sha={sha} expected={p}")
             continue
+
+        stored_name = str(entry.get("stored_name") or p.name)
+        stored_relpath = str(entry.get("stored_relpath") or "").strip()
+        if not stored_relpath:
+            try:
+                stored_relpath = p.relative_to(client_dir).as_posix()
+            except ValueError:
+                stored_relpath = stored_name
 
         rt, ru = apply_ledger_ref_file_append_only(
             tm=tm,
@@ -228,6 +243,7 @@ def ensure_client_cache_updated(
         tm.applied_ledger_ref_sha256[str(sha)] = {
             "applied_at": _now_utc_iso(),
             "stored_name": stored_name,
+            "stored_relpath": stored_relpath,
             "rows_total": int(rt),
             "rows_used": int(ru),
         }
@@ -244,7 +260,7 @@ def ensure_client_cache_updated(
 
     summary = ClientCacheUpdateSummary(
         client_id=client_id,
-        ledger_ref_dir=str(ledger_ref_dir),
+        ledger_ref_dir=str(ledger_ref_inbox_dir),
         client_cache_path=str(client_cache_path),
         ingest_manifest_path=str(ingest_manifest_path),
         ingested_new_files=[str(s) for s in new_shas],

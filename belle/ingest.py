@@ -7,7 +7,7 @@ Ingest utilities for append-only ledgers.
 Goals:
 - Treat user-provided CSVs as append-only batches.
 - Ensure stable filenames (do not trust manual naming).
-- Avoid copies: use in-place rename only.
+- Avoid copies: use move semantics only.
 - Deduplicate by sha256.
 - Record ingestion in a single manifest JSON.
 
@@ -147,6 +147,15 @@ def _count_rows_observed(path: Path) -> int:
         return rows
 
 
+def _to_relpath(stored_path: Path, *, relpath_base_dir: Optional[Path]) -> str:
+    if relpath_base_dir is not None:
+        try:
+            return stored_path.relative_to(relpath_base_dir).as_posix()
+        except ValueError:
+            pass
+    return stored_path.name
+
+
 @dataclass
 class SingleFileIngestResult:
     sha256: str
@@ -259,21 +268,26 @@ def ingest_single_file(
 def ingest_csv_dir(
     *,
     dir_path: Path,
+    store_dir: Optional[Path] = None,
     manifest_path: Path,
     client_id: str,
     kind: str,
     allow_rename: bool = True,
     include_glob: str = "*.csv",
+    relpath_base_dir: Optional[Path] = None,
 ) -> Tuple[Dict[str, Any], List[str], List[str]]:
     """
-    Ingest CSV files in dir_path:
+    Ingest CSV/TXT files from dir_path into store_dir:
     - Computes sha256 for each *.csv
-    - If new: rename -> INGESTED_{TS}_{SHA8}.csv (unless already prefixed), record in manifest.
-    - If duplicate: rename -> IGNORED_DUPLICATE_{TS}_{SHA8}.csv, record in manifest, do NOT return as new.
+    - If new: move+rename -> INGESTED_{TS}_{SHA8}.csv, record in manifest.
+    - If duplicate: move+rename -> IGNORED_DUPLICATE_{TS}_{SHA8}.csv, record in manifest, do NOT return as new.
 
     Returns (manifest_obj, newly_ingested_sha256_list, duplicate_sha256_list)
     """
-    dir_path.mkdir(parents=True, exist_ok=True)
+    source_dir = dir_path
+    target_dir = store_dir or dir_path
+    source_dir.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
     manifest = load_manifest(manifest_path, client_id=client_id, kind=kind)
 
     ingested: Dict[str, Any] = manifest.setdefault("ingested", {})
@@ -283,7 +297,7 @@ def ingest_csv_dir(
     new_shas: List[str] = []
     dup_shas: List[str] = []
 
-    for p in sorted(dir_path.glob(include_glob)):
+    for p in sorted(source_dir.glob(include_glob)):
         if not p.is_file():
             continue
         if p.name.endswith(".tmp"):
@@ -293,54 +307,53 @@ def ingest_csv_dir(
         sha = sha256_file(p)
         sha8 = sha[:8].upper()
         ts = now_utc_compact()
+        now_iso = datetime.now(timezone.utc).isoformat()
+        byte_size = int(p.stat().st_size)
+        rows_observed = int(_count_rows_observed(p))
 
         if sha in ingested:
-            # duplicate file (same content). We ignore but can normalize name.
+            # Duplicate file (same content): keep canonical existing entry, move incoming duplicate away.
             dup_shas.append(sha)
-            stored = p.name
+            stored_path = p
             if allow_rename:
-                base = f"IGNORED_DUPLICATE_{ts}_{sha8}.csv"
-                base = _unique_name(dir_path, base)
-                if not p.name.startswith("IGNORED_DUPLICATE_") and not p.name.startswith("INGESTED_"):
-                    try:
-                        p = p.rename(dir_path / base)
-                        stored = p.name
-                    except Exception:
-                        stored = p.name
+                duplicate_name = _unique_name(target_dir, f"IGNORED_DUPLICATE_{ts}_{sha8}.csv")
+                stored_path = _move_with_fallback(p, target_dir / duplicate_name)
+            elif p.parent != target_dir:
+                stored_path = _move_with_fallback(p, target_dir / p.name)
+            stored_relpath = _to_relpath(stored_path, relpath_base_dir=relpath_base_dir)
 
             ignored.setdefault(sha, []).append(
                 {
-                    "ingested_at": datetime.now(timezone.utc).isoformat(),
+                    "ingested_at": now_iso,
                     "original_name": original_name_before,
-                    "stored_name": stored,
-                    "byte_size": int(p.stat().st_size),
+                    "stored_name": stored_path.name,
+                    "stored_relpath": stored_relpath,
+                    "byte_size": byte_size,
+                    "rows_observed": rows_observed,
                     "status": "ignored_duplicate",
                 }
             )
             continue
 
         # new batch
-        stored_name = p.name
+        stored_path = p
         if allow_rename and manifest.get("policy", {}).get("rename_on_ingest", True):
-            # If file already starts with INGESTED_, keep it; else rename.
-            if p.name.startswith("INGESTED_"):
-                stored_name = p.name
-            else:
-                base = f"INGESTED_{ts}_{sha8}.csv"
-                base = _unique_name(dir_path, base)
-                try:
-                    p = p.rename(dir_path / base)
-                    stored_name = p.name
-                except Exception:
-                    stored_name = p.name
+            stored_name = _unique_name(target_dir, f"INGESTED_{ts}_{sha8}.csv")
+            stored_path = _move_with_fallback(p, target_dir / stored_name)
+        elif p.parent != target_dir:
+            stored_path = _move_with_fallback(p, target_dir / p.name)
+
+        stored_relpath = _to_relpath(stored_path, relpath_base_dir=relpath_base_dir)
 
         ingested[sha] = {
             "sha256": sha,
             "sha8": sha8,
-            "ingested_at": datetime.now(timezone.utc).isoformat(),
+            "ingested_at": now_iso,
             "original_name": original_name_before,
-            "stored_name": stored_name,
-            "byte_size": int(p.stat().st_size),
+            "stored_name": stored_path.name,
+            "stored_relpath": stored_relpath,
+            "byte_size": byte_size,
+            "rows_observed": rows_observed,
             "status": "ingested",
         }
         order.append(sha)
