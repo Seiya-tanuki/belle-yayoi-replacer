@@ -1,0 +1,5 @@
+interface:
+  display_name: "Collect outputs"
+  short_description: "Collect replaced CSVs/reports/manifests across clients into one ZIP under exports/collect"
+policy:
+  allow_implicit_invocation: false

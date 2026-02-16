@@ -21,6 +21,7 @@
    7. `$backup-assets`: backup field assets (`clients/` + `lexicon/pending/`) into `exports/backups/` with MANIFEST.
    8. `$restore-assets`: restore field assets (`clients/` + `lexicon/pending/`) from a backup ZIP with force/safety gates.
    9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
+   10. `$collect-outputs`: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、`exports/collect/` に単一ZIPを出力。
 4. Current runtime behavior:
    1. The pipeline is ledger_ref-only.
    2. `$yayoi-replacer` includes client_cache incremental update and lexicon candidate autogrow from `ledger_ref` before replacement.
