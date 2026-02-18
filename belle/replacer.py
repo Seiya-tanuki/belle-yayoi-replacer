@@ -1,6 +1,7 @@
 ﻿# -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import csv as csv_lib
 import json
 import math
 import hashlib
@@ -351,45 +352,56 @@ def replace_yayoi_csv(
     # Write CSV
     write_yayoi_csv(csv, out_path)
 
-    # Review report CSV (UTF-8 for readability)
+    # Review report CSV (UTF-8 BOM for Excel)
     if artifact_prefix:
         report_path = get_review_report_path(run_dir, artifact_prefix)
         manifest_path = get_input_manifest_path(run_dir, artifact_prefix)
     else:
         report_path = run_dir / f"{in_path.stem}_review_report.csv"
         manifest_path = run_dir / f"{in_path.stem}_manifest.json"
-    report_lines = []
+    report_path.parent.mkdir(parents=True, exist_ok=True)
     header = [
-        "row_index_1b","summary","debit_before","debit_after","changed",
-        "evidence_type","confidence","priority",
-        "t_number","vendor_key","category_key","category_label",
-        "lexicon_quality","matched_needle","is_learned_signal","reasons"
+        "row_index_1b",
+        "summary",
+        "debit_before",
+        "debit_after",
+        "changed",
+        "evidence_type",
+        "confidence",
+        "priority",
+        "t_number",
+        "vendor_key",
+        "category_key",
+        "category_label",
+        "lexicon_quality",
+        "matched_needle",
+        "is_learned_signal",
+        "reasons",
     ]
-    report_lines.append(",".join(header))
-    def esc(s: str) -> str:
-        s = s.replace('"','""')
-        return f'"{s}"'
-    for d in decisions:
-        rowvals = [
-            str(d.row_index_1b),
-            esc(d.summary),
-            esc(d.debit_before),
-            esc(d.debit_after),
-            "1" if d.changed else "0",
-            d.evidence_type,
-            f"{d.confidence:.4f}",
-            d.priority,
-            d.t_number or "",
-            d.vendor_key or "",
-            d.category_key or "",
-            d.category_label or "",
-            d.lexicon_quality or "",
-            d.matched_needle or "",
-            "1" if d.is_learned_signal else "0",
-            esc(" | ".join(d.reasons)),
-        ]
-        report_lines.append(",".join(rowvals))
-    report_path.write_text("\n".join(report_lines) + "\n", encoding="utf-8")
+    with report_path.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv_lib.writer(f, dialect="excel", lineterminator="\r\n", quoting=csv_lib.QUOTE_MINIMAL)
+        writer.writerow(header)
+        for d in decisions:
+            writer.writerow(
+                [
+                    str(d.row_index_1b),
+                    d.summary,
+                    d.debit_before,
+                    d.debit_after,
+                    "1" if d.changed else "0",
+                    d.evidence_type,
+                    f"{d.confidence:.4f}",
+                    d.priority,
+                    d.t_number or "",
+                    d.vendor_key or "",
+                    d.category_key or "",
+                    d.category_label or "",
+                    d.lexicon_quality or "",
+                    d.matched_needle or "",
+                    "1" if d.is_learned_signal else "0",
+                    " | ".join(d.reasons),
+                ]
+            )
 
     # Manifest JSON
         # Manifest JSON
