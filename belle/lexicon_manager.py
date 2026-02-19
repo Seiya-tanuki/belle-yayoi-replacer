@@ -27,6 +27,7 @@ import time
 from contextlib import contextmanager
 from uuid import uuid4
 
+from .lines import is_line_implemented, validate_line_id
 from .ingest import ingest_csv_dir, load_manifest_strict, mark_ingested_entries_processed
 from .io_atomic import atomic_write_bytes, atomic_write_text
 from .lexicon import Lexicon, match_summary
@@ -34,6 +35,9 @@ from .paths import (
     get_artifacts_telemetry_dir,
     get_client_root,
     get_label_queue_lock_path,
+    get_legacy_label_queue_lock_path,
+    get_legacy_lexicon_pending_dir,
+    get_lexicon_pending_dir,
     get_ledger_ref_ingest_dir,
     get_ledger_ref_ingested_path,
     resolve_ledger_ref_stored_path,
@@ -584,6 +588,8 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
     processed_version: Optional[str] = None,
     lock_timeout_sec: int = 120,
     lock_stale_sec: int = 120,
+    line_id: Optional[str] = None,
+    client_line_id: Optional[str] = None,
 ) -> LexiconAutogrowSummary:
     """
     Strict autogrow path used by yayoi-replacer and lexicon-extract.
@@ -595,15 +601,28 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
       4) queue/state write
       5) manifest marker write (same lock scope)
     """
-    client_dir = get_client_root(repo_root, client_id)
+    if line_id is not None:
+        line_id = validate_line_id(line_id)
+        if not is_line_implemented(line_id):
+            raise ValueError(f"line is unimplemented in Phase 1: {line_id}")
+    if client_line_id is not None:
+        client_line_id = validate_line_id(client_line_id)
+        if not is_line_implemented(client_line_id):
+            raise ValueError(f"line is unimplemented in Phase 1: {client_line_id}")
+
+    client_dir = get_client_root(repo_root, client_id, line_id=client_line_id)
     ledger_ref_inbox_dir = client_dir / "inputs" / "ledger_ref"
-    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id)
-    manifest_path = get_ledger_ref_ingested_path(repo_root, client_id)
-    pending_dir = repo_root / "lexicon" / "pending"
+    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id, line_id=client_line_id)
+    manifest_path = get_ledger_ref_ingested_path(repo_root, client_id, line_id=client_line_id)
+    if line_id is None:
+        pending_dir = get_legacy_lexicon_pending_dir(repo_root)
+        lock_path = get_legacy_label_queue_lock_path(repo_root)
+    else:
+        pending_dir = get_lexicon_pending_dir(repo_root, line_id)
+        lock_path = get_label_queue_lock_path(repo_root, line_id)
     queue_csv_path = pending_dir / "label_queue.csv"
     queue_state_path = pending_dir / "label_queue_state.json"
-    lock_path = get_label_queue_lock_path(repo_root)
-    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id)
+    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_line_id)
     telemetry_path = telemetry_dir / "lexicon_autogrow_latest.json"
 
     ensure_pending_workspace(
@@ -647,7 +666,7 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
             continue
         if ent.get("processed_to_label_queue_at"):
             continue
-        csv_path = resolve_ledger_ref_stored_path(repo_root, client_id, ent)
+        csv_path = resolve_ledger_ref_stored_path(repo_root, client_id, ent, line_id=client_line_id)
         if csv_path is None:
             warnings.append(f"missing_stored_path: sha={sha}")
             continue

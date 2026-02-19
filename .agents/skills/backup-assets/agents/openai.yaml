@@ -1,5 +1,5 @@
 interface:
   display_name: "Asset backup"
-  short_description: "Backup clients and lexicon/pending into exports/backups with MANIFEST"
+  short_description: "Backup clients and lexicon/receipt/pending into exports/backups with MANIFEST"
 policy:
   allow_implicit_invocation: false

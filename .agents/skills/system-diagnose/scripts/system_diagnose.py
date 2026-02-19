@@ -2,16 +2,24 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import argparse
 import hashlib
 import os
 import platform
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Sequence
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from belle.lines import is_line_implemented, validate_line_id
 
 
 @dataclass
@@ -145,20 +153,21 @@ def _parse_porcelain_paths(stdout: str) -> List[str]:
     return paths
 
 
-def _detect_replacer_config(repo_root: Path) -> tuple[Path | None, str]:
-    exact = repo_root / "rulesets" / "replacer_config_v1_15.json"
+def _detect_replacer_config(repo_root: Path, line_id: str) -> tuple[Path | None, str]:
+    line_rulesets = repo_root / "rulesets" / line_id
+    exact = line_rulesets / "replacer_config_v1_15.json"
     if exact.exists():
-        return exact, "found active default: replacer_config_v1_15.json"
+        return exact, f"found active default: rulesets/{line_id}/replacer_config_v1_15.json"
 
-    readme = repo_root / "rulesets" / "README.md"
+    readme = line_rulesets / "README.md"
     if readme.exists():
         text = readme.read_text(encoding="utf-8", errors="replace")
         for match in re.findall(r"`(replacer_config_[^`]+\.json)`", text):
-            candidate = repo_root / "rulesets" / match
+            candidate = line_rulesets / match
             if candidate.exists():
-                return candidate, f"detected via rulesets/README.md: {match}"
+                return candidate, f"detected via rulesets/{line_id}/README.md: {match}"
 
-    candidates = sorted((repo_root / "rulesets").glob("replacer_config_v*.json"))
+    candidates = sorted(line_rulesets.glob("replacer_config_v*.json"))
     if candidates:
         latest = candidates[-1]
         return latest, f"fallback to latest versioned config: {latest.name}"
@@ -181,13 +190,13 @@ def _probe_write_delete(target_dir: Path) -> tuple[bool, str]:
         return False, f"{type(exc).__name__}: {exc}"
 
 
-def _ensure_required_dirs(repo_root: Path) -> List[Path]:
+def _ensure_required_dirs(repo_root: Path, line_id: str) -> List[Path]:
     required_rel_paths = [
         Path("exports"),
         Path("exports/system_diagnose"),
         Path("exports/gpts_lexicon_review"),
         Path("exports/backups"),
-        Path("lexicon/pending/locks"),
+        Path("lexicon") / line_id / "pending" / "locks",
     ]
     created: List[Path] = []
     for rel_path in required_rel_paths:
@@ -259,9 +268,22 @@ def _default_next_steps(go: bool, risks: Sequence[Risk]) -> List[str]:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--line", default="receipt", help="Document processing line_id")
+    args = parser.parse_args()
+
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1")
+        return 2
+
     repo_root = Path(__file__).resolve().parents[4]
     audit_time = _utc_now()
-    provisioned_dirs = _ensure_required_dirs(repo_root)
+    provisioned_dirs = _ensure_required_dirs(repo_root, line_id)
     command_logs: Dict[str, CommandResult] = {}
     hard_checks: List[CheckResult] = []
     soft_checks: List[CheckResult] = []
@@ -388,11 +410,16 @@ def main() -> int:
 
     # C) Required files / dirs
     required_paths = [
-        ("C1", "lexicon/lexicon.json exists", repo_root / "lexicon" / "lexicon.json", False),
+        (
+            "C1",
+            f"lexicon/{line_id}/lexicon.json exists",
+            repo_root / "lexicon" / line_id / "lexicon.json",
+            False,
+        ),
         (
             "C2",
-            "defaults/category_defaults.json exists",
-            repo_root / "defaults" / "category_defaults.json",
+            f"defaults/{line_id}/category_defaults.json exists",
+            repo_root / "defaults" / line_id / "category_defaults.json",
             False,
         ),
         ("C4", "spec/FILE_LAYOUT.md exists", repo_root / "spec" / "FILE_LAYOUT.md", False),
@@ -458,10 +485,10 @@ def main() -> int:
             "Restore required repository files/directories from source control.",
         )
 
-    detected_cfg, cfg_evidence = _detect_replacer_config(repo_root)
+    detected_cfg, cfg_evidence = _detect_replacer_config(repo_root, line_id)
     add_hard(
         "C3",
-        "rulesets/replacer_config_v1_15.json or current configured replacer config exists",
+        f"rulesets/{line_id}/replacer_config_v1_15.json or current configured replacer config exists",
         detected_cfg is not None and detected_cfg.exists(),
         cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
         "Add the active replacer config back under rulesets/ and align references.",
@@ -508,9 +535,9 @@ def main() -> int:
 
     # F) Write permissions (create+delete tiny file)
     for check_id, rel in [
-        ("F1", Path("lexicon/pending/locks")),
+        ("F1", Path("lexicon") / line_id / "pending" / "locks"),
         ("F2", Path("exports")),
-        ("F3", Path("clients/TEMPLATE/artifacts/ingest")),
+        ("F3", Path("clients") / "TEMPLATE" / "lines" / line_id / "artifacts" / "ingest"),
     ]:
         ok, message = _probe_write_delete(repo_root / rel)
         add_hard(
@@ -586,6 +613,7 @@ def main() -> int:
     report_lines.append("")
     report_lines.append("## 1) Executive Summary")
     report_lines.append(f"- Audit time (UTC): {_utc_iso(audit_time)}")
+    report_lines.append(f"- Line ID: {line_id}")
     report_lines.append(f"- HEAD commit: {head_commit or 'unknown'}")
     report_lines.append(f"- Go/No-Go: {go_text}")
     report_lines.append(f"- Provisioned dirs (created now): {len(provisioned_dirs)}")

@@ -108,9 +108,9 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             client_id = "C1"
             ledger_ref_file = repo_root / "clients" / client_id / "inputs" / "ledger_ref" / "batch1.csv"
             _write_yayoi_row(ledger_ref_file, summary="ACME SHOP / test")
-            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
 
-            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
 
             first = ensure_lexicon_candidates_updated_from_ledger_ref(
@@ -121,10 +121,11 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                 ingest_inputs=True,
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
+                line_id="receipt",
             )
             self.assertEqual(first.processed_files, 1)
 
-            queue_csv = repo_root / "lexicon" / "pending" / "label_queue.csv"
+            queue_csv = repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv"
             first_count = _read_queue_count(queue_csv, "ACMESHOP")
             self.assertEqual(first_count, 1)
 
@@ -136,6 +137,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                 ingest_inputs=True,
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
+                line_id="receipt",
             )
             self.assertEqual(second.processed_files, 0)
             second_count = _read_queue_count(queue_csv, "ACMESHOP")
@@ -152,11 +154,11 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
             _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="FAILURE SHOP / test")
 
-            queue_csv = repo_root / "lexicon" / "pending" / "label_queue.csv"
-            queue_state = repo_root / "lexicon" / "pending" / "label_queue_state.json"
+            queue_csv = repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv"
+            queue_state = repo_root / "lexicon" / "receipt" / "pending" / "label_queue_state.json"
             write_label_queue(queue_csv, {"BASEKEY": _build_queue_row("BASEKEY", count_total=7)})
             save_label_queue_state(
                 queue_state,
@@ -172,7 +174,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             queue_before = queue_csv.read_bytes()
             state_before = queue_state.read_bytes()
 
-            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
             real_replace = os.replace
 
@@ -191,6 +193,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                         ingest_inputs=False,
                         lock_timeout_sec=5,
                         lock_stale_sec=5,
+                        line_id="receipt",
                     )
 
             self.assertEqual(queue_before, queue_csv.read_bytes())
@@ -202,10 +205,10 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
             manifest_path = _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="MARKER SHOP / test")
 
-            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
 
             with mock.patch(
@@ -221,6 +224,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                         ingest_inputs=False,
                         lock_timeout_sec=5,
                         lock_stale_sec=5,
+                        line_id="receipt",
                     )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -277,7 +281,7 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
         repo_root = Path(__file__).resolve().parents[1]
         client_id = f"TEST_FAIL_CLOSED_{uuid4().hex[:8]}"
         client_dir = repo_root / "clients" / client_id
-        lock_path = repo_root / "lexicon" / "pending" / "locks" / "label_queue.lock"
+        lock_path = repo_root / "lexicon" / "receipt" / "pending" / "locks" / "label_queue.lock"
         lock_backup: Path | None = None
 
         try:
@@ -301,6 +305,8 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
                     str(repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"),
                     "--client",
                     client_id,
+                    "--line",
+                    "receipt",
                 ],
                 cwd=repo_root,
                 env=env,

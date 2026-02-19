@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import argparse
 import re
 import shutil
 import sys
@@ -45,30 +46,30 @@ def validate_and_canonicalize(raw_name: str) -> ValidationResult:
     trimmed = original.strip()
 
     if not trimmed:
-        return ValidationResult(False, original, trimmed, "", "顧客名が空です。")
+        return ValidationResult(False, original, trimmed, "", "CLIENT_ID は必須です。")
     if len(trimmed) > 64:
-        return ValidationResult(False, original, trimmed, "", "顧客名は64文字以内で入力してください。")
+        return ValidationResult(False, original, trimmed, "", "CLIENT_ID は64文字以内にしてください。")
     if _contains_control_chars(trimmed):
-        return ValidationResult(False, original, trimmed, "", "制御文字は使用できません。")
+        return ValidationResult(False, original, trimmed, "", "制御文字は使えません。")
 
     forbidden_in_input = sorted({ch for ch in trimmed if ch in FORBIDDEN_CHARS})
     if forbidden_in_input:
         chars = " ".join(forbidden_in_input)
-        return ValidationResult(False, original, trimmed, "", f"Windows禁止文字が含まれています: {chars}")
+        return ValidationResult(False, original, trimmed, "", f"Windows 禁止文字が含まれています: {chars}")
 
     if trimmed.endswith(".") or trimmed.endswith(" "):
-        return ValidationResult(False, original, trimmed, "", "末尾のドット・スペースは使用できません。")
+        return ValidationResult(False, original, trimmed, "", "末尾のドット/スペースは使えません。")
     if trimmed in {".", ".."}:
-        return ValidationResult(False, original, trimmed, "", "`.` と `..` は使用できません。")
+        return ValidationResult(False, original, trimmed, "", "`.` と `..` は使えません。")
     if _is_reserved_device_name(trimmed):
-        return ValidationResult(False, original, trimmed, "", "Windows予約デバイス名は使用できません。")
+        return ValidationResult(False, original, trimmed, "", "Windows 予約デバイス名は使えません。")
 
     normalized = unicodedata.normalize("NFKC", trimmed)
     canonical = _collapse_underscores(normalized.replace(" ", "_"))
     if not canonical:
-        return ValidationResult(False, original, trimmed, "", "正規化後に空文字になりました。")
+        return ValidationResult(False, original, trimmed, "", "正規化後の CLIENT_ID が空になりました。")
     if len(canonical) > 64:
-        return ValidationResult(False, original, trimmed, "", "正規化後の顧客名が64文字を超えています。")
+        return ValidationResult(False, original, trimmed, "", "正規化後の CLIENT_ID が64文字を超えています。")
     if _contains_control_chars(canonical):
         return ValidationResult(False, original, trimmed, "", "正規化後に制御文字が含まれています。")
 
@@ -77,11 +78,11 @@ def validate_and_canonicalize(raw_name: str) -> ValidationResult:
         chars = " ".join(forbidden_in_canonical)
         return ValidationResult(False, original, trimmed, "", f"正規化後に禁止文字が含まれています: {chars}")
     if canonical.endswith(".") or canonical.endswith(" "):
-        return ValidationResult(False, original, trimmed, "", "正規化後の末尾ドット・スペースは使用できません。")
+        return ValidationResult(False, original, trimmed, "", "正規化後の末尾ドット/スペースは使えません。")
     if canonical in {".", ".."}:
-        return ValidationResult(False, original, trimmed, "", "正規化後の名前が `.` または `..` です。")
+        return ValidationResult(False, original, trimmed, "", "正規化後が `.` または `..` です。")
     if _is_reserved_device_name(canonical):
-        return ValidationResult(False, original, trimmed, "", "正規化後の名前がWindows予約デバイス名です。")
+        return ValidationResult(False, original, trimmed, "", "正規化後が Windows 予約デバイス名です。")
 
     simple_change = _collapse_underscores(trimmed.replace(" ", "_"))
     substantial_change = canonical != simple_change
@@ -96,26 +97,49 @@ def _display_path(path: Path, repo_root: Path) -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--line", default="receipt", help="Document processing line_id")
+    args = parser.parse_args()
+
     repo_root = Path(__file__).resolve().parents[3]
     clients_dir = repo_root / "clients"
     template_dir = clients_dir / "TEMPLATE"
     legacy_tenants_dir = repo_root / "tenants"
 
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from belle.defaults import generate_full_category_overrides, load_category_defaults
+    from belle.lexicon import load_lexicon
+    from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+    from belle.paths import get_category_overrides_path
+
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1")
+        return 2
+
     if legacy_tenants_dir.exists():
-        print("[ERROR] `tenants/` が見つかりました。`clients/` に移行してください。")
+        print("[ERROR] `tenants/` が見つかりました。`clients/` へ移行してください。")
         return 2
     if not template_dir.exists() or not template_dir.is_dir():
         print("[ERROR] `clients/TEMPLATE/` が見つかりません。")
         return 2
 
+    template_line_root = template_dir / "lines" / line_id
     required_dirs = [
-        template_dir / "config",
-        template_dir / "outputs" / "runs",
-        template_dir / "artifacts" / "cache",
-        template_dir / "artifacts" / "ingest",
-        template_dir / "artifacts" / "telemetry",
-        template_dir / "inputs" / "kari_shiwake",
-        template_dir / "inputs" / "ledger_ref",
+        template_line_root / "config",
+        template_line_root / "outputs" / "runs",
+        template_line_root / "artifacts" / "cache",
+        template_line_root / "artifacts" / "ingest",
+        template_line_root / "artifacts" / "ingest" / "ledger_ref",
+        template_line_root / "artifacts" / "ingest" / "kari_shiwake",
+        template_line_root / "artifacts" / "telemetry",
+        template_line_root / "inputs" / "kari_shiwake",
+        template_line_root / "inputs" / "ledger_ref",
     ]
     missing_required = [p for p in required_dirs if not p.exists()]
     if missing_required:
@@ -124,10 +148,10 @@ def main() -> int:
             print(f"  - {_display_path(p, repo_root)}")
         return 2
 
-    print("新しい顧客ディレクトリを作成します。")
+    print("新しいクライアントディレクトリを作成します。")
     print("`clients/TEMPLATE/` を `clients/<CLIENT_ID>/` にコピーします。")
     print("スペースは `_` に正規化されます。")
-    user_input = input("作成する顧客名 (CLIENT_ID): ")
+    user_input = input("作成する名前(CLIENT_ID): ")
     result = validate_and_canonicalize(user_input)
 
     if not result.ok:
@@ -151,17 +175,14 @@ def main() -> int:
         return 1
 
     shutil.copytree(template_dir, destination)
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    from belle.defaults import generate_full_category_overrides, load_category_defaults
-    from belle.lexicon import load_lexicon
-    from belle.paths import get_category_overrides_path
+    (destination / "config").mkdir(parents=True, exist_ok=True)
 
     try:
-        lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
-        global_defaults = load_category_defaults(repo_root / "defaults" / "category_defaults.json")
+        assets = line_asset_paths(repo_root, line_id)
+        lex = load_lexicon(assets["lexicon_path"])
+        global_defaults = load_category_defaults(assets["defaults_path"])
         generate_full_category_overrides(
-            path=get_category_overrides_path(repo_root, result.canonical),
+            path=get_category_overrides_path(repo_root, result.canonical, line_id=line_id),
             client_id=result.canonical,
             global_defaults=global_defaults,
             lexicon_category_keys=set(lex.categories_by_key.keys()),
@@ -173,10 +194,9 @@ def main() -> int:
 
     created_path = _display_path(destination, repo_root)
     print(f"[OK] 作成完了: {created_path}")
-    print("- 入力ファイル配置先: "
-          f"{created_path}/inputs/kari_shiwake/, {created_path}/inputs/ledger_ref/")
-    print("- 次に使うスキル: $client-cache-builder, $yayoi-replacer, $lexicon-extract, $lexicon-apply")
-    print(f"- クライアント個別設定: {created_path}/config/category_overrides.json")
+    print("- 置換入力: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
+    print("- 参照入力: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")
+    print("- 上書き設定: clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json")
     return 0
 
 

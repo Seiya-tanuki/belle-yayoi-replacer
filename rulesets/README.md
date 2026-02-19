@@ -2,7 +2,7 @@
 
 This folder contains versioned configuration snapshots used by deterministic scripts.
 
-- `replacer_config_v1_15.json` is the active default configuration for the current suite.
+- `receipt/replacer_config_v1_15.json` is the active default configuration in Phase 1.
 - Legacy GPTs ruleset is kept under `legacy/` for audit/comparison.
 
 Notes:

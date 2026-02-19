@@ -13,18 +13,30 @@ import sys
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List, Tuple
 
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
-from belle.paths import get_label_queue_lock_path
-
+from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+from belle.paths import get_label_queue_lock_path as _line_label_queue_lock_path
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
-ALLOWED_PREFIXES = ("clients/", "lexicon/pending/")
 TEMPLATE_CLIENT_NAME = "TEMPLATE"
+LEGACY_PENDING_PREFIX = "lexicon/pending/"
+
+
+def get_label_queue_lock_path(repo_root: Path, line_id: str = "receipt") -> Path:
+    return _line_label_queue_lock_path(repo_root, line_id)
+
+
+def _line_pending_prefix(line_id: str) -> str:
+    return f"lexicon/{line_id}/pending/"
+
+
+def _allowed_prefixes(line_id: str) -> tuple[str, str, str]:
+    return ("clients/", _line_pending_prefix(line_id), LEGACY_PENDING_PREFIX)
 
 
 def _utc_now() -> datetime:
@@ -99,18 +111,31 @@ def _normalize_member_name(name: str, *, is_dir: bool) -> str:
     return normalized
 
 
-def _is_allowed_asset_path(path: str) -> bool:
-    return any(path.startswith(prefix) for prefix in ALLOWED_PREFIXES)
+def _is_allowed_asset_path(path: str, *, line_id: str) -> bool:
+    return any(path.startswith(prefix) for prefix in _allowed_prefixes(line_id))
 
 
 def _dir_has_content(path: Path) -> bool:
     return path.exists() and any(path.iterdir())
 
 
-def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime) -> Tuple[str, Dict[str, int]]:
+def _map_pending_prefix_from_zip(rel_path: str, *, line_id: str) -> str:
+    if rel_path.startswith(LEGACY_PENDING_PREFIX):
+        tail = rel_path[len(LEGACY_PENDING_PREFIX):]
+        return _line_pending_prefix(line_id) + tail
+    return rel_path
+
+
+def _write_assets_zip(
+    tmp_zip_path: Path,
+    repo_root: Path,
+    exported_at: datetime,
+    *,
+    line_id: str,
+) -> Tuple[str, Dict[str, int]]:
     clients_dir = repo_root / "clients"
-    pending_dir = repo_root / "lexicon" / "pending"
-    lock_path = get_label_queue_lock_path(repo_root)
+    pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
+    lock_path = get_label_queue_lock_path(repo_root, line_id)
 
     files_manifest: List[Dict[str, object]] = []
     total_bytes = 0
@@ -159,13 +184,14 @@ def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime
             "schema": MANIFEST_SCHEMA,
             "exported_at_utc": _utc_iso(exported_at),
             "git_head": _read_git_head(repo_root),
+            "line_id": line_id,
             "files": files_manifest,
             "counts": {
                 "files": len(files_manifest),
                 "clients": count_clients,
                 "total_bytes": total_bytes,
             },
-            "notes_ja": "clients と lexicon/pending の現場アセットを固定スコープで退避したバックアップです。",
+            "notes_ja": f"clients と lexicon/{line_id}/pending の現場アセットを固定スコープで退避したバックアップです。",
         }
         manifest_json = json.dumps(manifest_obj, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         zf.writestr("MANIFEST.json", manifest_json.encode("utf-8"))
@@ -173,11 +199,11 @@ def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime
     return manifest_json, manifest_obj["counts"]
 
 
-def _create_pre_restore_snapshot(repo_root: Path, backup_dir: Path) -> Path:
+def _create_pre_restore_snapshot(repo_root: Path, backup_dir: Path, *, line_id: str) -> Path:
     exported_at = _utc_now()
     ts = _utc_compact(exported_at)
     tmp_zip_path = backup_dir / f".pre_restore_{ts}_{os.getpid()}.zip.tmp"
-    manifest_json, _ = _write_assets_zip(tmp_zip_path, repo_root, exported_at)
+    manifest_json, _ = _write_assets_zip(tmp_zip_path, repo_root, exported_at, line_id=line_id)
     sha8 = hashlib.sha256(manifest_json.encode("utf-8")).hexdigest()[:8]
     zip_name = f"pre_restore_{ts}_{sha8}.zip"
     final_zip_path = backup_dir / zip_name
@@ -187,7 +213,8 @@ def _create_pre_restore_snapshot(repo_root: Path, backup_dir: Path) -> Path:
     return final_zip_path
 
 
-def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
+def _validate_backup_zip(zip_path: Path, *, line_id: str) -> Dict[str, int]:
+    pending_prefix = _line_pending_prefix(line_id)
     with zipfile.ZipFile(zip_path, mode="r") as zf:
         manifest_info: zipfile.ZipInfo | None = None
         zip_dirs: set[str] = set()
@@ -200,7 +227,7 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
                     raise ValueError("MANIFEST.json must be a file")
                 manifest_info = info
                 continue
-            if not _is_allowed_asset_path(normalized):
+            if not _is_allowed_asset_path(normalized, line_id=line_id):
                 raise ValueError(f"unexpected path in zip: {normalized}")
             if info.is_dir():
                 zip_dirs.add(normalized)
@@ -213,13 +240,13 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
             raise ValueError("MANIFEST.json not found")
 
         has_clients_root = "clients/" in zip_dirs or any(p.startswith("clients/") for p in zip_files)
-        has_pending_root = "lexicon/pending/" in zip_dirs or any(
-            p.startswith("lexicon/pending/") for p in zip_files
+        has_pending_root = pending_prefix in zip_dirs or LEGACY_PENDING_PREFIX in zip_dirs or any(
+            p.startswith(pending_prefix) or p.startswith(LEGACY_PENDING_PREFIX) for p in zip_files
         )
         if not has_clients_root:
             raise ValueError("clients/ root missing in zip")
         if not has_pending_root:
-            raise ValueError("lexicon/pending/ root missing in zip")
+            raise ValueError(f"{pending_prefix} (or legacy lexicon/pending/) root missing in zip")
 
         try:
             manifest_obj = json.loads(zf.read(manifest_info).decode("utf-8"))
@@ -246,7 +273,7 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
             if not isinstance(raw_path, str):
                 raise ValueError(f"manifest files[{idx}].path must be a string")
             normalized_path = _normalize_member_name(raw_path, is_dir=False)
-            if not _is_allowed_asset_path(normalized_path):
+            if not _is_allowed_asset_path(normalized_path, line_id=line_id):
                 raise ValueError(f"manifest files[{idx}] path out of scope: {normalized_path}")
             if not isinstance(raw_sha, str) or not hex64.match(raw_sha):
                 raise ValueError(f"manifest files[{idx}].sha256 must be hex-64")
@@ -303,7 +330,7 @@ def _validate_backup_zip(zip_path: Path) -> Dict[str, int]:
         }
 
 
-def _extract_to_staging(zip_path: Path, staging_dir: Path) -> None:
+def _extract_to_staging(zip_path: Path, staging_dir: Path, *, line_id: str) -> None:
     if staging_dir.exists():
         shutil.rmtree(staging_dir)
     staging_dir.mkdir(parents=True, exist_ok=False)
@@ -317,10 +344,11 @@ def _extract_to_staging(zip_path: Path, staging_dir: Path) -> None:
         for normalized, info in sorted(normalized_infos, key=lambda row: row[0]):
             if normalized == "MANIFEST.json":
                 continue
-            if not _is_allowed_asset_path(normalized):
+            if not _is_allowed_asset_path(normalized, line_id=line_id):
                 continue
 
-            target = staging_dir / Path(normalized.rstrip("/"))
+            mapped_rel = _map_pending_prefix_from_zip(normalized, line_id=line_id)
+            target = staging_dir / Path(mapped_rel.rstrip("/"))
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue
@@ -330,7 +358,7 @@ def _extract_to_staging(zip_path: Path, staging_dir: Path) -> None:
                 shutil.copyfileobj(src, dst)
 
     (staging_dir / "clients").mkdir(parents=True, exist_ok=True)
-    (staging_dir / "lexicon" / "pending").mkdir(parents=True, exist_ok=True)
+    (staging_dir / "lexicon" / line_id / "pending").mkdir(parents=True, exist_ok=True)
 
 
 def _move_path(src: Path, dst: Path) -> None:
@@ -388,13 +416,19 @@ def _restore_clients_with_swap(*, repo_root: Path, stage_clients: Path, restore_
         raise
 
 
-def _restore_pending_with_swap(*, repo_root: Path, stage_pending: Path, restore_old_dir: Path) -> None:
-    dest_pending = repo_root / "lexicon" / "pending"
+def _restore_pending_with_swap(
+    *,
+    repo_root: Path,
+    stage_pending: Path,
+    restore_old_dir: Path,
+    line_id: str = "receipt",
+) -> None:
+    dest_pending = line_asset_paths(repo_root, line_id)["pending_dir"]
     dest_pending.mkdir(parents=True, exist_ok=True)
     (dest_pending / "locks").mkdir(parents=True, exist_ok=True)
     restore_old_dir.mkdir(parents=True, exist_ok=True)
 
-    lock_path = get_label_queue_lock_path(repo_root)
+    lock_path = get_label_queue_lock_path(repo_root, line_id)
     moved_old: List[Tuple[Path, Path]] = []
     moved_new: List[Path] = []
 
@@ -457,13 +491,13 @@ def _restore_pending_with_swap(*, repo_root: Path, stage_pending: Path, restore_
             raise
 
 
-def _apply_restore(repo_root: Path, staging_dir: Path, restore_old_root: Path) -> None:
+def _apply_restore(repo_root: Path, staging_dir: Path, restore_old_root: Path, *, line_id: str = "receipt") -> None:
     stage_clients = staging_dir / "clients"
-    stage_pending = staging_dir / "lexicon" / "pending"
+    stage_pending = staging_dir / "lexicon" / line_id / "pending"
     if not stage_clients.exists():
         raise RuntimeError("staging missing clients/")
     if not stage_pending.exists():
-        raise RuntimeError("staging missing lexicon/pending/")
+        raise RuntimeError(f"staging missing lexicon/{line_id}/pending/")
 
     restore_old_root.mkdir(parents=True, exist_ok=True)
     _restore_clients_with_swap(
@@ -474,13 +508,15 @@ def _apply_restore(repo_root: Path, staging_dir: Path, restore_old_root: Path) -
     _restore_pending_with_swap(
         repo_root=repo_root,
         stage_pending=stage_pending,
-        restore_old_dir=restore_old_root / "lexicon_pending",
+        restore_old_dir=restore_old_root / f"lexicon_{line_id}_pending",
+        line_id=line_id,
     )
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Restore field assets from a fixed-scope backup ZIP.")
     parser.add_argument("--zip", required=True, dest="zip_path", help="Path to backup ZIP")
+    parser.add_argument("--line", default="receipt", help="Document processing line_id")
     parser.add_argument(
         "--force",
         action="store_true",
@@ -495,6 +531,15 @@ def main() -> int:
     backup_dir = repo_root / "exports" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
+        return 2
+
     zip_path = Path(args.zip_path).expanduser()
     if not zip_path.is_absolute():
         zip_path = (Path.cwd() / zip_path).resolve()
@@ -507,13 +552,13 @@ def main() -> int:
         return 1
 
     try:
-        restored_counts = _validate_backup_zip(zip_path)
+        restored_counts = _validate_backup_zip(zip_path, line_id=line_id)
     except Exception as exc:
         print(f"[ERROR] backup validation failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
 
     clients_dir = repo_root / "clients"
-    pending_dir = repo_root / "lexicon" / "pending"
+    pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
     overwrite_needed = _dir_has_content(clients_dir) or _dir_has_content(pending_dir)
 
     if overwrite_needed and not args.force:
@@ -525,7 +570,7 @@ def main() -> int:
     pre_restore_snapshot: Path | None = None
     if overwrite_needed:
         try:
-            pre_restore_snapshot = _create_pre_restore_snapshot(repo_root, backup_dir)
+            pre_restore_snapshot = _create_pre_restore_snapshot(repo_root, backup_dir, line_id=line_id)
         except TimeoutError:
             print("[ERROR] failed to acquire lock for pre-restore snapshot", file=sys.stderr)
             return 1
@@ -537,8 +582,8 @@ def main() -> int:
     staging_dir = backup_dir / f"restore_staging_{stage_ts}_{os.getpid()}"
     restore_old_dir = backup_dir / f"restore_old_{stage_ts}_{os.getpid()}"
     try:
-        _extract_to_staging(zip_path, staging_dir)
-        _apply_restore(repo_root, staging_dir, restore_old_dir)
+        _extract_to_staging(zip_path, staging_dir, line_id=line_id)
+        _apply_restore(repo_root, staging_dir, restore_old_dir, line_id=line_id)
     except Exception as exc:
         print(f"[ERROR] restore failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
@@ -566,4 +611,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

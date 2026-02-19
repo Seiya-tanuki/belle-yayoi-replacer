@@ -6,77 +6,105 @@ from pathlib import Path
 from secrets import token_hex
 from typing import Any, Dict, Optional, Tuple
 
+from .lines import validate_line_id
 
-def get_client_root(repo_root: Path, client_id: str) -> Path:
+
+def _client_base_root(repo_root: Path, client_id: str) -> Path:
     return repo_root / "clients" / client_id
 
 
-def get_client_config_dir(repo_root: Path, client_id: str) -> Path:
-    return get_client_root(repo_root, client_id) / "config"
+def _resolve_line_id(line_id: Optional[str]) -> Optional[str]:
+    if line_id is None:
+        return None
+    return validate_line_id(line_id)
 
 
-def get_category_overrides_path(repo_root: Path, client_id: str) -> Path:
-    return get_client_config_dir(repo_root, client_id) / "category_overrides.json"
+def get_client_root(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    line = _resolve_line_id(line_id)
+    if line is None:
+        return _client_base_root(repo_root, client_id)
+    return _client_base_root(repo_root, client_id) / "lines" / line
 
 
-def get_outputs_dir(repo_root: Path, client_id: str) -> Path:
-    return get_client_root(repo_root, client_id) / "outputs"
+def get_client_config_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_client_root(repo_root, client_id, line_id=line_id) / "config"
 
 
-def get_outputs_runs_dir(repo_root: Path, client_id: str) -> Path:
-    return get_outputs_dir(repo_root, client_id) / "runs"
+def get_category_overrides_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_client_config_dir(repo_root, client_id, line_id=line_id) / "category_overrides.json"
 
 
-def get_latest_path(repo_root: Path, client_id: str) -> Path:
-    return get_outputs_dir(repo_root, client_id) / "LATEST.txt"
+def get_outputs_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_client_root(repo_root, client_id, line_id=line_id) / "outputs"
 
 
-def get_artifacts_root(repo_root: Path, client_id: str) -> Path:
-    return get_client_root(repo_root, client_id) / "artifacts"
+def get_outputs_runs_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_outputs_dir(repo_root, client_id, line_id=line_id) / "runs"
 
 
-def get_artifacts_cache_dir(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_root(repo_root, client_id) / "cache"
+def get_latest_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_outputs_dir(repo_root, client_id, line_id=line_id) / "LATEST.txt"
 
 
-def get_artifacts_ingest_dir(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_root(repo_root, client_id) / "ingest"
+def get_artifacts_root(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_client_root(repo_root, client_id, line_id=line_id) / "artifacts"
 
 
-def get_artifacts_telemetry_dir(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_root(repo_root, client_id) / "telemetry"
+def get_artifacts_cache_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_root(repo_root, client_id, line_id=line_id) / "cache"
 
 
-def get_client_cache_path(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_cache_dir(repo_root, client_id) / "client_cache.json"
+def get_artifacts_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_root(repo_root, client_id, line_id=line_id) / "ingest"
 
 
-def get_ledger_ref_ingested_path(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref_ingested.json"
+def get_artifacts_telemetry_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_root(repo_root, client_id, line_id=line_id) / "telemetry"
 
 
-def get_ledger_ref_ingest_dir(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_ingest_dir(repo_root, client_id) / "ledger_ref"
+def get_client_cache_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_cache_dir(repo_root, client_id, line_id=line_id) / "client_cache.json"
 
 
-def get_kari_shiwake_ingest_dir(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_ingest_dir(repo_root, client_id) / "kari_shiwake"
+def get_ledger_ref_ingested_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "ledger_ref_ingested.json"
 
 
-def get_kari_shiwake_ingested_path(repo_root: Path, client_id: str) -> Path:
-    return get_artifacts_ingest_dir(repo_root, client_id) / "kari_shiwake_ingested.json"
+def get_ledger_ref_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "ledger_ref"
 
 
-def get_lexicon_pending_dir(repo_root: Path) -> Path:
+def get_kari_shiwake_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "kari_shiwake"
+
+
+def get_kari_shiwake_ingested_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "kari_shiwake_ingested.json"
+
+
+def get_legacy_lexicon_pending_dir(repo_root: Path) -> Path:
     return repo_root / "lexicon" / "pending"
 
 
-def get_lexicon_pending_locks_dir(repo_root: Path) -> Path:
-    return get_lexicon_pending_dir(repo_root) / "locks"
+def get_legacy_lexicon_pending_locks_dir(repo_root: Path) -> Path:
+    return get_legacy_lexicon_pending_dir(repo_root) / "locks"
 
 
-def get_label_queue_lock_path(repo_root: Path) -> Path:
-    return get_lexicon_pending_locks_dir(repo_root) / "label_queue.lock"
+def get_legacy_label_queue_lock_path(repo_root: Path) -> Path:
+    return get_legacy_lexicon_pending_locks_dir(repo_root) / "label_queue.lock"
+
+
+def get_lexicon_pending_dir(repo_root: Path, line_id: str) -> Path:
+    line = validate_line_id(line_id)
+    return repo_root / "lexicon" / line / "pending"
+
+
+def get_lexicon_pending_locks_dir(repo_root: Path, line_id: str) -> Path:
+    return get_lexicon_pending_dir(repo_root, line_id) / "locks"
+
+
+def get_label_queue_lock_path(repo_root: Path, line_id: str) -> Path:
+    return get_lexicon_pending_locks_dir(repo_root, line_id) / "label_queue.lock"
 
 
 def build_input_artifact_prefix(*, in_path: Path, input_index: int, run_id: str) -> str:
@@ -107,8 +135,9 @@ def make_run_dir(
     repo_root: Path,
     client_id: str,
     run_id: Optional[str] = None,
+    line_id: Optional[str] = None,
 ) -> Tuple[str, Path]:
-    runs_dir = get_outputs_runs_dir(repo_root, client_id)
+    runs_dir = get_outputs_runs_dir(repo_root, client_id, line_id=line_id)
     runs_dir.mkdir(parents=True, exist_ok=True)
 
     if run_id:
@@ -127,17 +156,22 @@ def make_run_dir(
     raise RuntimeError("Could not allocate unique RUN_ID after multiple attempts.")
 
 
-def ensure_client_system_dirs(repo_root: Path, client_id: str) -> None:
-    get_outputs_runs_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_cache_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
-    get_ledger_ref_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
-    get_kari_shiwake_ingest_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_telemetry_dir(repo_root, client_id).mkdir(parents=True, exist_ok=True)
+def ensure_client_system_dirs(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> None:
+    get_outputs_runs_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_cache_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    get_ledger_ref_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    get_kari_shiwake_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_telemetry_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
 
 
-def resolve_ledger_ref_stored_path(repo_root: Path, client_id: str, entry: Dict[str, Any]) -> Optional[Path]:
-    client_root = get_client_root(repo_root, client_id)
+def resolve_ledger_ref_stored_path(
+    repo_root: Path,
+    client_id: str,
+    entry: Dict[str, Any],
+    line_id: Optional[str] = None,
+) -> Optional[Path]:
+    client_root = get_client_root(repo_root, client_id, line_id=line_id)
     stored_relpath = str(entry.get("stored_relpath") or "").strip()
     if stored_relpath:
         return client_root / Path(stored_relpath)
@@ -146,7 +180,7 @@ def resolve_ledger_ref_stored_path(repo_root: Path, client_id: str, entry: Dict[
     if not stored_name:
         return None
 
-    ingest_candidate = get_ledger_ref_ingest_dir(repo_root, client_id) / stored_name
+    ingest_candidate = get_ledger_ref_ingest_dir(repo_root, client_id, line_id=line_id) / stored_name
     if ingest_candidate.exists():
         return ingest_candidate
 

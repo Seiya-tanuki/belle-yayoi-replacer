@@ -19,19 +19,20 @@ Deterministic toolchain for Yayoi 25-column import CSV replacement.
 
 ## Active inputs
 
-Under `clients/<CLIENT_ID>/inputs/`:
-1. `kari_shiwake/`
-2. `ledger_ref/`
+Canonical line layout (Phase 1):
+1. `clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/`
+2. `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+3. Legacy receipt fallback (deprecated): `clients/<CLIENT_ID>/inputs/*`
 
 ## Lexicon pending workflow
 
 1. `$yayoi-replacer` updates `client_cache` from `ledger_ref`.
-2. `$yayoi-replacer` then auto-grows `lexicon/pending/label_queue.csv` from `ledger_ref`.
+2. `$yayoi-replacer` then auto-grows `lexicon/receipt/pending/label_queue.csv` from `ledger_ref`.
 3. `$lexicon-extract` can run the same autogrow manually.
 4. `$lexicon-apply` applies only `action=ADD` rows.
 
 All queue/state mutation is protected by:
-1. `lexicon/pending/locks/label_queue.lock`
+1. `lexicon/receipt/pending/locks/label_queue.lock`
 
 ## Specs
 

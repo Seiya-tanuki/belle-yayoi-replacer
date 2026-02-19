@@ -60,13 +60,13 @@ class RestoreAssetsAtomicityTests(unittest.TestCase):
         module = _load_restore_module()
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
-            _write_text(repo_root / "lexicon" / "pending" / ".gitkeep", "")
-            _write_text(repo_root / "lexicon" / "pending" / "locks" / ".gitkeep", "")
-            _write_text(repo_root / "lexicon" / "pending" / "label_queue.csv", "old-queue")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / ".gitkeep", "")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / "locks" / ".gitkeep", "")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv", "old-queue")
 
-            stage_pending = repo_root / "staging" / "lexicon" / "pending"
+            stage_pending = repo_root / "staging" / "lexicon" / "receipt" / "pending"
             _write_text(stage_pending / "label_queue.csv", "new-queue")
-            restore_old_dir = repo_root / "exports" / "backups" / "restore_old_test" / "lexicon_pending"
+            restore_old_dir = repo_root / "exports" / "backups" / "restore_old_test" / "lexicon_receipt_pending"
 
             real_move = module.shutil.move
             calls = {"count": 0}
@@ -86,11 +86,11 @@ class RestoreAssetsAtomicityTests(unittest.TestCase):
                     )
 
             self.assertEqual(
-                (repo_root / "lexicon" / "pending" / "label_queue.csv").read_text(encoding="utf-8"),
+                (repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv").read_text(encoding="utf-8"),
                 "old-queue",
             )
-            self.assertTrue((repo_root / "lexicon" / "pending" / ".gitkeep").exists())
-            self.assertTrue((repo_root / "lexicon" / "pending" / "locks" / ".gitkeep").exists())
+            self.assertTrue((repo_root / "lexicon" / "receipt" / "pending" / ".gitkeep").exists())
+            self.assertTrue((repo_root / "lexicon" / "receipt" / "pending" / "locks" / ".gitkeep").exists())
             self.assertFalse(module.get_label_queue_lock_path(repo_root).exists())
 
     def test_apply_restore_never_overwrites_template(self) -> None:
@@ -99,14 +99,14 @@ class RestoreAssetsAtomicityTests(unittest.TestCase):
             repo_root = Path(td)
             _write_text(repo_root / "clients" / "TEMPLATE" / "template.txt", "tracked-template")
             _write_text(repo_root / "clients" / "A" / "old.txt", "old-client")
-            _write_text(repo_root / "lexicon" / "pending" / ".gitkeep", "")
-            _write_text(repo_root / "lexicon" / "pending" / "locks" / ".gitkeep", "")
-            _write_text(repo_root / "lexicon" / "pending" / "label_queue.csv", "old-queue")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / ".gitkeep", "")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / "locks" / ".gitkeep", "")
+            _write_text(repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv", "old-queue")
 
             staging_dir = repo_root / "staging"
             _write_text(staging_dir / "clients" / "TEMPLATE" / "template.txt", "backup-template")
             _write_text(staging_dir / "clients" / "A" / "new.txt", "new-client")
-            _write_text(staging_dir / "lexicon" / "pending" / "label_queue.csv", "new-queue")
+            _write_text(staging_dir / "lexicon" / "receipt" / "pending" / "label_queue.csv", "new-queue")
 
             module._apply_restore(
                 repo_root=repo_root,
@@ -121,11 +121,10 @@ class RestoreAssetsAtomicityTests(unittest.TestCase):
             self.assertTrue((repo_root / "clients" / "A" / "new.txt").exists())
             self.assertFalse((repo_root / "clients" / "A" / "old.txt").exists())
             self.assertEqual(
-                (repo_root / "lexicon" / "pending" / "label_queue.csv").read_text(encoding="utf-8"),
+                (repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv").read_text(encoding="utf-8"),
                 "new-queue",
             )
 
 
 if __name__ == "__main__":
     unittest.main()
-

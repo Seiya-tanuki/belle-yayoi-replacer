@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import argparse
 import io
 import json
 import hashlib
@@ -18,21 +19,23 @@ _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
+from belle.lines import is_line_implemented, validate_line_id
 from belle.paths import get_label_queue_lock_path
 
 
-FIXED_PATHS: List[Tuple[str, bool]] = [
-    ("lexicon/lexicon.json", True),
-    ("lexicon/pending/label_queue.csv", True),
-    ("lexicon/pending/label_queue_state.json", False),
-    ("defaults/category_defaults.json", True),
-    ("spec/LEXICON_PENDING_SPEC.md", False),
-    ("spec/REPLACER_SPEC.md", False),
-    ("spec/CATEGORY_OVERRIDES_SPEC.md", False),
-    ("spec/CLIENT_CACHE_SPEC.md", False),
-    ("spec/FILE_LAYOUT.md", False),
-    ("AGENTS.md", True),
-]
+def _fixed_paths(line_id: str) -> List[Tuple[str, bool]]:
+    return [
+        (f"lexicon/{line_id}/lexicon.json", True),
+        (f"lexicon/{line_id}/pending/label_queue.csv", True),
+        (f"lexicon/{line_id}/pending/label_queue_state.json", False),
+        (f"defaults/{line_id}/category_defaults.json", True),
+        ("spec/LEXICON_PENDING_SPEC.md", False),
+        ("spec/REPLACER_SPEC.md", False),
+        ("spec/CATEGORY_OVERRIDES_SPEC.md", False),
+        ("spec/CLIENT_CACHE_SPEC.md", False),
+        ("spec/FILE_LAYOUT.md", False),
+        ("AGENTS.md", True),
+    ]
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -77,8 +80,8 @@ def _read_git_head(repo_root: Path) -> str:
         return "unknown"
 
 
-def _detect_repo_version(repo_root: Path) -> str | None:
-    config_path = repo_root / "rulesets" / "replacer_config_v1_15.json"
+def _detect_repo_version(repo_root: Path, line_id: str) -> str | None:
+    config_path = repo_root / "rulesets" / line_id / "replacer_config_v1_15.json"
     if not config_path.exists():
         return None
     try:
@@ -90,11 +93,25 @@ def _detect_repo_version(repo_root: Path) -> str | None:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--line", default="receipt", help="Document processing line_id")
+    args = parser.parse_args()
+
     repo_root = Path(__file__).resolve().parents[4]
-    lock_path = get_label_queue_lock_path(repo_root)
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
+        return 2
+
+    lock_path = get_label_queue_lock_path(repo_root, line_id)
     included_files: List[Tuple[str, bytes]] = []
     file_hashes: Dict[str, str] = {}
     missing_required: List[str] = []
+    fixed_paths = _fixed_paths(line_id)
 
     try:
         with label_queue_lock(
@@ -103,7 +120,7 @@ def main() -> int:
             timeout_sec=60,
             stale_after_sec=120,
         ):
-            for rel_path, required in FIXED_PATHS:
+            for rel_path, required in fixed_paths:
                 abs_path = repo_root / rel_path
                 if not abs_path.exists():
                     if required:
@@ -112,27 +129,25 @@ def main() -> int:
                 file_hashes[rel_path] = _sha256_file(abs_path)
                 included_files.append((rel_path, abs_path.read_bytes()))
     except TimeoutError:
-        print(
-            f"[ERROR] label_queue のロック取得に失敗しました（60秒タイムアウト）: {lock_path}",
-            file=sys.stderr,
-        )
+        print(f"[ERROR] label_queue lock timeout: {lock_path}", file=sys.stderr)
         return 1
 
     if missing_required:
-        print("[ERROR] 必須ファイルが不足しているため、レビューZIPを作成できません。", file=sys.stderr)
+        print("[ERROR] Required file missing. Export aborted.", file=sys.stderr)
         for rel_path in missing_required:
             print(f"  - {rel_path}", file=sys.stderr)
         return 1
 
     now = _now_utc()
     tool_versions: Dict[str, str] = {"python": platform.python_version()}
-    repo_version = _detect_repo_version(repo_root)
+    repo_version = _detect_repo_version(repo_root, line_id)
     if repo_version:
         tool_versions["repo"] = repo_version
 
     manifest_obj = {
         "exported_at_utc": _now_utc_iso(now),
         "git_commit": _read_git_head(repo_root),
+        "line_id": line_id,
         "file_hashes": dict(sorted(file_hashes.items(), key=lambda x: x[0])),
         "tool_versions": tool_versions,
         "note_ja": "This pack is a read-only snapshot for Lexicon review.",
@@ -160,12 +175,11 @@ def main() -> int:
     latest_tmp_path.write_text(f"{zip_name}\n", encoding="utf-8", newline="\n")
     latest_tmp_path.replace(latest_path)
 
-    print(f"[OK] 作成したZIP: {zip_path}")
-    print("[OK] 同梱ファイル:")
+    print(f"[OK] Created ZIP: {zip_path}")
+    print("[OK] Included files:")
     for rel_path, _ in included_files:
         print(f"  - {rel_path}")
     print("  - MANIFEST.json")
-    print("[使い方] このzipを Lexicon Steward GPTs にアップロードしてください。")
     return 0
 
 

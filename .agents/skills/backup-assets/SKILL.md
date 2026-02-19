@@ -1,6 +1,6 @@
 ---
 name: backup-assets
-description: Backup field assets (clients and lexicon/pending) into exports/backups with MANIFEST.json. Explicit invocation only.
+description: Backup field assets (clients and lexicon/<line_id>/pending) into exports/backups with MANIFEST.json. Explicit invocation only.
 ---
 
 # backup-assets
@@ -9,7 +9,7 @@ Creates a fixed-scope asset backup zip from runtime field assets.
 
 ## Scope (fixed)
 - `clients/**`
-- `lexicon/pending/**`
+- `lexicon/receipt/pending/**`
 - `MANIFEST.json` at zip root
 
 ## Output
@@ -18,9 +18,9 @@ Creates a fixed-scope asset backup zip from runtime field assets.
 
 ## Notes
 - This skill is explicit invocation only.
-- Acquires the global `label_queue` lock before reading `lexicon/pending/`.
+- Acquires the global `label_queue` lock before reading `lexicon/receipt/pending/`.
 
 ## Execution
 ```bash
-python .agents/skills/backup-assets/scripts/backup_assets.py
+python .agents/skills/backup-assets/scripts/backup_assets.py --line receipt
 ```

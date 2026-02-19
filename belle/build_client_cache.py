@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 
+from .lines import is_line_implemented, validate_line_id
 from .yayoi_csv import read_yayoi_csv, token_to_text
 from .text import extract_t_number, vendor_key_from_summary
 from .lexicon import Lexicon, match_summary
@@ -152,6 +153,7 @@ def ensure_client_cache_updated(
     client_id: str,
     lex: Lexicon,
     config: Dict[str, Any],
+    line_id: Optional[str] = None,
 ) -> Tuple[ClientCache, ClientCacheUpdateSummary]:
     """
     Ensure client_cache cache is up-to-date with append-only ledger_ref batches.
@@ -160,12 +162,17 @@ def ensure_client_cache_updated(
     - load/create artifacts/cache/client_cache.json
     - apply only not-yet-applied batches into client_cache (append-only)
     """
-    ensure_client_system_dirs(repo_root, client_id)
-    client_dir = get_client_root(repo_root, client_id)
+    if line_id is not None:
+        line_id = validate_line_id(line_id)
+        if not is_line_implemented(line_id):
+            raise ValueError(f"line is unimplemented in Phase 1: {line_id}")
+
+    ensure_client_system_dirs(repo_root, client_id, line_id=line_id)
+    client_dir = get_client_root(repo_root, client_id, line_id=line_id)
     ledger_ref_inbox_dir = client_dir / "inputs" / "ledger_ref"
-    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id)
-    client_cache_path = get_client_cache_path(repo_root, client_id)
-    ingest_manifest_path = get_ledger_ref_ingested_path(repo_root, client_id)
+    ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id, line_id=line_id)
+    client_cache_path = get_client_cache_path(repo_root, client_id, line_id=line_id)
+    ingest_manifest_path = get_ledger_ref_ingested_path(repo_root, client_id, line_id=line_id)
 
     warnings: List[str] = []
     dummy = _get_dummy_summary(config)
@@ -216,7 +223,7 @@ def ensure_client_cache_updated(
         if sha in (tm.applied_ledger_ref_sha256 or {}):
             continue
         entry = ingested.get(sha) or {}
-        p = resolve_ledger_ref_stored_path(repo_root, client_id, entry)
+        p = resolve_ledger_ref_stored_path(repo_root, client_id, entry, line_id=line_id)
         if p is None:
             warnings.append(f"missing_stored_path: sha={sha}")
             continue

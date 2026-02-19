@@ -18,8 +18,8 @@
    4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
    5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
    6. `$export-lexicon-review-pack`: acquire the global label_queue lock and export a fixed review ZIP + MANIFEST for Lexicon Steward GPTs under `exports/gpts_lexicon_review/`.
-   7. `$backup-assets`: backup field assets (`clients/` + `lexicon/pending/`) into `exports/backups/` with MANIFEST.
-   8. `$restore-assets`: restore field assets (`clients/` + `lexicon/pending/`) from a backup ZIP with force/safety gates.
+   7. `$backup-assets`: backup field assets (`clients/` + `lexicon/<line_id>/pending/`) into `exports/backups/` with MANIFEST.
+   8. `$restore-assets`: restore field assets (`clients/` + `lexicon/<line_id>/pending/`) from a backup ZIP with force/safety gates.
    9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
    10. `$collect-outputs`: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、`exports/collect/` に単一ZIPを出力。
 4. Current runtime behavior:
@@ -27,18 +27,19 @@
    2. `$yayoi-replacer` includes client_cache incremental update and lexicon candidate autogrow from `ledger_ref` before replacement.
 
 ## 2) Data Placement (Per Client, No Mix-ups)
-1. All per-client inputs/outputs live under `clients/<CLIENT_ID>/`.
-2. Inputs:
+1. Canonical per-client path is `clients/<CLIENT_ID>/lines/<line_id>/`.
+2. Receipt legacy compatibility (deprecated): `clients/<CLIENT_ID>/...` is still accepted when `--line receipt`.
+3. Inputs:
    1. `inputs/kari_shiwake/`: target draft Yayoi CSV(s) for replacement.
    2. `inputs/ledger_ref/`: historical finalized CSV(s) used for cache and statistics.
-3. User-facing outputs:
+4. User-facing outputs:
    1. `outputs/runs/<RUN_ID>/*`: artifacts for one execution.
    2. `outputs/LATEST.txt`: latest `RUN_ID`.
-4. System-managed artifacts:
+5. System-managed artifacts:
    1. `artifacts/cache/client_cache.json`: append-only client cache.
    2. `artifacts/ingest/ledger_ref_ingested.json`: ledger_ref ingest manifest.
    3. `artifacts/telemetry/*`: internal logs/metrics.
-5. Principles:
+6. Principles:
    1. Users should be able to fetch one full run from `outputs/runs/<RUN_ID>/`.
    2. `artifacts/*` is system-owned; users should not manually edit it.
 
@@ -53,13 +54,13 @@
 
 ## 4) Network Access
 1. This project is intended to run without external web access.
-2. Decisions must be deterministic from local data (`lexicon/lexicon.json`, `clients/<CLIENT_ID>/artifacts/*`, and local inputs).
+2. Decisions must be deterministic from local data (`lexicon/<line_id>/lexicon.json`, `clients/<CLIENT_ID>/.../artifacts/*`, and local inputs).
 
 ## 5) Source Files and Cache
-1. Shared lexicon source of truth: `lexicon/lexicon.json` (core + learned).
-2. Pending queue (occasionally edited by users): `lexicon/pending/label_queue.csv`.
-3. Default account mappings: `defaults/category_defaults.json`.
-4. Client delta cache: `clients/<CLIENT_ID>/artifacts/cache/client_cache.json`.
+1. Shared lexicon source of truth (receipt in Phase 1): `lexicon/<line_id>/lexicon.json` (core + learned).
+2. Pending queue (occasionally edited by users): `lexicon/<line_id>/pending/label_queue.csv`.
+3. Default account mappings: `defaults/<line_id>/category_defaults.json`.
+4. Client delta cache: `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`.
    1. `client_cache` is append-only incremental state (no destructive rebuild by default).
    2. ledger_ref ingest/application state is tracked by `artifacts/ingest/ledger_ref_ingested.json` and `client_cache.applied_ledger_ref_sha256`.
 

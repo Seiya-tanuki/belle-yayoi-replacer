@@ -1,6 +1,6 @@
 ---
 name: export-lexicon-review-pack
-description: Export a fixed Lexicon Steward GPTs review pack zip from repository root data and specs. Acquires global label_queue lock before reading lexicon/pending files. Explicit invocation only.
+description: Export a fixed Lexicon Steward GPTs review pack zip from repository root data and specs. Acquires global label_queue lock before reading lexicon/<line_id>/pending files. Explicit invocation only.
 ---
 
 # export-lexicon-review-pack
@@ -17,5 +17,5 @@ Exports a fixed read-only snapshot zip for Lexicon Steward GPTs.
 
 ## Execution
 ```bash
-python .agents/skills/export-lexicon-review-pack/scripts/export_pack.py
+python .agents/skills/export-lexicon-review-pack/scripts/export_pack.py --line receipt
 ```

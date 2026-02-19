@@ -23,9 +23,9 @@ clients/**
 exports/**
 
 # --- Lexicon pending (runtime-managed, not versioned) ---
-lexicon/pending/**
+lexicon/*/pending/**
 
 # Keep placeholders
-!lexicon/pending/.gitkeep
-!lexicon/pending/locks/
-!lexicon/pending/locks/.gitkeep
+!lexicon/*/pending/.gitkeep
+!lexicon/*/pending/locks/
+!lexicon/*/pending/locks/.gitkeep

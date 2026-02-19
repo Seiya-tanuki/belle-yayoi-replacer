@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
+from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.ingest import ingest_single_file
 from belle.defaults import (
     generate_full_category_overrides,
@@ -50,10 +51,31 @@ def _list_kari_shiwake_input_files(dir_path: Path) -> list[Path]:
     return sorted(files, key=lambda x: x.name)
 
 
+def _resolve_client_layout(
+    repo_root: Path,
+    client_id: str,
+    line_id: str,
+) -> tuple[str | None, Path]:
+    line_dir = get_client_root(repo_root, client_id, line_id=line_id)
+    if line_dir.exists():
+        return line_id, line_dir
+    if line_id == "receipt":
+        legacy_dir = get_client_root(repo_root, client_id)
+        if legacy_dir.exists():
+            print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
+            return None, legacy_dir
+    raise SystemExit(f"client dir not found: {line_dir}")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", help="Client ID under clients/<CLIENT_ID>/", default=None)
-    ap.add_argument("--config", help="Replacer config JSON path", default="rulesets/replacer_config_v1_15.json")
+    ap.add_argument("--line", help="Document processing line_id", default="receipt")
+    ap.add_argument(
+        "--config",
+        help="Replacer config JSON path",
+        default="rulesets/receipt/replacer_config_v1_15.json",
+    )
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
@@ -63,14 +85,23 @@ def main() -> int:
         print("例: $yayoi-replacer --client <CLIENT_ID>")
         return 2
 
-    client_dir = get_client_root(repo_root, client_id)
-    if not client_dir.exists():
-        raise SystemExit(f"client dir not found: {client_dir}")
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1")
+        return 2
 
-    ensure_client_system_dirs(repo_root, client_id)
+    client_layout_line_id, client_dir = _resolve_client_layout(repo_root, client_id, line_id)
+    ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
 
     in_dir = client_dir / "inputs" / "kari_shiwake"
-    input_dir_label = f"clients/{client_id}/inputs/kari_shiwake/"
+    if client_layout_line_id is None:
+        input_dir_label = f"clients/{client_id}/inputs/kari_shiwake/"
+    else:
+        input_dir_label = f"clients/{client_id}/lines/{line_id}/inputs/kari_shiwake/"
     input_files = _list_kari_shiwake_input_files(in_dir)
 
     if not input_files:
@@ -89,8 +120,8 @@ def main() -> int:
     try:
         _kari_manifest, kari_ingest = ingest_single_file(
             source_path=kari_input,
-            store_dir=get_kari_shiwake_ingest_dir(repo_root, client_id),
-            manifest_path=get_kari_shiwake_ingested_path(repo_root, client_id),
+            store_dir=get_kari_shiwake_ingest_dir(repo_root, client_id, line_id=client_layout_line_id),
+            manifest_path=get_kari_shiwake_ingested_path(repo_root, client_id, line_id=client_layout_line_id),
             client_id=client_id,
             kind="kari_shiwake",
             manifest_schema="belle.kari_shiwake_ingest.v1",
@@ -99,10 +130,11 @@ def main() -> int:
         print(f"[ERROR] 仮仕訳CSVの取り込みに失敗しました: {exc}")
         return 1
 
-    lexicon_path = repo_root / "lexicon" / "lexicon.json"
-    defaults_path = repo_root / "defaults" / "category_defaults.json"
+    asset_paths = line_asset_paths(repo_root, line_id)
+    lexicon_path = asset_paths["lexicon_path"]
+    defaults_path = asset_paths["defaults_path"]
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
-    overrides_path = get_category_overrides_path(repo_root, client_id)
+    overrides_path = get_category_overrides_path(repo_root, client_id, line_id=client_layout_line_id)
 
     lex = load_lexicon(lexicon_path)
     global_defaults = load_category_defaults(defaults_path)
@@ -136,6 +168,7 @@ def main() -> int:
             client_id=client_id,
             lex=lex,
             config=config,
+            line_id=client_layout_line_id,
         )
     except Exception as exc:
         print(f"[ERROR] client_cache 更新に失敗しました: {exc}")
@@ -154,19 +187,22 @@ def main() -> int:
             processed_version="autogrow.v1",
             lock_timeout_sec=lock_timeout_sec,
             lock_stale_sec=lock_stale_sec,
+            line_id=line_id,
+            client_line_id=client_layout_line_id,
         )
     except Exception as exc:
         print(f"[ERROR] label_queue 自動更新に失敗しました。出力は作成しません: {exc}")
         return 1
 
-    run_id, run_dir = make_run_dir(repo_root, client_id)
-    latest_path = get_latest_path(repo_root, client_id)
+    run_id, run_dir = make_run_dir(repo_root, client_id, line_id=client_layout_line_id)
+    latest_path = get_latest_path(repo_root, client_id, line_id=client_layout_line_id)
 
     run_manifest = {
         "schema": "belle.replacer_run.v2",
         "version": str(config.get("version") or "1.15"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "client_id": client_id,
+        "line_id": line_id,
         "run_id": run_id,
         "run_dir": str(run_dir),
         "client_cache_update": {

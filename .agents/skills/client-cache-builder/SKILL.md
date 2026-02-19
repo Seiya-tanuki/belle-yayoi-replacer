@@ -5,23 +5,27 @@ description: Update append-only client_cache.json from ledger_ref inbox files. E
 
 # client-cache-builder
 
-Updates `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` from historical finalized journal CSV/TXT files.
+Updates per-line `client_cache.json` from historical finalized journal CSV/TXT files.
 
 ## Inputs
-1. Place new reference files in `clients/<CLIENT_ID>/inputs/ledger_ref/`.
+1. Preferred line layout:
+   - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+2. Receipt legacy fallback (deprecated):
+   - `clients/<CLIENT_ID>/inputs/ledger_ref/`
 
 ## Outputs
-1. `clients/<CLIENT_ID>/artifacts/cache/client_cache.json`
-2. `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
-3. `clients/<CLIENT_ID>/artifacts/telemetry/client_cache_update_run_<TS>.json`
+1. `.../artifacts/cache/client_cache.json`
+2. `.../artifacts/ingest/ledger_ref_ingested.json`
+3. `.../artifacts/telemetry/client_cache_update_run_<TS>.json`
 
 ## Ingest behavior
 1. `inputs/ledger_ref/` is an inbox only.
 2. On ingest success, files are moved to:
-   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
+   - `.../artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
 3. Duplicate sha files are moved to:
-   - `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
+   - `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
 4. Consumers read ingested files via paths recorded in `ledger_ref_ingested.json`.
+5. `receipt` only in Phase 1.
 
 ## Notes
 1. Uses only summary (17th col) and debit account (5th col).
@@ -30,5 +34,5 @@ Updates `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` from historical 
 
 ## Execution
 ```bash
-python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID>
+python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID> --line receipt
 ```

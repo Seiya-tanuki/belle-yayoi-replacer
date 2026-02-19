@@ -41,6 +41,16 @@ class CollectOutputsTests(unittest.TestCase):
             run_a = repo_root / "clients" / "A" / "outputs" / "runs" / "20260215T010203Z_AAAA"
             run_b = repo_root / "clients" / "B" / "outputs" / "runs" / "20260214T233000Z_BBBB"
             run_skip = repo_root / "clients" / "B" / "outputs" / "runs" / "20260215T120000Z_SKIP"
+            run_line = (
+                repo_root
+                / "clients"
+                / "C"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260215T033000Z_LINE"
+            )
 
             src_a_csv = run_a / "a_replaced_20260215T010203Z_AAAA.csv"
             src_a_report = run_a / "a_01_20260215T010203Z_AAAA_review_report.csv"
@@ -53,6 +63,9 @@ class CollectOutputsTests(unittest.TestCase):
 
             src_skip_report = run_skip / "skip_01_20260215T120000Z_SKIP_review_report.csv"
             src_skip_run_manifest = run_skip / "run_manifest.json"
+            src_line_csv = run_line / "c_replaced_20260215T033000Z_LINE.csv"
+            src_line_report = run_line / "c_01_20260215T033000Z_LINE_review_report.csv"
+            src_line_run_manifest = run_line / "run_manifest.json"
 
             _write_bytes(src_a_csv, b"A-CSV")
             _write_bytes(src_a_report, b"A-REPORT")
@@ -65,6 +78,9 @@ class CollectOutputsTests(unittest.TestCase):
 
             _write_bytes(src_skip_report, b"SKIP-REPORT")
             _write_bytes(src_skip_run_manifest, b"{\"run\":\"SKIP\"}\n")
+            _write_bytes(src_line_csv, b"C-CSV")
+            _write_bytes(src_line_report, b"C-REPORT")
+            _write_bytes(src_line_run_manifest, b"{\"run\":\"C\"}\n")
 
             source_paths = [
                 src_a_csv,
@@ -76,6 +92,9 @@ class CollectOutputsTests(unittest.TestCase):
                 src_b_run_manifest,
                 src_skip_report,
                 src_skip_run_manifest,
+                src_line_csv,
+                src_line_report,
+                src_line_run_manifest,
             ]
             source_before = {str(path): path.read_bytes() for path in source_paths}
 
@@ -102,11 +121,19 @@ class CollectOutputsTests(unittest.TestCase):
                     names,
                 )
                 self.assertIn(
+                    "csv/C__20260215T033000Z_LINE__c_replaced_20260215T033000Z_LINE.csv",
+                    names,
+                )
+                self.assertIn(
                     "reports/A__20260215T010203Z_AAAA__a_01_20260215T010203Z_AAAA_review_report.csv",
                     names,
                 )
                 self.assertIn(
                     "reports/B__20260214T233000Z_BBBB__b_01_20260214T233000Z_BBBB_review_report.csv",
+                    names,
+                )
+                self.assertIn(
+                    "reports/C__20260215T033000Z_LINE__c_01_20260215T033000Z_LINE_review_report.csv",
                     names,
                 )
                 self.assertIn(
@@ -119,6 +146,10 @@ class CollectOutputsTests(unittest.TestCase):
                 )
                 self.assertIn(
                     "manifests/B__20260214T233000Z_BBBB__run_manifest.json",
+                    names,
+                )
+                self.assertIn(
+                    "manifests/C__20260215T033000Z_LINE__run_manifest.json",
                     names,
                 )
                 self.assertNotIn(

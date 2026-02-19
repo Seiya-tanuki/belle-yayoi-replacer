@@ -1,5 +1,5 @@
 interface:
   display_name: "Lexicon apply"
-  short_description: "Apply ADD rows from lexicon/pending/label_queue.csv into lexicon/lexicon.json"
+  short_description: "Apply ADD rows from lexicon/receipt/pending/label_queue.csv into lexicon/receipt/lexicon.json"
 policy:
   allow_implicit_invocation: false

@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import os
@@ -16,8 +17,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
+from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.paths import get_label_queue_lock_path
-
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
 
@@ -75,10 +76,15 @@ def _client_count(clients_dir: Path) -> int:
     return sum(1 for path in clients_dir.iterdir() if path.is_dir())
 
 
-def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime) -> Tuple[str, Dict[str, int]]:
+def _write_assets_zip(
+    tmp_zip_path: Path,
+    repo_root: Path,
+    exported_at: datetime,
+    line_id: str,
+) -> Tuple[str, Dict[str, int]]:
     clients_dir = repo_root / "clients"
-    pending_dir = repo_root / "lexicon" / "pending"
-    lock_path = get_label_queue_lock_path(repo_root)
+    pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
+    lock_path = get_label_queue_lock_path(repo_root, line_id)
 
     files_manifest: List[Dict[str, object]] = []
     total_bytes = 0
@@ -127,13 +133,14 @@ def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime
             "schema": MANIFEST_SCHEMA,
             "exported_at_utc": _utc_iso(exported_at),
             "git_head": _read_git_head(repo_root),
+            "line_id": line_id,
             "files": files_manifest,
             "counts": {
                 "files": len(files_manifest),
                 "clients": count_clients,
                 "total_bytes": total_bytes,
             },
-            "notes_ja": "clients と lexicon/pending の現場アセットを固定スコープで退避したバックアップです。",
+            "notes_ja": f"clients と lexicon/{line_id}/pending の現場アセットを固定スコープで退避したバックアップです。",
         }
         manifest_json = json.dumps(manifest_obj, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         zf.writestr("MANIFEST.json", manifest_json.encode("utf-8"))
@@ -142,7 +149,20 @@ def _write_assets_zip(tmp_zip_path: Path, repo_root: Path, exported_at: datetime
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--line", default="receipt", help="Document processing line_id")
+    args = ap.parse_args()
+
     repo_root = Path(__file__).resolve().parents[4]
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
+        return 2
+
     backup_dir = repo_root / "exports" / "backups"
     backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -151,9 +171,9 @@ def main() -> int:
     tmp_zip_path = backup_dir / f".assets_{ts}_{os.getpid()}.zip.tmp"
 
     try:
-        manifest_json, counts = _write_assets_zip(tmp_zip_path, repo_root, exported_at)
+        manifest_json, counts = _write_assets_zip(tmp_zip_path, repo_root, exported_at, line_id)
     except TimeoutError:
-        print("[ERROR] label_queue のロック取得に失敗しました（60秒タイムアウト）。", file=sys.stderr)
+        print("[ERROR] label_queue のロック取得に失敗しました (60秒タイムアウト)。", file=sys.stderr)
         return 1
     except Exception as exc:
         print(f"[ERROR] バックアップ作成に失敗しました: {type(exc).__name__}: {exc}", file=sys.stderr)

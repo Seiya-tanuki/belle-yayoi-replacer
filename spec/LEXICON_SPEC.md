@@ -1,10 +1,10 @@
 # LEXICON_SPEC (belle.lexicon.v1)
 
 ## Purpose
-`lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text (Yayoi summary / 摘要)
+`lexicon/<line_id>/lexicon.json` is the **single canonical dictionary** used to map free-text (Yayoi summary / 摘要)
 to a **category**. Categories are later mapped to debit accounts via:
-1) per-client `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` (learned from historical journals), and
-2) global `defaults/category_defaults.json` (fallback).
+1) per-client+line `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` (learned from historical journals), and
+2) global `defaults/<line_id>/category_defaults.json` (fallback).
 
 This lexicon must be usable **offline** (no network).
 

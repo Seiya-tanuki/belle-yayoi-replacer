@@ -14,10 +14,10 @@ Runs hard/soft readiness checks for this repository and environment, then writes
 ## Notes
 - This skill is explicit invocation only.
 - The diagnostic run is read-only for tracked files.
-- It may provision required runtime directories (`exports/*`, `exports/backups/`, `lexicon/pending/locks/`) via safe `mkdir -p`.
+- It may provision required runtime directories (`exports/*`, `exports/backups/`, `lexicon/receipt/pending/locks/`) via safe `mkdir -p`.
 - Report artifacts are written under `exports/system_diagnose/`.
 
 ## Execution
 ```bash
-python .agents/skills/system-diagnose/scripts/system_diagnose.py
+python .agents/skills/system-diagnose/scripts/system_diagnose.py --line receipt
 ```

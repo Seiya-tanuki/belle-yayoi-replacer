@@ -12,6 +12,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, apply_label_queue_adds
 
 
@@ -33,13 +34,24 @@ def exit_code_from_summary_errors(errors: list[str]) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
+    ap.add_argument("--line", default="receipt", help="Document processing line_id")
     ap.add_argument("--learned-weight", type=float, default=0.85)
-    ap.add_argument("--show-paths", action="store_true", help="Print lexicon/pending read-write paths and continue")
+    ap.add_argument("--show-paths", action="store_true", help="Print lexicon/<line_id>/pending read-write paths and continue")
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
-    lexicon_path = repo_root / "lexicon" / "lexicon.json"
-    pending_dir = repo_root / "lexicon" / "pending"
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1")
+        return 2
+
+    assets = line_asset_paths(repo_root, line_id)
+    lexicon_path = assets["lexicon_path"]
+    pending_dir = assets["pending_dir"]
     queue_csv = pending_dir / "label_queue.csv"
     queue_state = pending_dir / "label_queue_state.json"
     applied_log = pending_dir / "applied_log.jsonl"
@@ -52,7 +64,7 @@ def main() -> int:
             f"applied_log={applied_log} lock={lock_dir / 'label_queue.lock'}"
         )
     if created_queue:
-        print("[INFO] label_queue.csv が未作成だったため初期化しました。適用対象はありません。")
+        print("[INFO] label_queue.csv was initialized. No rows to apply.")
         return 0
 
     summary = apply_label_queue_adds(
@@ -68,6 +80,7 @@ def main() -> int:
         "schema": "belle.lexicon_apply_run.v1",
         "version": "1.0",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "line_id": line_id,
         "result": {
             "added": summary.added,
             "skipped": summary.skipped,
@@ -81,7 +94,10 @@ def main() -> int:
             "label_queue_lock": str(lock_dir / "label_queue.lock"),
         },
     }
-    (pending_dir / f"apply_run_{ts}.json").write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    (pending_dir / f"apply_run_{ts}.json").write_text(
+        json.dumps(out, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
     print(f"[OK] added={summary.added} skipped={summary.skipped} removed_from_queue={summary.removed_from_queue}")
     if summary.errors:

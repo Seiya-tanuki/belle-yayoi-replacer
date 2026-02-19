@@ -1,35 +1,33 @@
 ---
 name: collect-outputs
-description: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、exports/collect に単一ZIPを出力します。明示呼び出し専用。
+description: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、exports/collect に単一ZIPを出力します。line は receipt のみ（Phase 1）。
 ---
 
 # collect-outputs
 
-クライアント横断で run 出力を収集し、コピー専用で 1 つの ZIP にまとめます。
+クライアント横断で run 成果物を収集し、1つの ZIP にまとめます。
 
-## 既定動作
-- JST 当日分の run を全クライアントから収集対象にします。
-- 実行時に日本語の対話入力で任意フィルタを指定できます。
-  - クライアントID（カンマ区切り）
-  - 日付（`YYYY-MM-DD`, JST）
-  - 時間帯（`HH:MM-HH:MM`, JST）
-- 収集前にプレビューを表示し、`この内容で収集ZIPを作成しますか？ (y/N)` で確認します。
-  - `N`（既定）なら ZIP は作成しません。
+## 対象
+1. `*_replaced_*.csv`
+2. `*_review_report.csv`
+3. `run_manifest.json` と `*_manifest.json`
+
+## line 対応
+1. `--line receipt` が既定です。
+2. receipt では以下を両方探索します:
+   1. `clients/<CLIENT_ID>/lines/receipt/outputs/runs/`
+   2. `clients/<CLIENT_ID>/outputs/runs/` (legacy)
 
 ## 出力
-- `exports/collect/collect_<JST_DATE>_<UTC_TS>_<SHA8>.zip`
-- `exports/collect/LATEST.txt`
-
-## 注意
-- コピーのみを行い、ソースファイルの移動・削除はしません。
-- 置換CSV（`*_replaced_*.csv`）が1件もない run は不完全扱いでスキップします。
+1. `exports/collect/collect_<JST_DATE>_<UTC_TS>_<SHA8>.zip`
+2. `exports/collect/LATEST.txt`
 
 ## 実行
 ```bash
-python .agents/skills/collect-outputs/scripts/collect_outputs.py
+python .agents/skills/collect-outputs/scripts/collect_outputs.py --line receipt
 ```
 
-## 自動実行用オプション
+## 非対話オプション
 ```bash
-python .agents/skills/collect-outputs/scripts/collect_outputs.py --date YYYY-MM-DD --client A,B --time HH:MM-HH:MM --yes
+python .agents/skills/collect-outputs/scripts/collect_outputs.py --line receipt --date YYYY-MM-DD --client A,B --time HH:MM-HH:MM --yes
 ```

@@ -1,21 +1,24 @@
 ---
 name: lexicon-extract
-description: Extract unknown terms from ledger_ref and grow lexicon/pending/label_queue.csv. Explicit invocation only.
+description: Extract unknown terms from ledger_ref and grow lexicon/<line_id>/pending/label_queue.csv. Explicit invocation only.
 ---
 
 # lexicon-extract
 
-Updates `lexicon/pending/label_queue.csv` by scanning per-client ledger_ref history.
+Updates `lexicon/receipt/pending/label_queue.csv` by scanning per-client ledger_ref history.
 
 ## Inputs
-1. Put new `ledger_ref` CSV/TXT files in `clients/<CLIENT_ID>/inputs/ledger_ref/`.
+1. Preferred line layout:
+   - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+2. Receipt legacy fallback (deprecated):
+   - `clients/<CLIENT_ID>/inputs/ledger_ref/`
 
 ## Outputs
-1. `lexicon/pending/label_queue.csv`
-2. `lexicon/pending/label_queue_state.json`
-3. `lexicon/pending/locks/label_queue.lock`
-4. `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref_ingested.json`
-5. `clients/<CLIENT_ID>/artifacts/telemetry/lexicon_autogrow_latest.json`
+1. `lexicon/receipt/pending/label_queue.csv`
+2. `lexicon/receipt/pending/label_queue_state.json`
+3. `lexicon/receipt/pending/locks/label_queue.lock`
+4. `.../artifacts/ingest/ledger_ref_ingested.json`
+5. `.../artifacts/telemetry/lexicon_autogrow_latest.json`
 
 ## Ingest behavior
 1. `inputs/ledger_ref/` is an ingest inbox.
@@ -24,5 +27,5 @@ Updates `lexicon/pending/label_queue.csv` by scanning per-client ledger_ref hist
 
 ## Execution
 ```bash
-python .agents/skills/lexicon-extract/scripts/run_lexicon_extract.py --client <CLIENT_ID>
+python .agents/skills/lexicon-extract/scripts/run_lexicon_extract.py --client <CLIENT_ID> --line receipt
 ```

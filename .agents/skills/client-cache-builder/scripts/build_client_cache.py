@@ -11,10 +11,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
+from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.build_client_cache import ensure_client_cache_updated
 from belle.paths import (
     ensure_client_system_dirs,
     get_artifacts_telemetry_dir,
+    get_client_root,
 )
 
 
@@ -30,39 +32,77 @@ def _has_ingested_manifest_entries(client_dir: Path) -> bool:
     return isinstance(ingested, dict) and bool(ingested)
 
 
-def find_client_id_auto(repo_root: Path) -> str:
+def _resolve_client_layout(repo_root: Path, client_id: str, line_id: str) -> tuple[str | None, Path]:
+    line_dir = get_client_root(repo_root, client_id, line_id=line_id)
+    if line_dir.exists():
+        return line_id, line_dir
+    if line_id == "receipt":
+        legacy_dir = get_client_root(repo_root, client_id)
+        if legacy_dir.exists():
+            return None, legacy_dir
+    raise SystemExit(f"client dir not found: {line_dir}")
+
+
+def find_client_id_auto(repo_root: Path, line_id: str) -> tuple[str, str | None]:
     clients_dir = repo_root / "clients"
     cands = []
     for tdir in clients_dir.iterdir():
         if not tdir.is_dir() or tdir.name == "TEMPLATE":
             continue
-        ref = tdir / "inputs" / "ledger_ref"
+        try:
+            client_layout_line_id, client_dir = _resolve_client_layout(repo_root, tdir.name, line_id)
+        except SystemExit:
+            continue
+        ref = client_dir / "inputs" / "ledger_ref"
         has_inbox_files = ref.exists() and (list(ref.glob("*.csv")) or list(ref.glob("*.txt")))
-        if has_inbox_files or _has_ingested_manifest_entries(tdir):
-            cands.append(tdir.name)
+        if has_inbox_files or _has_ingested_manifest_entries(client_dir):
+            cands.append((tdir.name, client_layout_line_id))
     if len(cands) == 1:
         return cands[0]
     if not cands:
         raise SystemExit(
             "Could not auto-detect client: no ledger_ref inbox files or ingest manifest entries found."
         )
-    raise SystemExit(f"Could not auto-detect client: multiple candidates found: {cands}. Use --client.")
+    candidate_ids = [client_id for client_id, _ in cands]
+    raise SystemExit(f"Could not auto-detect client: multiple candidates found: {candidate_ids}. Use --client.")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", default=None)
-    ap.add_argument("--config", default="rulesets/replacer_config_v1_15.json", help="Replacer config JSON (thresholds reused)")
+    ap.add_argument("--line", default="receipt", help="Document processing line_id")
+    ap.add_argument(
+        "--config",
+        default="rulesets/receipt/replacer_config_v1_15.json",
+        help="Replacer config JSON (thresholds reused)",
+    )
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
-    client_id = args.client or find_client_id_auto(repo_root)
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        raise SystemExit(2)
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1")
+        raise SystemExit(2)
 
-    ensure_client_system_dirs(repo_root, client_id)
-    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id)
+    if args.client:
+        client_id = args.client
+        client_layout_line_id, _ = _resolve_client_layout(repo_root, client_id, line_id)
+    else:
+        client_id, client_layout_line_id = find_client_id_auto(repo_root, line_id)
+
+    if client_layout_line_id is None:
+        print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
+
+    ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
+    telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_layout_line_id)
     telemetry_dir.mkdir(parents=True, exist_ok=True)
 
-    lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
+    asset_paths = line_asset_paths(repo_root, line_id)
+    lex = load_lexicon(asset_paths["lexicon_path"])
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
     config = json.loads(config_path.read_text(encoding="utf-8"))
 
@@ -71,6 +111,7 @@ def main() -> None:
         client_id=client_id,
         lex=lex,
         config=config,
+        line_id=client_layout_line_id,
     )
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -79,6 +120,7 @@ def main() -> None:
         "version": "1.15",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "client_id": client_id,
+        "line_id": line_id,
         "summary": {
             "ingested_new_files": len(summary.ingested_new_files),
             "applied_new_files": len(summary.applied_new_files),

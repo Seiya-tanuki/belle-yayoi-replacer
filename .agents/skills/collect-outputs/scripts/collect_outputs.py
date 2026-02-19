@@ -11,6 +11,11 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from belle.lines import is_line_implemented, validate_line_id
 
 JST = timezone(timedelta(hours=9))
 MANIFEST_SCHEMA = "belle.collect_outputs_manifest.v1"
@@ -30,6 +35,7 @@ class RunFiles:
         replaced_files: List[Path],
         report_files: List[Path],
         manifest_files: List[Path],
+        layout: str,
     ) -> None:
         self.client_id = client_id
         self.run_id = run_id
@@ -39,6 +45,7 @@ class RunFiles:
         self.replaced_files = replaced_files
         self.report_files = report_files
         self.manifest_files = manifest_files
+        self.layout = layout
 
 
 def _now_utc() -> datetime:
@@ -101,7 +108,7 @@ def _parse_time_range(raw: Optional[str]) -> Optional[Tuple[int, int, str]]:
     start_min = _parse_hhmm(start_hhmm)
     end_min = _parse_hhmm(end_hhmm)
     if start_min > end_min:
-        raise ValueError(f"時間帯は開始 <= 終了で指定してください: {value}")
+        raise ValueError(f"時間帯は開始<=終了で指定してください: {value}")
     return start_min, end_min, f"{start_hhmm}-{end_hhmm}"
 
 
@@ -143,66 +150,83 @@ def _discover_clients(repo_root: Path) -> List[str]:
     return clients
 
 
+def _discover_run_roots_for_client(repo_root: Path, client_id: str, line_id: str) -> Tuple[List[Tuple[str, Path]], bool, bool]:
+    roots: List[Tuple[str, Path]] = []
+    line_root = repo_root / "clients" / client_id / "lines" / line_id / "outputs" / "runs"
+    legacy_root = repo_root / "clients" / client_id / "outputs" / "runs"
+    line_exists = line_root.exists()
+    legacy_exists = legacy_root.exists()
+    if line_exists:
+        roots.append(("line", line_root))
+    if legacy_exists:
+        roots.append(("legacy", legacy_root))
+    return roots, line_exists, legacy_exists
+
+
 def _discover_runs_for_client(
     repo_root: Path,
     client_id: str,
     *,
+    line_id: str,
     target_date_jst: date,
     time_range: Optional[Tuple[int, int, str]],
-) -> Tuple[List[RunFiles], int]:
-    runs_dir = repo_root / "clients" / client_id / "outputs" / "runs"
-    if not runs_dir.exists():
-        return [], 0
+) -> Tuple[List[RunFiles], int, bool, bool]:
+    run_roots, line_exists, legacy_exists = _discover_run_roots_for_client(repo_root, client_id, line_id)
+    if not run_roots:
+        return [], 0, line_exists, legacy_exists
 
     matched: List[RunFiles] = []
     invalid_run_id_count = 0
-    for run_dir in sorted(runs_dir.iterdir(), key=lambda p: p.name):
-        if not run_dir.is_dir():
-            continue
-        run_id = run_dir.name
-        run_utc = _parse_run_utc_from_run_id(run_id)
-        if run_utc is None:
-            invalid_run_id_count += 1
-            continue
-
-        run_jst = run_utc.astimezone(JST)
-        if run_jst.date() != target_date_jst:
-            continue
-        if time_range is not None:
-            run_minutes = run_jst.hour * 60 + run_jst.minute
-            start_min, end_min, _ = time_range
-            if run_minutes < start_min or run_minutes > end_min:
+    for layout, runs_dir in run_roots:
+        for run_dir in sorted(runs_dir.iterdir(), key=lambda p: p.name):
+            if not run_dir.is_dir():
+                continue
+            run_id = run_dir.name
+            run_utc = _parse_run_utc_from_run_id(run_id)
+            if run_utc is None:
+                invalid_run_id_count += 1
                 continue
 
-        run_manifest = run_dir / "run_manifest.json"
-        manifest_paths: List[Path] = []
-        if run_manifest.exists() and run_manifest.is_file():
-            manifest_paths.append(run_manifest)
-
-        for path in sorted(run_dir.glob("*_manifest.json")):
-            if path == run_manifest:
+            run_jst = run_utc.astimezone(JST)
+            if run_jst.date() != target_date_jst:
                 continue
-            if path.is_file():
-                manifest_paths.append(path)
+            if time_range is not None:
+                run_minutes = run_jst.hour * 60 + run_jst.minute
+                start_min, end_min, _ = time_range
+                if run_minutes < start_min or run_minutes > end_min:
+                    continue
 
-        matched.append(
-            RunFiles(
-                client_id=client_id,
-                run_id=run_id,
-                run_dir=run_dir,
-                run_utc=run_utc,
-                run_jst=run_jst,
-                replaced_files=[p for p in sorted(run_dir.glob("*_replaced_*.csv")) if p.is_file()],
-                report_files=[p for p in sorted(run_dir.glob("*_review_report.csv")) if p.is_file()],
-                manifest_files=manifest_paths,
+            run_manifest = run_dir / "run_manifest.json"
+            manifest_paths: List[Path] = []
+            if run_manifest.exists() and run_manifest.is_file():
+                manifest_paths.append(run_manifest)
+
+            for path in sorted(run_dir.glob("*_manifest.json")):
+                if path == run_manifest:
+                    continue
+                if path.is_file():
+                    manifest_paths.append(path)
+
+            matched.append(
+                RunFiles(
+                    client_id=client_id,
+                    run_id=run_id,
+                    run_dir=run_dir,
+                    run_utc=run_utc,
+                    run_jst=run_jst,
+                    replaced_files=[p for p in sorted(run_dir.glob("*_replaced_*.csv")) if p.is_file()],
+                    report_files=[p for p in sorted(run_dir.glob("*_review_report.csv")) if p.is_file()],
+                    manifest_files=manifest_paths,
+                    layout=layout,
+                )
             )
-        )
-    return matched, invalid_run_id_count
+    return matched, invalid_run_id_count, line_exists, legacy_exists
 
 
 def _build_manifest_and_payload(
     *,
     repo_root: Path,
+    line_id: str,
     runs: Sequence[RunFiles],
     exported_at_utc: datetime,
     jst_date: date,
@@ -227,7 +251,9 @@ def _build_manifest_and_payload(
             for src_path in src_files:
                 zip_relpath = f"{rel_dir}/{run.client_id}__{run.run_id}__{src_path.name}"
                 if zip_relpath in payload_by_zip_relpath:
-                    raise RuntimeError(f"ZIP内パスが重複しました: {zip_relpath}")
+                    zip_relpath = f"{rel_dir}/{run.client_id}__{run.run_id}__{run.layout}__{src_path.name}"
+                if zip_relpath in payload_by_zip_relpath:
+                    raise RuntimeError(f"ZIPパス重複: {zip_relpath}")
 
                 data = src_path.read_bytes()
                 payload_by_zip_relpath[zip_relpath] = data
@@ -243,6 +269,7 @@ def _build_manifest_and_payload(
                     {
                         "client_id": run.client_id,
                         "run_id": run.run_id,
+                        "layout": run.layout,
                         "source_relpath": _repo_relpath(repo_root, src_path),
                         "zip_relpath": zip_relpath,
                         "sha256": _sha256_bytes(data),
@@ -254,6 +281,7 @@ def _build_manifest_and_payload(
     manifest_obj: Dict[str, object] = {
         "schema": MANIFEST_SCHEMA,
         "exported_at_utc": _utc_iso(exported_at_utc),
+        "line_id": line_id,
         "jst_date": jst_date.isoformat(),
         "filters": {
             "client_ids": list(filter_client_ids),
@@ -309,6 +337,7 @@ def _write_zip(
 
 def _print_preview(
     *,
+    line_id: str,
     jst_date: date,
     selected_client_ids: Sequence[str],
     filter_client_ids: Sequence[str],
@@ -321,6 +350,7 @@ def _print_preview(
     client_label = ",".join(filter_client_ids) if filter_client_ids else "ALL"
     time_label = filter_time_range if filter_time_range else "終日"
     print("[INFO] 収集条件")
+    print(f"  - line: {line_id}")
     print(f"  - 日付(JST): {jst_date.isoformat()}")
     print(f"  - クライアント指定: {client_label}")
     print(f"  - 時間帯(JST): {time_label}")
@@ -331,21 +361,21 @@ def _print_preview(
     if skipped_invalid_run_id_count > 0:
         print(f"  - スキップrun数(RUN_ID形式不正): {skipped_invalid_run_id_count}")
 
-    print("[INFO] プレビュー (client_id | run_id | replaced_count | report_count | manifest_count)")
+    print("[INFO] プレビュー (client_id | run_id | layout | replaced_count | report_count | manifest_count)")
     for idx, run in enumerate(collected_runs):
         if idx >= PREVIEW_LIMIT:
             break
         print(
-            f"{run.client_id} | {run.run_id} | "
+            f"{run.client_id} | {run.run_id} | {run.layout} | "
             f"{len(run.replaced_files)} | {len(run.report_files)} | {len(run.manifest_files)}"
         )
     omitted = len(collected_runs) - PREVIEW_LIMIT
     if omitted > 0:
-        print(f"[INFO] プレビューは先頭{PREVIEW_LIMIT}件のみ表示しました（省略: {omitted}件）。")
+        print(f"[INFO] プレビューは先頭{PREVIEW_LIMIT}件のみ表示（残り: {omitted}件）")
 
 
 def _confirm() -> bool:
-    answer = input("この内容で収集ZIPを作成しますか？ (y/N) ").strip().lower()
+    answer = input("この条件で収集ZIPを作成しますか? (y/N) ").strip().lower()
     return answer in {"y", "yes"}
 
 
@@ -353,6 +383,7 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Collect per-run deliverables across clients and export a single zip under exports/collect/."
     )
+    ap.add_argument("--line", default="receipt", help="Document processing line_id")
     ap.add_argument("--date", help="JST date filter (YYYY-MM-DD). Default: today JST.", default=None)
     ap.add_argument(
         "--client",
@@ -373,6 +404,15 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
     args = _parse_args(argv)
     repo = repo_root or Path(__file__).resolve().parents[4]
 
+    try:
+        line_id = validate_line_id(args.line)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}", file=sys.stderr)
+        return 2
+    if not is_line_implemented(line_id):
+        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
+        return 2
+
     now_utc = _now_utc()
     default_jst_date = now_utc.astimezone(JST).date()
 
@@ -382,16 +422,14 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
 
     if not args.yes:
         if not sys.stdin.isatty():
-            print("[ERROR] 対話入力ができないため実行できません。自動実行時は --yes を指定してください。", file=sys.stderr)
+            print("[ERROR] 非対話入力ができないため確認できません。非対話時は --yes を指定してください。", file=sys.stderr)
             return 2
         if client_raw is None:
-            client_raw = input("対象クライアントID（カンマ区切り、未入力で全クライアント）: ").strip()
+            client_raw = input("対象クライアントID (カンマ区切り。空で全件): ").strip()
         if date_raw is None:
-            date_raw = input(
-                f"対象日付（JST, YYYY-MM-DD、未入力で{default_jst_date.isoformat()}）: "
-            ).strip()
+            date_raw = input(f"対象日付 (JST, YYYY-MM-DD。空で{default_jst_date.isoformat()}): ").strip()
         if time_raw is None:
-            time_raw = input("対象時間帯（JST, HH:MM-HH:MM、未入力で終日）: ").strip()
+            time_raw = input("対象時間帯 (JST, HH:MM-HH:MM。空で終日): ").strip()
 
     try:
         target_jst_date = _parse_jst_date(date_raw, default_date=default_jst_date)
@@ -406,7 +444,7 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
         selected_client_ids = [cid for cid in requested_client_ids if cid in all_client_ids]
         missing = [cid for cid in requested_client_ids if cid not in all_client_ids]
         if missing:
-            print(f"[WARN] 存在しないクライアントIDを除外しました: {', '.join(missing)}")
+            print(f"[WARN] 存在しないクライアントIDを無視しました: {', '.join(missing)}")
     else:
         selected_client_ids = all_client_ids
 
@@ -417,21 +455,25 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
     matched_runs: List[RunFiles] = []
     invalid_run_id_count = 0
     for client_id in selected_client_ids:
-        runs, invalid_count = _discover_runs_for_client(
+        runs, invalid_count, line_exists, legacy_exists = _discover_runs_for_client(
             repo,
             client_id,
+            line_id=line_id,
             target_date_jst=target_jst_date,
             time_range=parsed_time_range,
         )
+        if line_id == "receipt" and (not line_exists) and legacy_exists:
+            print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
         matched_runs.extend(runs)
         invalid_run_id_count += invalid_count
-    matched_runs.sort(key=lambda row: (row.client_id, row.run_id))
+    matched_runs.sort(key=lambda row: (row.client_id, row.run_id, row.layout))
 
     skipped_incomplete_runs = [run for run in matched_runs if len(run.replaced_files) == 0]
     collected_runs = [run for run in matched_runs if len(run.replaced_files) > 0]
     filter_time_text = parsed_time_range[2] if parsed_time_range is not None else None
 
     _print_preview(
+        line_id=line_id,
         jst_date=target_jst_date,
         selected_client_ids=selected_client_ids,
         filter_client_ids=requested_client_ids,
@@ -453,6 +495,7 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
     exported_at_utc = _now_utc()
     manifest_bytes, payload_by_zip_relpath, summary = _build_manifest_and_payload(
         repo_root=repo,
+        line_id=line_id,
         runs=collected_runs,
         exported_at_utc=exported_at_utc,
         jst_date=target_jst_date,
