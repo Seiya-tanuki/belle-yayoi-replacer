@@ -67,6 +67,10 @@ clients/<CLIENT_ID>/
    4. `clients/<CLIENT_ID>/artifacts/`
 2. Non-receipt lines must never fall back to legacy layout.
 3. Shared assets do not use legacy global paths in Phase 1.
+4. Phase 2 provides an explicit safe migration utility:
+   1. `python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client <ID|ALL> --dry-run true --line receipt`
+   2. Real migration requires `--apply --dry-run false`
+5. Legacy shared pending path `lexicon/pending/` may be migrated to `lexicon/receipt/pending/` via the same utility.
 
 ## Ingest marker extension (`ledger_ref_ingested.json`)
 

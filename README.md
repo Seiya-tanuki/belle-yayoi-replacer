@@ -16,6 +16,7 @@ Deterministic toolchain for Yayoi 25-column import CSV replacement.
 3. `$client-cache-builder`
 4. `$lexicon-extract`
 5. `$lexicon-apply`
+6. `$migrate-line-layout`
 
 ## Active inputs
 
@@ -33,6 +34,20 @@ Canonical line layout (Phase 1):
 
 All queue/state mutation is protected by:
 1. `lexicon/receipt/pending/locks/label_queue.lock`
+
+## Phase 2 migration utility
+
+Migrate legacy receipt layout into canonical line-scoped layout with fail-closed safety checks.
+
+```bash
+python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client ALL --dry-run true --line receipt
+```
+
+Apply migration (copy mode):
+
+```bash
+python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client ALL --mode copy --apply --dry-run false --line receipt
+```
 
 ## Specs
 

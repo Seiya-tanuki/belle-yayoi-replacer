@@ -1,0 +1,5 @@
+interface:
+  display_name: "Migrate line layout"
+  short_description: "Safely migrate legacy receipt layout to line-scoped paths with dry-run and rollback safeguards"
+policy:
+  allow_implicit_invocation: false
