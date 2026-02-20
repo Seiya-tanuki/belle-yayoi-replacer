@@ -21,6 +21,36 @@ from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.paths import get_label_queue_lock_path
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
+BANK_FORBIDDEN_CLIENT_SUBPATHS: tuple[tuple[str, ...], ...] = (
+    ("clients", "*", "lines", "bank_statement", "inputs", "ledger_ref"),
+    ("clients", "*", "lines", "bank_statement", "artifacts", "ingest", "ledger_ref"),
+)
+
+
+def _line_uses_pending(line_id: str) -> bool:
+    return line_id == "receipt"
+
+
+def _is_bank_like_line(line_id: str) -> bool:
+    return line_id in {"bank_statement", "credit_card_statement"}
+
+
+def _is_path_under_pattern(path: str, pattern: tuple[str, ...]) -> bool:
+    parts = tuple(part for part in path.strip("/").split("/") if part)
+    if len(parts) < len(pattern):
+        return False
+    for actual, expected in zip(parts, pattern):
+        if expected == "*":
+            continue
+        if actual != expected:
+            return False
+    return True
+
+
+def _is_forbidden_bank_client_path(path: str, *, line_id: str) -> bool:
+    if not _is_bank_like_line(line_id):
+        return False
+    return any(_is_path_under_pattern(path, pattern) for pattern in BANK_FORBIDDEN_CLIENT_SUBPATHS)
 
 
 def _utc_now() -> datetime:
@@ -83,8 +113,12 @@ def _write_assets_zip(
     line_id: str,
 ) -> Tuple[str, Dict[str, int]]:
     clients_dir = repo_root / "clients"
-    pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
-    lock_path = get_label_queue_lock_path(repo_root, line_id)
+    uses_pending = _line_uses_pending(line_id)
+    pending_dir: Path | None = None
+    lock_path: Path | None = None
+    if uses_pending:
+        pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
+        lock_path = get_label_queue_lock_path(repo_root, line_id)
 
     files_manifest: List[Dict[str, object]] = []
     total_bytes = 0
@@ -92,19 +126,29 @@ def _write_assets_zip(
 
     with zipfile.ZipFile(tmp_zip_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         written_dirs: set[str] = set()
-        for root in [clients_dir, pending_dir]:
+        roots: List[Path] = [clients_dir]
+        if pending_dir is not None:
+            roots.append(pending_dir)
+
+        for root in roots:
             root_rel = _repo_rel(repo_root, root) + "/"
+            if root == clients_dir and _is_forbidden_bank_client_path(root_rel, line_id=line_id):
+                continue
             if root_rel not in written_dirs:
                 zf.writestr(root_rel, b"")
                 written_dirs.add(root_rel)
             for directory in _list_dirs(root):
                 rel_dir = _repo_rel(repo_root, directory) + "/"
+                if root == clients_dir and _is_forbidden_bank_client_path(rel_dir, line_id=line_id):
+                    continue
                 if rel_dir not in written_dirs:
                     zf.writestr(rel_dir, b"")
                     written_dirs.add(rel_dir)
 
         for src_path in _list_files(clients_dir):
             rel_path = _repo_rel(repo_root, src_path)
+            if _is_forbidden_bank_client_path(rel_path, line_id=line_id):
+                continue
             data = src_path.read_bytes()
             file_sha = _sha256_bytes(data)
             file_size = len(data)
@@ -112,23 +156,31 @@ def _write_assets_zip(
             files_manifest.append({"path": rel_path, "sha256": file_sha, "size_bytes": file_size})
             total_bytes += file_size
 
-        with label_queue_lock(
-            lock_path=lock_path,
-            client_id="backup-assets",
-            timeout_sec=60,
-            stale_after_sec=120,
-        ) as lock_token:
-            for src_path in _list_files(pending_dir):
-                rel_path = _repo_rel(repo_root, src_path)
-                data = src_path.read_bytes()
-                file_sha = _sha256_bytes(data)
-                file_size = len(data)
-                zf.writestr(rel_path, data)
-                files_manifest.append({"path": rel_path, "sha256": file_sha, "size_bytes": file_size})
-                total_bytes += file_size
-                lock_token.maybe_heartbeat()
+        if uses_pending:
+            assert pending_dir is not None
+            assert lock_path is not None
+            with label_queue_lock(
+                lock_path=lock_path,
+                client_id="backup-assets",
+                timeout_sec=60,
+                stale_after_sec=120,
+            ) as lock_token:
+                for src_path in _list_files(pending_dir):
+                    rel_path = _repo_rel(repo_root, src_path)
+                    data = src_path.read_bytes()
+                    file_sha = _sha256_bytes(data)
+                    file_size = len(data)
+                    zf.writestr(rel_path, data)
+                    files_manifest.append({"path": rel_path, "sha256": file_sha, "size_bytes": file_size})
+                    total_bytes += file_size
+                    lock_token.maybe_heartbeat()
 
         files_manifest.sort(key=lambda row: str(row["path"]))
+        notes_ja = (
+            f"clients と lexicon/{line_id}/pending の現場アセットを固定スコープで退避したバックアップです。"
+            if uses_pending
+            else "clients の現場アセットを固定スコープで退避したバックアップです。"
+        )
         manifest_obj = {
             "schema": MANIFEST_SCHEMA,
             "exported_at_utc": _utc_iso(exported_at),
@@ -140,7 +192,7 @@ def _write_assets_zip(
                 "clients": count_clients,
                 "total_bytes": total_bytes,
             },
-            "notes_ja": f"clients と lexicon/{line_id}/pending の現場アセットを固定スコープで退避したバックアップです。",
+            "notes_ja": notes_ja,
         }
         manifest_json = json.dumps(manifest_obj, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
         zf.writestr("MANIFEST.json", manifest_json.encode("utf-8"))

@@ -8,8 +8,8 @@ description: Backup field assets (clients and lexicon/<line_id>/pending) into ex
 Creates a fixed-scope asset backup zip from runtime field assets.
 
 ## Scope (fixed)
-- `clients/**`
-- `lexicon/receipt/pending/**`
+- `receipt`: `clients/**` + `lexicon/receipt/pending/**`
+- `bank_statement` (and future `credit_card_statement` safety path): `clients/**` only
 - `MANIFEST.json` at zip root
 
 ## Output
@@ -18,9 +18,14 @@ Creates a fixed-scope asset backup zip from runtime field assets.
 
 ## Notes
 - This skill is explicit invocation only.
-- Acquires the global `label_queue` lock before reading `lexicon/receipt/pending/`.
+- `receipt` のみ `label_queue` lock を取得して `lexicon/receipt/pending/` を読み取る。
+- `bank_statement` は lock を取得せず、lexicon pending を扱わない。
 
 ## Execution
 ```bash
 python .agents/skills/backup-assets/scripts/backup_assets.py --line receipt
+```
+
+```bash
+python .agents/skills/backup-assets/scripts/backup_assets.py --line bank_statement
 ```
