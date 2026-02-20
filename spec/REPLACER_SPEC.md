@@ -1,4 +1,9 @@
-# REPLACER_SPEC (belle.replacer.v2)
+# REPLACER_SPEC (receipt line replacer, belle.replacer.v2)
+
+## Scope
+
+This spec applies to receipt line only (`line_id=receipt`).
+For bank-statement replacement behavior, see `spec/BANK_REPLACER_SPEC.md` (future implementation).
 
 ## Goal
 
@@ -12,6 +17,8 @@ Never change any other field. Preserve formatting behavior and CSV contract.
 3. `credit_card_statement`: unimplemented (must fail-closed)
 
 ## Input/Output contract
+
+This contract in this file is for `receipt` line behavior.
 
 1. CSV has exactly 25 columns per line.
 2. Default encoding is CP932 (Shift-JIS family). The replacer must preserve the original encoding.

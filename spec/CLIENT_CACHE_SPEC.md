@@ -1,8 +1,14 @@
-# CLIENT_CACHE_SPEC (belle.client_cache.v1)
+# CLIENT_CACHE_SPEC (receipt line client_cache, belle.client_cache.v1)
+
+## Scope
+
+This spec applies to receipt line cache only (`line_id=receipt`).
+For bank-statement line cache behavior, see `spec/BANK_CLIENT_CACHE_SPEC.md` (future implementation).
 
 ## Purpose
 
 `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` is a per-client, per-line append-only cache learned from historical finalized journals (`ledger_ref`).
+In this spec, learning source is `ledger_ref` only.
 
 It provides empirical debit-account distributions keyed by:
 1. **T-number** (`T\d{13}`) extracted from summary (17th column)
@@ -33,6 +39,8 @@ Behavior:
    1. `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
 5. Manifest `ingested[sha256]` records `stored_name` and `stored_relpath` (relative to effective client root).
 6. `client_cache` tracks already-applied batches via `client_cache.applied_ledger_ref_sha256`.
+
+No bank-training sources (`training/ocr_kari_shiwake`, `training/reference_yayoi`) are part of this receipt spec.
 
 After successful ingest, `inputs/ledger_ref/` should be empty (except placeholders such as `.gitkeep`).
 

@@ -42,6 +42,32 @@ clients/<CLIENT_ID>/
           *.json
 ```
 
+## bank_statement additions (Phase 4+, planned only)
+
+`bank_statement` remains UNIMPLEMENTED in this phase and must fail-closed.
+The following paths are reserved for Phase 4+ implementation and TEMPLATE updates:
+
+```text
+clients/<CLIENT_ID>/lines/bank_statement/
+  inputs/
+    training/
+      ocr_kari_shiwake/
+      reference_yayoi/
+  artifacts/
+    ingest/
+      training_ocr/
+      training_reference/
+      training_ocr_ingested.json
+      training_reference_ingested.json
+    cache/
+      client_cache.json                # schema differs: belle.bank_client_cache.v0
+```
+
+Related specs:
+1. `spec/BANK_LINE_INPUTS_SPEC.md`
+2. `spec/BANK_CLIENT_CACHE_SPEC.md`
+3. `spec/BANK_REPLACER_SPEC.md`
+
 ## Shared assets (line-scoped, tracked)
 
 1. `lexicon/<line_id>/lexicon.json`
