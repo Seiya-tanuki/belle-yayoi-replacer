@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from belle.lexicon import load_lexicon
-from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+from belle.lines import line_asset_paths, validate_line_id
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import get_client_root
 
@@ -86,8 +86,8 @@ def main() -> int:
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         return 2
-    if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1")
+    if line_id != "receipt":
+        print(f"[ERROR] This skill is receipt-only. {line_id} is not supported.")
         return 2
 
     if args.client:

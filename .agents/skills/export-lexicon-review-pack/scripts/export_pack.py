@@ -19,7 +19,7 @@ _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
-from belle.lines import is_line_implemented, validate_line_id
+from belle.lines import validate_line_id
 from belle.paths import get_label_queue_lock_path
 
 
@@ -103,8 +103,8 @@ def main() -> int:
     except ValueError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 2
-    if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
+    if line_id != "receipt":
+        print(f"[ERROR] This skill is receipt-only. {line_id} is not supported.", file=sys.stderr)
         return 2
 
     lock_path = get_label_queue_lock_path(repo_root, line_id)

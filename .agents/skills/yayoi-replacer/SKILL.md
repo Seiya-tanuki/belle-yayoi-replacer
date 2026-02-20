@@ -29,7 +29,7 @@ Deterministic debit-account replacement for Yayoi import CSVs.
    - one canonical file under `inputs/training/reference_yayoi/` is recommended
 
 ## Runtime behavior (important)
-1. `ledger_ref` ingest treats `inputs/ledger_ref/` as an inbox.
+1. For `receipt`, `ledger_ref` ingest treats `inputs/ledger_ref/` as an inbox.
 2. On successful ingest, files are moved to:
    - `.../artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
 3. Duplicate sha files are moved to:
@@ -38,15 +38,14 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 5. Downstream processing reads ingested file paths from `artifacts/ingest/ledger_ref_ingested.json`.
 
 ## What this skill does
-1. Loads `lexicon/receipt/lexicon.json`.
-2. Loads defaults + per-client overrides and builds effective defaults.
-3. Updates `client_cache` (append-only).
-4. Auto-grows pending lexicon candidates from unprocessed ingested ledger_ref entries.
-5. Ingests the single kari_shiwake input to `artifacts/ingest/kari_shiwake/`.
-6. Replaces only column 5 and writes outputs to `.../outputs/runs/<RUN_ID>/`.
-7. For `bank_statement`, updates bank cache then runs bank replacer against the target OCR draft.
-8. Writes line-scoped run artifacts and updates `outputs/LATEST.txt` under the selected line.
-9. `credit_card_statement` remains fail-closed.
+1. For `receipt`, loads `lexicon/receipt/lexicon.json`.
+2. For `receipt`, loads defaults + per-client overrides and builds effective defaults.
+3. For `receipt`, updates `client_cache` (append-only) and auto-grows pending lexicon candidates from ingested `ledger_ref`.
+4. Ingests the single kari_shiwake input to `artifacts/ingest/kari_shiwake/`.
+5. Replaces only column 5 and writes outputs to `.../outputs/runs/<RUN_ID>/`.
+6. For `bank_statement`, does not load receipt lexicon/defaults; it updates bank cache and runs the bank replacer using training + cache assets.
+7. Writes line-scoped run artifacts and updates `outputs/LATEST.txt` under the selected line.
+8. `credit_card_statement` remains fail-closed.
 
 ## Canonical specs
 1. `spec/REPLACER_SPEC.md`

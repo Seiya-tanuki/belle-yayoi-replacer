@@ -1,11 +1,15 @@
 ---
 name: export-lexicon-review-pack
-description: Export a fixed Lexicon Steward GPTs review pack zip from repository root data and specs. Acquires global label_queue lock before reading lexicon/<line_id>/pending files. Explicit invocation only.
+description: Export a fixed Lexicon Steward GPTs review pack zip from repository root data and specs. Acquires global label_queue lock before reading lexicon/receipt/pending files. Receipt-only. Explicit invocation only.
 ---
 
 # export-lexicon-review-pack
 
 Exports a fixed read-only snapshot zip for Lexicon Steward GPTs.
+
+## Line support
+1. Receipt-only skill.
+2. If `--line != receipt`, the script exits with code `2` and an explicit receipt-only error.
 
 ## Output
 - `exports/gpts_lexicon_review/lexicon_review_pack_<UTC_TS>_<SHA8>.zip`

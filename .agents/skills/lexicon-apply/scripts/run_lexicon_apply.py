@@ -12,7 +12,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+from belle.lines import line_asset_paths, validate_line_id
 from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, apply_label_queue_adds
 
 
@@ -45,8 +45,8 @@ def main() -> int:
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         return 2
-    if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1")
+    if line_id != "receipt":
+        print(f"[ERROR] This skill is receipt-only. {line_id} is not supported.")
         return 2
 
     assets = line_asset_paths(repo_root, line_id)

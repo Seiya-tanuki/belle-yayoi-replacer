@@ -158,7 +158,7 @@ def _discover_run_roots_for_client(repo_root: Path, client_id: str, line_id: str
     legacy_exists = legacy_root.exists()
     if line_exists:
         roots.append(("line", line_root))
-    if legacy_exists:
+    if line_id == "receipt" and legacy_exists:
         roots.append(("legacy", legacy_root))
     return roots, line_exists, legacy_exists
 

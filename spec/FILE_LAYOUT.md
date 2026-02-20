@@ -3,11 +3,11 @@
 This repository is designed for deterministic, shell-driven operation via Codex Agent Skills.
 All runtime data must be isolated by client and line.
 
-## Canonical line IDs (Phase 1)
+## Canonical line IDs (current)
 
 1. `receipt` (implemented)
-2. `bank_statement` (UNIMPLEMENTED in Phase 1; fail-closed)
-3. `credit_card_statement` (UNIMPLEMENTED in Phase 1; fail-closed)
+2. `bank_statement` (implemented)
+3. `credit_card_statement` (UNIMPLEMENTED; fail-closed)
 
 ## Client directory layout (canonical)
 
@@ -19,7 +19,7 @@ clients/<CLIENT_ID>/
       config/
         category_overrides.json        # per-client+line editable full-expanded overrides
       inputs/
-        kari_shiwake/                  # target draft Yayoi CSV (receipt line only in Phase 1)
+        kari_shiwake/                  # target draft CSV for the selected line
         ledger_ref/                    # historical finalized CSV/TXT inbox
       outputs/
         runs/
@@ -42,10 +42,10 @@ clients/<CLIENT_ID>/
           *.json
 ```
 
-## bank_statement additions (Phase 4+, planned only)
+## bank_statement additions (implemented)
 
-`bank_statement` remains UNIMPLEMENTED in this phase and must fail-closed.
-The following paths are reserved for Phase 4+ implementation and TEMPLATE updates:
+`bank_statement` is implemented and uses line-scoped paths only (no legacy fallback).
+The following paths are used by the bank cache builder/replacer flow:
 
 ```text
 clients/<CLIENT_ID>/lines/bank_statement/

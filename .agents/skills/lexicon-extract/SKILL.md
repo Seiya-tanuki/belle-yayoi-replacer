@@ -1,11 +1,15 @@
 ---
 name: lexicon-extract
-description: Extract unknown terms from ledger_ref and grow lexicon/<line_id>/pending/label_queue.csv. Explicit invocation only.
+description: Extract unknown terms from ledger_ref and grow lexicon/receipt/pending/label_queue.csv. Receipt-only. Explicit invocation only.
 ---
 
 # lexicon-extract
 
 Updates `lexicon/receipt/pending/label_queue.csv` by scanning per-client ledger_ref history.
+
+## Line support
+1. Receipt-only skill.
+2. If `--line != receipt`, the script exits with code `2` and an explicit receipt-only error.
 
 ## Inputs
 1. Preferred line layout:

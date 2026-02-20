@@ -1,11 +1,15 @@
 ---
 name: lexicon-apply
-description: Apply user-labeled ADD rows from lexicon/<line_id>/pending/label_queue.csv into lexicon/<line_id>/lexicon.json and remove them from the queue. Explicit invocation only.
+description: Apply user-labeled ADD rows from lexicon/receipt/pending/label_queue.csv into lexicon/receipt/lexicon.json and remove them from the queue. Receipt-only. Explicit invocation only.
 ---
 
 # lexicon-apply
 
 Applies `action=ADD` rows from the pending label queue into the canonical lexicon.
+
+## Line support
+1. Receipt-only skill.
+2. If `--line != receipt`, the script exits with code `2` and an explicit receipt-only error.
 
 ## Inputs
 - `lexicon/receipt/pending/label_queue.csv` (user edits: set `user_category_key` and `action=ADD`)

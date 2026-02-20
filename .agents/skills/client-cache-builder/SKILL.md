@@ -12,6 +12,9 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
    - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
 2. Receipt legacy fallback (deprecated):
    - `clients/<CLIENT_ID>/inputs/ledger_ref/`
+3. `bank_statement` line layout (legacy fallbackなし):
+   - `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/`
+   - `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/`
 
 ## Outputs
 1. `.../artifacts/cache/client_cache.json`
@@ -25,7 +28,8 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 3. Duplicate sha files are moved to:
    - `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
 4. Consumers read ingested files via paths recorded in `ledger_ref_ingested.json`.
-5. `receipt` only in Phase 1.
+5. `bank_statement` uses training ingest manifests (`training_ocr_ingested.json`, `training_reference_ingested.json`).
+6. `receipt` and `bank_statement` are implemented. `credit_card_statement` is fail-closed.
 
 ## Notes
 1. Uses only summary (17th col) and debit account (5th col).
@@ -35,4 +39,8 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 ## Execution
 ```bash
 python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID> --line receipt
+```
+
+```bash
+python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID> --line bank_statement
 ```
