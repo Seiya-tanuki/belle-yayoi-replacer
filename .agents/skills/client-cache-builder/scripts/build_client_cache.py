@@ -18,10 +18,13 @@ from belle.paths import (
     get_artifacts_telemetry_dir,
     get_client_root,
 )
+try:
+    from belle.build_bank_cache import ensure_bank_client_cache_updated
+except ImportError:  # pragma: no cover - compatibility guard
+    ensure_bank_client_cache_updated = None
 
 
-def _has_ingested_manifest_entries(client_dir: Path) -> bool:
-    manifest_path = client_dir / "artifacts" / "ingest" / "ledger_ref_ingested.json"
+def _has_manifest_entries(manifest_path: Path) -> bool:
     if not manifest_path.exists():
         return False
     try:
@@ -30,6 +33,40 @@ def _has_ingested_manifest_entries(client_dir: Path) -> bool:
         return False
     ingested = obj.get("ingested") or {}
     return isinstance(ingested, dict) and bool(ingested)
+
+
+def _has_ingested_manifest_entries(client_dir: Path) -> bool:
+    return _has_manifest_entries(client_dir / "artifacts" / "ingest" / "ledger_ref_ingested.json")
+
+
+def _iter_non_placeholder_files(dir_path: Path) -> list[Path]:
+    if not dir_path.exists():
+        return []
+    files: list[Path] = []
+    for p in dir_path.iterdir():
+        if not p.is_file():
+            continue
+        if p.name == ".gitkeep":
+            continue
+        if p.name.endswith(".tmp"):
+            continue
+        files.append(p)
+    return files
+
+
+def _has_bank_training_inputs_or_manifests(client_dir: Path) -> bool:
+    ocr_dir = client_dir / "inputs" / "training" / "ocr_kari_shiwake"
+    ref_dir = client_dir / "inputs" / "training" / "reference_yayoi"
+    if _iter_non_placeholder_files(ocr_dir):
+        return True
+    if _iter_non_placeholder_files(ref_dir):
+        return True
+    ingest_dir = client_dir / "artifacts" / "ingest"
+    if _has_manifest_entries(ingest_dir / "training_ocr_ingested.json"):
+        return True
+    if _has_manifest_entries(ingest_dir / "training_reference_ingested.json"):
+        return True
+    return False
 
 
 def _resolve_client_layout(repo_root: Path, client_id: str, line_id: str) -> tuple[str | None, Path]:
@@ -53,13 +90,21 @@ def find_client_id_auto(repo_root: Path, line_id: str) -> tuple[str, str | None]
             client_layout_line_id, client_dir = _resolve_client_layout(repo_root, tdir.name, line_id)
         except SystemExit:
             continue
-        ref = client_dir / "inputs" / "ledger_ref"
-        has_inbox_files = ref.exists() and (list(ref.glob("*.csv")) or list(ref.glob("*.txt")))
-        if has_inbox_files or _has_ingested_manifest_entries(client_dir):
-            cands.append((tdir.name, client_layout_line_id))
+        if line_id == "bank_statement":
+            if _has_bank_training_inputs_or_manifests(client_dir):
+                cands.append((tdir.name, client_layout_line_id))
+        else:
+            ref = client_dir / "inputs" / "ledger_ref"
+            has_inbox_files = ref.exists() and (list(ref.glob("*.csv")) or list(ref.glob("*.txt")))
+            if has_inbox_files or _has_ingested_manifest_entries(client_dir):
+                cands.append((tdir.name, client_layout_line_id))
     if len(cands) == 1:
         return cands[0]
     if not cands:
+        if line_id == "bank_statement":
+            raise SystemExit(
+                "Could not auto-detect client: no bank training inbox files or ingest manifest entries found."
+            )
         raise SystemExit(
             "Could not auto-detect client: no ledger_ref inbox files or ingest manifest entries found."
         )
@@ -85,7 +130,7 @@ def main() -> None:
         print(f"[ERROR] {exc}")
         raise SystemExit(2)
     if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1")
+        print(f"[ERROR] line is unimplemented: {line_id}")
         raise SystemExit(2)
 
     if args.client:
@@ -100,6 +145,49 @@ def main() -> None:
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
     telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_layout_line_id)
     telemetry_dir.mkdir(parents=True, exist_ok=True)
+
+    if line_id == "bank_statement":
+        if ensure_bank_client_cache_updated is None:
+            print("[ERROR] bank_statement cache builder is unavailable.")
+            raise SystemExit(1)
+        summary = ensure_bank_client_cache_updated(repo_root, client_id)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        out_manifest = {
+            "schema": "belle.bank_client_cache_update_run.v1",
+            "version": "0.1",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "client_id": client_id,
+            "line_id": line_id,
+            "summary": {
+                "applied_pair_ids": len(summary.get("applied_pair_ids") or []),
+                "skipped_pair_ids": len(summary.get("skipped_pair_ids") or []),
+                "pairs_unique_used_total": int(summary.get("pairs_unique_used_total") or 0),
+                "sign_mismatch_skipped_total": int(summary.get("sign_mismatch_skipped_total") or 0),
+                "labels_total": int(summary.get("labels_total") or 0),
+                "warnings": list(summary.get("warnings") or []),
+            },
+            "paths": {
+                "client_cache": str(summary.get("cache_path") or ""),
+                "training_ocr_ingest_manifest": str(summary.get("training_ocr_ingest_manifest_path") or ""),
+                "training_reference_ingest_manifest": str(
+                    summary.get("training_reference_ingest_manifest_path") or ""
+                ),
+            },
+        }
+        (telemetry_dir / f"client_cache_update_run_{ts}.json").write_text(
+            json.dumps(out_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        print(
+            f"[OK] client={client_id}"
+            f" pairs_used={out_manifest['summary']['pairs_unique_used_total']}"
+            f" labels={out_manifest['summary']['labels_total']}"
+            f" cache={out_manifest['paths']['client_cache']}"
+        )
+        if out_manifest["summary"]["warnings"]:
+            print("[WARN] " + " | ".join(out_manifest["summary"]["warnings"]))
+        return
 
     asset_paths = line_asset_paths(repo_root, line_id)
     lex = load_lexicon(asset_paths["lexicon_path"])

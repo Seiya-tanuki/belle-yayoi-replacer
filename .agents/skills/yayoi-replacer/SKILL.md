@@ -11,12 +11,22 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 1. `--client <CLIENT_ID>` is required.
 2. `--line <line_id>` is available (default: `receipt`).
 3. Work under a single client folder.
-4. Preferred line layout:
+4. Receipt preferred line layout:
    - `clients/<CLIENT_ID>/lines/receipt/`
 5. Receipt legacy fallback (deprecated, auto-detected if line layout missing):
    - `clients/<CLIENT_ID>/`
-6. Put exactly one target CSV in `.../inputs/kari_shiwake/`.
-7. Put historical reference CSV/TXT files in `.../inputs/ledger_ref/`.
+6. For `receipt`: put exactly one target CSV in `.../inputs/kari_shiwake/`.
+7. For `receipt`: put historical reference CSV/TXT files in `.../inputs/ledger_ref/`.
+8. For `bank_statement`: use line-scoped path only (no legacy fallback):
+   - `clients/<CLIENT_ID>/lines/bank_statement/`
+9. For `bank_statement`: place exactly one target CSV in:
+   - `clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/`
+10. For `bank_statement` training/cache update:
+   - OCR training: `.../inputs/training/ocr_kari_shiwake/`
+   - Teacher reference: `.../inputs/training/reference_yayoi/`
+11. `bank_statement` v0 teacher rule:
+   - exactly one ingested teacher reference file is required at run time
+   - one canonical file under `inputs/training/reference_yayoi/` is recommended
 
 ## Runtime behavior (important)
 1. `ledger_ref` ingest treats `inputs/ledger_ref/` as an inbox.
@@ -34,7 +44,9 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 4. Auto-grows pending lexicon candidates from unprocessed ingested ledger_ref entries.
 5. Ingests the single kari_shiwake input to `artifacts/ingest/kari_shiwake/`.
 6. Replaces only column 5 and writes outputs to `.../outputs/runs/<RUN_ID>/`.
-7. `receipt` only in Phase 1 (`bank_statement` and `credit_card_statement` are fail-closed).
+7. For `bank_statement`, updates bank cache then runs bank replacer against the target OCR draft.
+8. Writes line-scoped run artifacts and updates `outputs/LATEST.txt` under the selected line.
+9. `credit_card_statement` remains fail-closed.
 
 ## Canonical specs
 1. `spec/REPLACER_SPEC.md`
@@ -45,4 +57,8 @@ Deterministic debit-account replacement for Yayoi import CSVs.
 ## Execution
 ```bash
 python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLIENT_ID> --line receipt
+```
+
+```bash
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLIENT_ID> --line bank_statement
 ```

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import platform
 import re
@@ -207,6 +208,55 @@ def _ensure_required_dirs(repo_root: Path, line_id: str) -> List[Path]:
     return created
 
 
+def _iter_non_placeholder_files(dir_path: Path) -> List[Path]:
+    if not dir_path.exists() or not dir_path.is_dir():
+        return []
+    files: List[Path] = []
+    for p in dir_path.iterdir():
+        if not p.is_file():
+            continue
+        if p.name == ".gitkeep":
+            continue
+        if p.name.endswith(".tmp"):
+            continue
+        files.append(p)
+    return sorted(files, key=lambda p: p.name)
+
+
+def _count_ingested_entries(manifest_path: Path) -> tuple[int, str | None]:
+    if not manifest_path.exists():
+        return 0, "manifest_missing"
+    try:
+        obj = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return 0, f"manifest_parse_error:{type(exc).__name__}"
+    ingested = obj.get("ingested")
+    if not isinstance(ingested, dict):
+        return 0, "manifest_ingested_not_object"
+    if not ingested:
+        return 0, None
+    ingested_order = obj.get("ingested_order")
+    if isinstance(ingested_order, list):
+        unique_ordered = {str(sha) for sha in ingested_order if str(sha) in ingested}
+        if unique_ordered:
+            return len(unique_ordered), None
+    return len(ingested), None
+
+
+def _discover_bank_line_clients(repo_root: Path) -> List[tuple[str, Path]]:
+    clients_dir = repo_root / "clients"
+    if not clients_dir.exists():
+        return []
+    found: List[tuple[str, Path]] = []
+    for client_dir in sorted(clients_dir.iterdir(), key=lambda p: p.name):
+        if not client_dir.is_dir() or client_dir.name == "TEMPLATE":
+            continue
+        line_root = client_dir / "lines" / "bank_statement"
+        if line_root.exists():
+            found.append((client_dir.name, line_root))
+    return found
+
+
 def _make_table(rows: Sequence[CheckResult]) -> List[str]:
     lines = [
         "| Check | Pass/Fail | Evidence |",
@@ -278,7 +328,7 @@ def main() -> int:
         print(f"[ERROR] {exc}")
         return 2
     if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1")
+        print(f"[ERROR] line is unimplemented: {line_id}")
         return 2
 
     repo_root = Path(__file__).resolve().parents[4]
@@ -493,6 +543,132 @@ def main() -> int:
         cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
         "Add the active replacer config back under rulesets/ and align references.",
     )
+
+    if line_id == "bank_statement":
+        bank_clients = _discover_bank_line_clients(repo_root)
+        if bank_clients:
+            bank_preview = ", ".join(client_id for client_id, _ in bank_clients[:5])
+            if len(bank_clients) > 5:
+                bank_preview += ", ..."
+            c16_passed = True
+            c16_evidence = f"found {len(bank_clients)} client(s): {bank_preview}"
+        else:
+            c16_passed = False
+            c16_evidence = "no clients/<ID>/lines/bank_statement directory found"
+        add_hard(
+            "C16",
+            "bank_statement client line roots exist",
+            c16_passed,
+            c16_evidence,
+            "Create clients/<ID>/lines/bank_statement via $client-register or by applying the standard line layout.",
+        )
+
+        required_bank_dirs = [
+            Path("inputs/training/ocr_kari_shiwake"),
+            Path("inputs/training/reference_yayoi"),
+            Path("inputs/kari_shiwake"),
+            Path("artifacts/cache"),
+        ]
+        missing_bank_dirs: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            for rel in required_bank_dirs:
+                target = line_root / rel
+                if not target.is_dir():
+                    missing_bank_dirs.append(f"{bank_client_id}:{rel.as_posix()}")
+        if bank_clients and not missing_bank_dirs:
+            c17_passed = True
+            c17_evidence = f"all required bank directories present across {len(bank_clients)} client(s)"
+        elif not bank_clients:
+            c17_passed = False
+            c17_evidence = "not validated because no bank_statement client line root exists"
+        else:
+            c17_passed = False
+            c17_evidence = "missing dirs: " + "; ".join(missing_bank_dirs[:20])
+            if len(missing_bank_dirs) > 20:
+                c17_evidence += f"; ... (+{len(missing_bank_dirs) - 20} more)"
+        add_hard(
+            "C17",
+            "bank_statement required directories exist per client",
+            c17_passed,
+            c17_evidence,
+            "For each client, create inputs/training/ocr_kari_shiwake, "
+            "inputs/training/reference_yayoi, inputs/kari_shiwake, and artifacts/cache under lines/bank_statement.",
+        )
+
+        reference_rule_failures: List[str] = []
+        reference_rule_evidence: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            reference_dir = line_root / "inputs" / "training" / "reference_yayoi"
+            inbox_files = [
+                p
+                for p in _iter_non_placeholder_files(reference_dir)
+                if p.suffix.lower() in {".csv", ".txt"}
+            ]
+            ingested_manifest = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            ingested_count, manifest_issue = _count_ingested_entries(ingested_manifest)
+            inbox_count = len(inbox_files)
+            rule_ok = ingested_count == 1 or inbox_count >= 1
+            detail = f"{bank_client_id}(ingested={ingested_count}, inbox={inbox_count})"
+            if manifest_issue and ingested_count == 0:
+                detail += f"[{manifest_issue}]"
+            reference_rule_evidence.append(detail)
+            if not rule_ok:
+                reference_rule_failures.append(
+                    f"{bank_client_id}: ingested={ingested_count}, inbox={inbox_count}"
+                )
+        if bank_clients and not reference_rule_failures:
+            c18_passed = True
+            c18_evidence = "; ".join(reference_rule_evidence)
+        elif not bank_clients:
+            c18_passed = False
+            c18_evidence = "not validated because no bank_statement client line root exists"
+        else:
+            c18_passed = False
+            c18_evidence = "reference rule failed for: " + "; ".join(reference_rule_failures)
+        add_hard(
+            "C18",
+            "bank_statement teacher reference rule (exactly one ingested OR at least one inbox file)",
+            c18_passed,
+            c18_evidence,
+            "Place at least one teacher file under "
+            "clients/<ID>/lines/bank_statement/inputs/training/reference_yayoi/ "
+            "or ensure artifacts/ingest/training_reference_ingested.json has exactly one ingested file.",
+        )
+
+        cache_details: List[str] = []
+        cache_missing: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            if cache_path.exists():
+                mtime_iso = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=timezone.utc).isoformat()
+                cache_details.append(f"{bank_client_id}:{mtime_iso}")
+            else:
+                cache_missing.append(bank_client_id)
+        if not bank_clients:
+            s6_passed = True
+            s6_evidence = "no bank_statement clients found (cache check skipped)"
+        elif cache_missing:
+            s6_passed = False
+            missing_preview = ", ".join(cache_missing[:10])
+            if len(cache_missing) > 10:
+                missing_preview += ", ..."
+            s6_evidence = (
+                f"missing cache for {len(cache_missing)} client(s): {missing_preview}; "
+                f"existing={len(cache_details)}"
+            )
+        else:
+            s6_passed = True
+            preview = "; ".join(cache_details[:5])
+            if len(cache_details) > 5:
+                preview += f"; ... (+{len(cache_details) - 5} more)"
+            s6_evidence = f"all caches exist. updated_at(utc): {preview}"
+        add_soft(
+            "S6",
+            "bank_statement cache file presence and last update time",
+            s6_passed,
+            s6_evidence,
+            "Run $client-cache-builder --line bank_statement --client <CLIENT_ID> for clients with missing cache.",
+        )
 
     # D) BOM / compilation / tests
     d1 = run_and_store("D1", "python tools/bom_guard.py --check")
