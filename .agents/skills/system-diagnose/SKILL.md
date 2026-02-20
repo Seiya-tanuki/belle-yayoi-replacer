@@ -16,6 +16,8 @@ Runs hard/soft readiness checks for this repository and environment, then writes
 - The diagnostic run is read-only for tracked files.
 - It may provision required runtime directories (`exports/*`, `exports/backups/`, `lexicon/receipt/pending/locks/`) via safe `mkdir -p`.
 - Report artifacts are written under `exports/system_diagnose/`.
+- For `--line bank_statement`, diagnose focuses on repository integrity and TEMPLATE structure (tracked assets/placeholders).
+- Presence of client-specific training/target input files is validated by runtime skills (`$client-cache-builder`, `$yayoi-replacer`), not by system-diagnose.
 
 ## Execution
 ```bash

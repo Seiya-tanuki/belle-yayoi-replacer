@@ -541,6 +541,76 @@ def main() -> int:
                 False,
             ),
         ] + required_paths
+    if line_id == "bank_statement":
+        bank_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
+        required_paths = required_paths + [
+            (
+                "C21",
+                "clients/TEMPLATE/lines/bank_statement/inputs/training/ocr_kari_shiwake directory exists",
+                bank_template_root / "inputs" / "training" / "ocr_kari_shiwake",
+                True,
+            ),
+            (
+                "C22",
+                "clients/TEMPLATE/lines/bank_statement/inputs/training/reference_yayoi directory exists",
+                bank_template_root / "inputs" / "training" / "reference_yayoi",
+                True,
+            ),
+            (
+                "C23",
+                "clients/TEMPLATE/lines/bank_statement/inputs/kari_shiwake directory exists",
+                bank_template_root / "inputs" / "kari_shiwake",
+                True,
+            ),
+            (
+                "C24",
+                "clients/TEMPLATE/lines/bank_statement/artifacts/ingest/training_ocr directory exists",
+                bank_template_root / "artifacts" / "ingest" / "training_ocr",
+                True,
+            ),
+            (
+                "C25",
+                "clients/TEMPLATE/lines/bank_statement/artifacts/ingest/training_reference directory exists",
+                bank_template_root / "artifacts" / "ingest" / "training_reference",
+                True,
+            ),
+            (
+                "C26",
+                "clients/TEMPLATE/lines/bank_statement/artifacts/ingest/kari_shiwake directory exists",
+                bank_template_root / "artifacts" / "ingest" / "kari_shiwake",
+                True,
+            ),
+            (
+                "C27",
+                "clients/TEMPLATE/lines/bank_statement/config/bank_line_config.json exists",
+                bank_template_root / "config" / "bank_line_config.json",
+                False,
+            ),
+            (
+                "C28",
+                "belle/build_bank_cache.py exists",
+                repo_root / "belle" / "build_bank_cache.py",
+                False,
+            ),
+            (
+                "C29",
+                "belle/bank_replacer.py exists",
+                repo_root / "belle" / "bank_replacer.py",
+                False,
+            ),
+            (
+                "C30",
+                "belle/bank_cache.py exists",
+                repo_root / "belle" / "bank_cache.py",
+                False,
+            ),
+            (
+                "C31",
+                "belle/bank_pairing.py exists",
+                repo_root / "belle" / "bank_pairing.py",
+                False,
+            ),
+        ]
     for check_id, label, path, expect_dir in required_paths:
         passed = path.is_dir() if expect_dir else path.is_file()
         add_hard(
@@ -636,75 +706,64 @@ def main() -> int:
             "Add OCR training files under inputs/training/ocr_kari_shiwake when available.",
         )
 
-        reference_rule_failures: List[str] = []
-        reference_rule_evidence: List[str] = []
+        missing_reference_dirs: List[str] = []
+        reference_dir_evidence: List[str] = []
         for bank_client_id, line_root in bank_clients:
             reference_dir = line_root / "inputs" / "training" / "reference_yayoi"
-            if not reference_dir.is_dir():
-                reference_rule_failures.append(
+            has_dir = reference_dir.is_dir()
+            reference_dir_evidence.append(
+                f"{bank_client_id}:{reference_dir.relative_to(line_root).as_posix()}={has_dir}"
+            )
+            if not has_dir:
+                missing_reference_dirs.append(
                     f"{bank_client_id}: missing {reference_dir.relative_to(line_root).as_posix()}"
-                )
-                continue
-            inbox_files = _iter_non_placeholder_files(reference_dir)
-            inbox_count = len(inbox_files)
-            file_preview = ",".join(p.name for p in inbox_files[:3]) if inbox_files else "-"
-            detail = f"{bank_client_id}(count={inbox_count}, files={file_preview})"
-            reference_rule_evidence.append(detail)
-            if inbox_count != 1:
-                reference_rule_failures.append(
-                    f"{bank_client_id}: count={inbox_count} in inputs/training/reference_yayoi"
                 )
         if not bank_clients:
             c18_passed = True
             c18_evidence = "N/A: no bank_statement clients found"
-        elif not reference_rule_failures:
+        elif not missing_reference_dirs:
             c18_passed = True
-            c18_evidence = "; ".join(reference_rule_evidence)
+            c18_evidence = "; ".join(reference_dir_evidence)
         else:
             c18_passed = False
-            c18_evidence = "teacher reference count!=1: " + "; ".join(reference_rule_failures)
+            c18_evidence = "missing dirs: " + "; ".join(missing_reference_dirs[:20])
+            if len(missing_reference_dirs) > 20:
+                c18_evidence += f"; ... (+{len(missing_reference_dirs) - 20} more)"
         add_hard(
             "C18",
-            "bank_statement teacher reference file count is exactly 1 (AUD-004)",
+            "bank_statement teacher reference directory exists",
             c18_passed,
             c18_evidence,
-            "Leave exactly one teacher file under "
-            "clients/<ID>/lines/bank_statement/inputs/training/reference_yayoi/. "
-            "If multiple files exist, keep one canonical file and remove the rest.",
+            "Create clients/<ID>/lines/bank_statement/inputs/training/reference_yayoi/ for each bank client.",
         )
 
-        target_rule_failures: List[str] = []
-        target_rule_evidence: List[str] = []
+        missing_target_dirs: List[str] = []
+        target_dir_evidence: List[str] = []
         for bank_client_id, line_root in bank_clients:
             target_dir = line_root / "inputs" / "kari_shiwake"
-            if not target_dir.is_dir():
-                target_rule_failures.append(
+            has_dir = target_dir.is_dir()
+            target_dir_evidence.append(f"{bank_client_id}:{target_dir.relative_to(line_root).as_posix()}={has_dir}")
+            if not has_dir:
+                missing_target_dirs.append(
                     f"{bank_client_id}: missing {target_dir.relative_to(line_root).as_posix()}"
-                )
-                continue
-            target_files = _iter_non_placeholder_files(target_dir)
-            target_count = len(target_files)
-            file_preview = ",".join(p.name for p in target_files[:3]) if target_files else "-"
-            target_rule_evidence.append(f"{bank_client_id}(count={target_count}, files={file_preview})")
-            if target_count != 1:
-                target_rule_failures.append(
-                    f"{bank_client_id}: count={target_count} in inputs/kari_shiwake"
                 )
         if not bank_clients:
             c19_passed = True
             c19_evidence = "N/A: no bank_statement clients found"
-        elif not target_rule_failures:
+        elif not missing_target_dirs:
             c19_passed = True
-            c19_evidence = "; ".join(target_rule_evidence)
+            c19_evidence = "; ".join(target_dir_evidence)
         else:
             c19_passed = False
-            c19_evidence = "target file count!=1: " + "; ".join(target_rule_failures)
+            c19_evidence = "missing dirs: " + "; ".join(missing_target_dirs[:20])
+            if len(missing_target_dirs) > 20:
+                c19_evidence += f"; ... (+{len(missing_target_dirs) - 20} more)"
         add_hard(
             "C19",
-            "bank_statement target kari_shiwake file count is exactly 1",
+            "bank_statement target kari_shiwake directory exists",
             c19_passed,
             c19_evidence,
-            "Leave exactly one target file under clients/<ID>/lines/bank_statement/inputs/kari_shiwake/.",
+            "Create clients/<ID>/lines/bank_statement/inputs/kari_shiwake/ for each bank client.",
         )
 
         missing_configs: List[str] = []
@@ -725,12 +784,12 @@ def main() -> int:
         else:
             c20_passed = False
             c20_evidence = f"missing bank_line_config.json for client(s): {', '.join(missing_configs)}"
-        add_hard(
-            "C20",
-            "bank_statement config/bank_line_config.json exists",
+        add_soft(
+            "S9",
+            "bank_statement client config/bank_line_config.json presence (warn-only)",
             c20_passed,
             c20_evidence,
-            "Add config/bank_line_config.json under each bank_statement client line root.",
+            "Run $client-register to provision missing config files, or restore them from template.",
         )
 
         forbidden_residue_hits: List[str] = []

@@ -58,9 +58,19 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
             ]:
                 (temp_root / ".agents" / "skills" / skill_name).mkdir(parents=True, exist_ok=True)
 
-            (temp_root / "clients" / "TEMPLATE" / "lines" / "bank_statement" / "artifacts" / "ingest").mkdir(
-                parents=True,
-                exist_ok=True,
+            bank_template_root = temp_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
+            for rel in [
+                Path("inputs/training/ocr_kari_shiwake"),
+                Path("inputs/training/reference_yayoi"),
+                Path("inputs/kari_shiwake"),
+                Path("artifacts/ingest/training_ocr"),
+                Path("artifacts/ingest/training_reference"),
+                Path("artifacts/ingest/kari_shiwake"),
+            ]:
+                (bank_template_root / rel).mkdir(parents=True, exist_ok=True)
+            _write_text(
+                bank_template_root / "config" / "bank_line_config.json",
+                json.dumps({"schema": "belle.bank_line_config.v0", "version": "0.1"}, ensure_ascii=False),
             )
 
             _write_text(temp_root / "belle" / "__init__.py", "")
@@ -84,6 +94,13 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                     ]
                 ),
             )
+            for module_name in [
+                "build_bank_cache.py",
+                "bank_replacer.py",
+                "bank_cache.py",
+                "bank_pairing.py",
+            ]:
+                _write_text(temp_root / "belle" / module_name, "# fixture\n")
 
             _write_text(
                 temp_root / "tools" / "bom_guard.py",

@@ -62,6 +62,28 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
         parents=True,
         exist_ok=True,
     )
+    if line_id == "bank_statement":
+        bank_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
+        for rel in [
+            Path("inputs/training/ocr_kari_shiwake"),
+            Path("inputs/training/reference_yayoi"),
+            Path("inputs/kari_shiwake"),
+            Path("artifacts/ingest/training_ocr"),
+            Path("artifacts/ingest/training_reference"),
+            Path("artifacts/ingest/kari_shiwake"),
+        ]:
+            (bank_template_root / rel).mkdir(parents=True, exist_ok=True)
+        _write_text(
+            bank_template_root / "config" / "bank_line_config.json",
+            json.dumps({"schema": "belle.bank_line_config.v0", "version": "0.1"}, ensure_ascii=False),
+        )
+        for module_name in [
+            "build_bank_cache.py",
+            "bank_replacer.py",
+            "bank_cache.py",
+            "bank_pairing.py",
+        ]:
+            _write_text(repo_root / "belle" / module_name, "# test fixture\n")
 
 
 def _prepare_receipt_assets(repo_root: Path, *, with_lexicon: bool) -> None:
@@ -212,35 +234,30 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_bank_statement_no_go_when_teacher_or_target_count_not_one(self) -> None:
-        cases = [
-            ("teacher_count_not_one", 2, 1, "C18 bank_statement teacher reference file count is exactly 1"),
-            ("target_count_not_one", 1, 0, "C19 bank_statement target kari_shiwake file count is exactly 1"),
-        ]
-        for case_name, teacher_count, target_count, expected_label in cases:
-            with self.subTest(case=case_name):
-                repo_root = self.test_tmp_root / f"diagnose_bank_ng_{case_name}_{uuid4().hex}"
-                repo_root.mkdir(parents=True, exist_ok=False)
-                try:
-                    _prepare_common_repo_layout(repo_root, "bank_statement")
-                    _prepare_bank_client(
-                        repo_root,
-                        "C_BANK_NG",
-                        teacher_count=teacher_count,
-                        target_count=target_count,
-                        ocr_file_count=0,
-                        with_config=True,
-                        with_cache=False,
-                    )
-                    module = _load_system_diagnose_module(self.real_repo_root)
-                    rc, output = _run_main(module, repo_root, "bank_statement")
+    def test_bank_statement_go_with_empty_teacher_and_target_dirs(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_bank_empty_input_dirs_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            _prepare_bank_client(
+                repo_root,
+                "C_BANK_EMPTY",
+                teacher_count=0,
+                target_count=0,
+                ocr_file_count=0,
+                with_config=True,
+                with_cache=False,
+            )
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
 
-                    self.assertNotEqual(0, rc, msg=output)
-                    report = _read_latest_report(repo_root)
-                    self.assertIn(expected_label, report)
-                    self.assertIn("| FAIL |", report)
-                finally:
-                    shutil.rmtree(repo_root, ignore_errors=True)
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn("C18 bank_statement teacher reference directory exists", report)
+            self.assertIn("C19 bank_statement target kari_shiwake directory exists", report)
+            self.assertNotIn("file count is exactly 1", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
 
     def test_receipt_still_enforces_lexicon_requirement(self) -> None:
         repo_root = self.test_tmp_root / f"diagnose_receipt_ng_{uuid4().hex}"
