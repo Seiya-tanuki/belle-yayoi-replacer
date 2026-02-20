@@ -3,10 +3,12 @@
 ## Scope and status
 
 This spec applies only to `line_id=bank_statement`.
-It defines v0 replacer behavior for future implementation.
+It defines v0 replacer behavior for implemented bank runtime flows.
 
 Implementation status:
-1. `bank_statement`: UNIMPLEMENTED (must remain fail-closed)
+1. `receipt`: implemented/runnable via explicit skills.
+2. `bank_statement`: implemented/runnable via explicit skills.
+3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed).
 
 Related specs:
 1. `spec/BANK_LINE_INPUTS_SPEC.md`
@@ -98,4 +100,4 @@ Manifest must include run metadata and input artifact references.
 1. If required features are missing/ambiguous, do not replace.
 2. If thresholds fail, do not replace.
 3. If tie in top label counts, do not replace.
-4. This phase does not implement bank runtime code.
+4. Unsupported lines (e.g. `credit_card_statement`) remain unimplemented and fail-closed.

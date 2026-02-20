@@ -258,6 +258,18 @@ def _discover_bank_line_clients(repo_root: Path) -> List[tuple[str, Path]]:
     return found
 
 
+def _detect_bank_forbidden_residue(line_root: Path) -> List[str]:
+    forbidden_roots = [
+        line_root / "inputs" / "ledger_ref",
+        line_root / "artifacts" / "ingest" / "ledger_ref",
+    ]
+    hits: List[str] = []
+    for forbidden_root in forbidden_roots:
+        if forbidden_root.exists():
+            hits.append(f"{forbidden_root.relative_to(line_root).as_posix()}/**")
+    return hits
+
+
 def _make_table(rows: Sequence[CheckResult]) -> List[str]:
     lines = [
         "| Check | Pass/Fail | Evidence |",
@@ -719,6 +731,35 @@ def main() -> int:
             c20_passed,
             c20_evidence,
             "Add config/bank_line_config.json under each bank_statement client line root.",
+        )
+
+        forbidden_residue_hits: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            hits = _detect_bank_forbidden_residue(line_root)
+            if hits:
+                forbidden_residue_hits.append(f"{bank_client_id}: {', '.join(hits)}")
+        if not bank_clients:
+            s8_passed = True
+            s8_evidence = "N/A: no bank_statement clients found"
+        elif not forbidden_residue_hits:
+            s8_passed = True
+            s8_evidence = "no forbidden bank ledger_ref residue directories detected"
+        else:
+            s8_passed = False
+            s8_evidence = (
+                "WARN forbidden bank ledger_ref residue detected (legacy, safe to delete): "
+                + "; ".join(forbidden_residue_hits[:20])
+            )
+            if len(forbidden_residue_hits) > 20:
+                s8_evidence += f"; ... (+{len(forbidden_residue_hits) - 20} more)"
+        add_soft(
+            "S8",
+            "bank_statement forbidden ledger_ref residue directories (warn-only)",
+            s8_passed,
+            s8_evidence,
+            "Delete legacy residue directories when safe: inputs/ledger_ref/** and "
+            "artifacts/ingest/ledger_ref/**. These are excluded from bank backups, "
+            "and bank restore rejects ZIP files containing them.",
         )
 
         cache_details: List[str] = []

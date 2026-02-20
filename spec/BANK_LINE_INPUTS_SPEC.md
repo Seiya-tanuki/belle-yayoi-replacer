@@ -1,13 +1,14 @@
-# BANK_LINE_INPUTS_SPEC (bank_statement line v0, docs-first)
+# BANK_LINE_INPUTS_SPEC (bank_statement line v0)
 
 ## Scope and status
 
 This spec defines v0 input contracts for `line_id=bank_statement` only.
-It does not enable runtime behavior yet.
+This contract is implemented in current line-split runtime behavior.
 
 Implementation status:
-1. `bank_statement`: UNIMPLEMENTED (must remain fail-closed)
-2. This file is a deterministic contract for future implementation work.
+1. `receipt`: implemented/runnable via explicit skills.
+2. `bank_statement`: implemented/runnable via explicit skills.
+3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed).
 
 Related specs:
 1. `spec/BANK_CLIENT_CACHE_SPEC.md`
@@ -25,6 +26,9 @@ Per-client canonical paths:
    1. `clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/`
 
 No other source is allowed for bank v0 learning/inference.
+Forbidden paths for bank v0:
+1. `clients/<CLIENT_ID>/lines/bank_statement/inputs/ledger_ref/**`
+2. `clients/<CLIENT_ID>/lines/bank_statement/artifacts/ingest/ledger_ref/**`
 
 ## Training pair concept (before/after)
 
@@ -79,4 +83,4 @@ Normalization steps:
 
 1. Ambiguous pairing keys are skipped, never guessed.
 2. Missing sign/date/amount needed for pairing causes skip.
-3. bank v0 remains unimplemented after this docs phase.
+3. Unsupported lines (e.g. `credit_card_statement`) remain unimplemented and fail-closed.

@@ -3,17 +3,17 @@
 ## Scope
 
 This spec applies to receipt line only (`line_id=receipt`).
-For bank-statement replacement behavior, see `spec/BANK_REPLACER_SPEC.md` (future implementation).
+For bank-statement replacement behavior, see `spec/BANK_REPLACER_SPEC.md`.
 
 ## Goal
 
 Replace ONLY the debit account field (5th column) in Yayoi 25-column import CSV.
 Never change any other field. Preserve formatting behavior and CSV contract.
 
-## Line implementation status (Phase 1)
+## Line implementation status (current)
 
 1. `receipt`: implemented
-2. `bank_statement`: unimplemented (must fail-closed)
+2. `bank_statement`: implemented (see bank-specific specs)
 3. `credit_card_statement`: unimplemented (must fail-closed)
 
 ## Input/Output contract

@@ -19,8 +19,8 @@ clients/<CLIENT_ID>/
       config/
         category_overrides.json        # per-client+line editable full-expanded overrides
       inputs/
-        kari_shiwake/                  # target draft CSV for the selected line
-        ledger_ref/                    # historical finalized CSV/TXT inbox
+        kari_shiwake/                  # target draft CSV for the selected line (all implemented lines)
+        ledger_ref/                    # receipt only; forbidden for bank_statement
       outputs/
         runs/
           <RUN_ID>/
@@ -33,11 +33,11 @@ clients/<CLIENT_ID>/
         cache/
           client_cache.json
         ingest/
-          ledger_ref/
-          kari_shiwake/
-          ledger_ref_ingested.json
-          kari_shiwake_ingested.json
-        telemetry/
+          ledger_ref/                  # receipt only; forbidden for bank_statement
+          kari_shiwake/                # receipt flow ingest storage
+          ledger_ref_ingested.json     # receipt flow ingest marker
+          kari_shiwake_ingested.json   # receipt flow ingest marker
+        telemetry/                     # optional runtime logs; non-blocking if absent
           lexicon_autogrow_latest.json
           *.json
 ```
@@ -50,9 +50,13 @@ The following paths are used by the bank cache builder/replacer flow:
 ```text
 clients/<CLIENT_ID>/lines/bank_statement/
   inputs/
+    kari_shiwake/
     training/
       ocr_kari_shiwake/
       reference_yayoi/
+  outputs/
+    runs/<RUN_ID>/
+    LATEST.txt
   artifacts/
     ingest/
       training_ocr/
@@ -61,12 +65,30 @@ clients/<CLIENT_ID>/lines/bank_statement/
       training_reference_ingested.json
     cache/
       client_cache.json                # schema differs: belle.bank_client_cache.v0
+    telemetry/                         # optional; allowed and non-blocking
 ```
 
 Related specs:
 1. `spec/BANK_LINE_INPUTS_SPEC.md`
 2. `spec/BANK_CLIENT_CACHE_SPEC.md`
 3. `spec/BANK_REPLACER_SPEC.md`
+
+## Line-specific source policy
+
+1. `receipt` uses `inputs/ledger_ref/` and `artifacts/ingest/ledger_ref*/` for incremental ingest/cache updates.
+2. `bank_statement` MUST NOT use any `ledger_ref` path; it uses only:
+   1. `inputs/training/ocr_kari_shiwake/`
+   2. `inputs/training/reference_yayoi/`
+   3. `inputs/kari_shiwake/`
+   4. `artifacts/ingest/training_ocr/` + `training_ocr_ingested.json`
+   5. `artifacts/ingest/training_reference/` + `training_reference_ingested.json`
+3. `credit_card_statement` remains unimplemented and fail-closed.
+
+## bank_statement forbidden paths (explicit)
+
+The following paths are forbidden for `line_id=bank_statement` and must not be used as data sources:
+1. `clients/<CLIENT_ID>/lines/bank_statement/inputs/ledger_ref/**`
+2. `clients/<CLIENT_ID>/lines/bank_statement/artifacts/ingest/ledger_ref/**`
 
 ## Shared assets (line-scoped, tracked)
 
