@@ -5,12 +5,22 @@
   "bank_account_name": "普通預金",
   "bank_account_subaccount": "",
   "pairing": {
-    "join_key": ["date", "sign", "amount"],
+    "join_key": [
+      "date",
+      "sign",
+      "amount"
+    ],
     "require_unique_on_both_sides": true
   },
   "thresholds": {
-    "kana_sign_amount": { "min_count": 2, "min_p_majority": 0.85 },
-    "kana_sign":        { "min_count": 3, "min_p_majority": 0.80 }
+    "kana_sign_amount": {
+      "min_count": 1,
+      "min_p_majority": 0.85
+    },
+    "kana_sign": {
+      "min_count": 2,
+      "min_p_majority": 0.8
+    }
   },
   "notes": {
     "status": "template_only_not_used_yet",
