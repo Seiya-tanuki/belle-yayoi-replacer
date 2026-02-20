@@ -73,16 +73,23 @@ This replacement is independent from counter-label replacement.
 It may apply even when counter-label replacement applies; it must not reduce counter replacement coverage.
 
 Learning source:
-1. `cache.bank_account_subaccount_stats["kana_sign_amount"]`
+1. `cache.bank_account_subaccount_stats["kana_sign_amount"]` (strong)
+2. `cache.bank_account_subaccount_stats["kana_sign"]` (weak fallback)
 
-Apply key and policy (initial conservative phase):
-1. strong-only key: `kana_key + sign + amount` (`kana_sign_amount`)
-2. weak key (`kana_key + sign`) is NOT applied in this phase
-3. deterministic-only:
+Runtime config (`bank_line_config.json`):
+1. `bank_side_subaccount.enabled` (default `true`)
+2. `bank_side_subaccount.weak_enabled` (default `true`)
+3. `bank_side_subaccount.weak_min_count` (default `3`, enforced minimum `3`)
+
+Apply order and policy:
+1. evaluate strong key first: `kana_key + sign + amount` (`kana_sign_amount`)
+2. if strong is not applied and weak fallback is enabled, evaluate weak key: `kana_key + sign` (`kana_sign`)
+3. deterministic-only (both strong and weak):
    1. stats entry must exist
    2. `top_value` must be non-empty
    3. `top_count == sample_total` (equivalent to `p_majority == 1.0`)
-4. ambiguous/non-deterministic keys fail-closed (no bank-side subaccount overwrite)
+4. weak-only additional safety gate: `sample_total >= weak_min_count`
+5. ambiguous/non-deterministic keys fail-closed (no bank-side subaccount overwrite)
 
 Apply target and non-target guarantees:
 1. only the bank-account-side subaccount column is writable
@@ -117,11 +124,13 @@ Review report must include at least:
 5. `top_count`
 6. selected label (if any)
 7. fail reason (if no replacement)
-8. bank-side subaccount before/after and evidence fields
+8. bank-side subaccount before/after and evidence fields:
+   1. `bank_sub_evidence`: `bank_sub_kana_sign_amount` / `bank_sub_kana_sign` / `none`
+   2. `bank_sub_sample_total`, `bank_sub_p_majority`, `bank_sub_top_count`
 
 Manifest must include run metadata and input artifact references, including:
 1. `bank_side_subaccount_changed_count`
-2. optional bank-side subaccount evidence counts
+2. optional bank-side subaccount evidence counts, e.g. `{"strong": N, "weak": M}`
 
 ## Fail-closed invariants
 

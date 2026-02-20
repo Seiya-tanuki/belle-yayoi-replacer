@@ -60,17 +60,30 @@ def _default_thresholds() -> dict[str, dict[str, float | int]]:
     }
 
 
+def _default_bank_side_subaccount_config() -> dict[str, object]:
+    return {
+        "enabled": True,
+        "weak_enabled": True,
+        "weak_min_count": 3,
+    }
+
+
 def _runtime_config(
     thresholds: dict[str, dict[str, float | int]] | None = None,
     *,
     bank_account_subaccount: str = BANK_SUBACCOUNT,
+    bank_side_subaccount: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    bank_sub_cfg = _default_bank_side_subaccount_config()
+    if isinstance(bank_side_subaccount, dict):
+        bank_sub_cfg.update(bank_side_subaccount)
     return {
         "schema": "belle.bank_line_config.v0",
         "version": "0.1",
         "placeholder_account_name": PLACEHOLDER_ACCOUNT,
         "bank_account_name": BANK_ACCOUNT,
         "bank_account_subaccount": bank_account_subaccount,
+        "bank_side_subaccount": bank_sub_cfg,
         "thresholds": thresholds or _default_thresholds(),
     }
 
@@ -252,6 +265,67 @@ def _prepare_learning_cache(
     return line_root, cache_path
 
 
+def _prepare_withdraw_learning_cache(
+    repo_root: Path,
+    client_id: str,
+    *,
+    amount_to_bank_subaccount: list[tuple[int, str]],
+    config_bank_subaccount: str = "",
+) -> tuple[Path, Path]:
+    line_root = _line_root(repo_root, client_id)
+    ocr_dir = line_root / "inputs" / "training" / "ocr_kari_shiwake"
+    ref_dir = line_root / "inputs" / "training" / "reference_yayoi"
+    ocr_dir.mkdir(parents=True, exist_ok=True)
+    ref_dir.mkdir(parents=True, exist_ok=True)
+
+    _write_bank_config(line_root, _runtime_config(bank_account_subaccount=config_bank_subaccount))
+
+    ocr_rows: list[list[str]] = []
+    teacher_rows: list[list[str]] = []
+    for idx, (amount, bank_sub) in enumerate(amount_to_bank_subaccount, start=1):
+        day = 10 + idx
+        date_text = f"2026/01/{day:02d}"
+        ocr_rows.append(
+            _build_row(
+                date_text=date_text,
+                summary=OCR_SUMMARY_WITHDRAW,
+                debit_account=PLACEHOLDER_ACCOUNT,
+                credit_account=BANK_ACCOUNT,
+                amount=int(amount),
+                memo="SIGN=debit",
+                debit_subaccount=f"OCR_D_SUB_{idx}",
+                debit_tax_division=f"OCR_D_TAX_{idx}",
+                credit_subaccount=BANK_SUBACCOUNT,
+                credit_tax_division=f"OCR_C_TAX_{idx}",
+            )
+        )
+        teacher_rows.append(
+            _build_row(
+                date_text=date_text,
+                summary=LABEL_WITHDRAW["summary"],
+                debit_account=LABEL_WITHDRAW["counter_account"],
+                credit_account=BANK_ACCOUNT,
+                amount=int(amount),
+                debit_subaccount=LABEL_WITHDRAW["counter_subaccount"],
+                debit_tax_division=LABEL_WITHDRAW["counter_tax_division"],
+                credit_subaccount=bank_sub,
+                credit_tax_division=f"TEACHER_BANK_TAX_{idx}",
+            )
+        )
+
+    _write_yayoi_rows(ocr_dir / "training_ocr.csv", ocr_rows)
+    _write_yayoi_rows(ref_dir / "teacher.csv", teacher_rows)
+
+    summary = ensure_bank_client_cache_updated(repo_root, client_id)
+    if int(summary.get("pairs_unique_used_total") or 0) != len(amount_to_bank_subaccount):
+        raise AssertionError(f"unexpected training pair count: {summary}")
+
+    cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+    if not cache_path.exists():
+        raise AssertionError(f"cache not generated: {cache_path}")
+    return line_root, cache_path
+
+
 class BankReplacerTests(unittest.TestCase):
     def test_replaces_counter_and_bank_side_subaccount_when_strong_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -306,7 +380,7 @@ class BankReplacerTests(unittest.TestCase):
             self.assertEqual(2, int(manifest["bank_side_subaccount_changed_count"]))
             self.assertEqual(
                 2,
-                int((manifest["bank_side_subaccount_evidence_counts"] or {}).get("bank_sub_kana_sign_amount") or 0),
+                int((manifest["bank_side_subaccount_evidence_counts"] or {}).get("strong") or 0),
             )
 
             rows = _read_csv_rows(out_path)
@@ -423,6 +497,277 @@ class BankReplacerTests(unittest.TestCase):
             self.assertEqual("2", row["bank_sub_sample_total"])
             self.assertEqual("1", row["bank_sub_top_count"])
             self.assertIn("bank_sub:kana_sign_amount_not_deterministic", row["reasons"])
+
+    def test_bank_side_subaccount_weak_applies_when_strong_missing_and_deterministic(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_BANK_WEAK_APPLY"
+            line_root, cache_path = _prepare_withdraw_learning_cache(
+                repo_root,
+                client_id,
+                amount_to_bank_subaccount=[
+                    (1100, "BANK_SUB_WEAK"),
+                    (1200, "BANK_SUB_WEAK"),
+                    (1300, "BANK_SUB_WEAK"),
+                ],
+                config_bank_subaccount="",
+            )
+
+            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+            strong_stats = (((cache_obj.get("bank_account_subaccount_stats") or {}).get(ROUTE_KANA_SIGN_AMOUNT)) or {})
+            strong_key = f"{normalize_kana_key(OCR_SUMMARY_WITHDRAW)}|debit|9999"
+            self.assertNotIn(strong_key, strong_stats)
+
+            in_path = line_root / "inputs" / "kari_shiwake" / "target_weak_apply.csv"
+            _write_yayoi_rows(
+                in_path,
+                [
+                    _build_row(
+                        date_text="2026/02/05",
+                        summary=OCR_SUMMARY_WITHDRAW,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        debit_subaccount="ORIG_COUNTER_SUB",
+                        debit_tax_division="ORIG_COUNTER_TAX",
+                        credit_subaccount="ORIG_BANK_SUB",
+                        credit_tax_division="KEEP_BANK_TAX",
+                    )
+                ],
+            )
+
+            run_dir = line_root / "outputs" / "runs" / "R_TEST_WEAK_APPLY"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            out_path = run_dir / "target_weak_apply_replaced.csv"
+            manifest = replace_bank_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                cache_path=cache_path,
+                config=_runtime_config(bank_account_subaccount=""),
+                run_dir=run_dir,
+                artifact_prefix="target_weak_apply",
+            )
+
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual(1, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual(1, int((manifest["evidence_counts"] or {}).get(ROUTE_KANA_SIGN) or 0))
+            self.assertEqual(1, int((manifest["bank_side_subaccount_evidence_counts"] or {}).get("weak") or 0))
+
+            rows = _read_csv_rows(out_path)
+            self.assertEqual(LABEL_WITHDRAW["summary"], rows[0][COL_SUMMARY])
+            self.assertEqual(LABEL_WITHDRAW["counter_account"], rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_subaccount"], rows[0][COL_DEBIT_SUBACCOUNT])
+            self.assertEqual("BANK_SUB_WEAK", rows[0][COL_CREDIT_SUBACCOUNT])
+            self.assertEqual("KEEP_BANK_TAX", rows[0][COL_CREDIT_TAX_DIVISION])
+
+            review_path = Path(manifest["reports"]["review_report_csv"])
+            with review_path.open("r", encoding="utf-8-sig", newline="") as f:
+                row = next(csv.DictReader(f))
+            self.assertEqual(ROUTE_KANA_SIGN, row["evidence_type"])
+            self.assertEqual("bank_sub_kana_sign", row["bank_sub_evidence"])
+            self.assertEqual("3", row["bank_sub_sample_total"])
+            self.assertEqual("3", row["bank_sub_top_count"])
+            self.assertIn("bank_sub:kana_sign_amount_stats_not_found", row["reasons"])
+            self.assertIn("bank_sub:kana_sign_applied", row["reasons"])
+
+    def test_bank_side_subaccount_weak_min_count_gate_blocks_subaccount_only(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_BANK_WEAK_MIN"
+            line_root, cache_path = _prepare_withdraw_learning_cache(
+                repo_root,
+                client_id,
+                amount_to_bank_subaccount=[
+                    (2100, "BANK_SUB_WEAK"),
+                    (2200, "BANK_SUB_WEAK"),
+                ],
+                config_bank_subaccount="",
+            )
+
+            in_path = line_root / "inputs" / "kari_shiwake" / "target_weak_min.csv"
+            _write_yayoi_rows(
+                in_path,
+                [
+                    _build_row(
+                        date_text="2026/02/06",
+                        summary=OCR_SUMMARY_WITHDRAW,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        debit_subaccount="ORIG_COUNTER_SUB",
+                        debit_tax_division="ORIG_COUNTER_TAX",
+                        credit_subaccount="ORIG_BANK_SUB",
+                        credit_tax_division="KEEP_BANK_TAX",
+                    )
+                ],
+            )
+
+            run_dir = line_root / "outputs" / "runs" / "R_TEST_WEAK_MIN"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            out_path = run_dir / "target_weak_min_replaced.csv"
+            manifest = replace_bank_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                cache_path=cache_path,
+                config=_runtime_config(
+                    {
+                        ROUTE_KANA_SIGN_AMOUNT: {"min_count": 2, "min_p_majority": 0.85},
+                        ROUTE_KANA_SIGN: {"min_count": 2, "min_p_majority": 0.80},
+                    },
+                    bank_account_subaccount="",
+                ),
+                run_dir=run_dir,
+                artifact_prefix="target_weak_min",
+            )
+
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual(0, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual({}, manifest["bank_side_subaccount_evidence_counts"])
+
+            rows = _read_csv_rows(out_path)
+            self.assertEqual(LABEL_WITHDRAW["summary"], rows[0][COL_SUMMARY])
+            self.assertEqual(LABEL_WITHDRAW["counter_account"], rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_subaccount"], rows[0][COL_DEBIT_SUBACCOUNT])
+            self.assertEqual("ORIG_BANK_SUB", rows[0][COL_CREDIT_SUBACCOUNT])
+            self.assertEqual("KEEP_BANK_TAX", rows[0][COL_CREDIT_TAX_DIVISION])
+
+            review_path = Path(manifest["reports"]["review_report_csv"])
+            with review_path.open("r", encoding="utf-8-sig", newline="") as f:
+                row = next(csv.DictReader(f))
+            self.assertEqual(ROUTE_KANA_SIGN, row["evidence_type"])
+            self.assertEqual("none", row["bank_sub_evidence"])
+            self.assertEqual("2", row["bank_sub_sample_total"])
+            self.assertEqual("2", row["bank_sub_top_count"])
+            self.assertIn("bank_sub:kana_sign_min_count_not_met", row["reasons"])
+
+    def test_bank_side_subaccount_weak_is_not_applied_when_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_BANK_WEAK_AMBIG"
+            line_root, cache_path = _prepare_withdraw_learning_cache(
+                repo_root,
+                client_id,
+                amount_to_bank_subaccount=[
+                    (3100, "BANK_SUB_A"),
+                    (3200, "BANK_SUB_A"),
+                    (3300, "BANK_SUB_B"),
+                ],
+                config_bank_subaccount="",
+            )
+
+            in_path = line_root / "inputs" / "kari_shiwake" / "target_weak_ambiguous.csv"
+            _write_yayoi_rows(
+                in_path,
+                [
+                    _build_row(
+                        date_text="2026/02/07",
+                        summary=OCR_SUMMARY_WITHDRAW,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        debit_subaccount="ORIG_COUNTER_SUB",
+                        debit_tax_division="ORIG_COUNTER_TAX",
+                        credit_subaccount="ORIG_BANK_SUB",
+                        credit_tax_division="KEEP_BANK_TAX",
+                    )
+                ],
+            )
+
+            run_dir = line_root / "outputs" / "runs" / "R_TEST_WEAK_AMBIG"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            out_path = run_dir / "target_weak_ambiguous_replaced.csv"
+            manifest = replace_bank_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                cache_path=cache_path,
+                config=_runtime_config(bank_account_subaccount=""),
+                run_dir=run_dir,
+                artifact_prefix="target_weak_ambiguous",
+            )
+
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual(0, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual({}, manifest["bank_side_subaccount_evidence_counts"])
+
+            rows = _read_csv_rows(out_path)
+            self.assertEqual(LABEL_WITHDRAW["summary"], rows[0][COL_SUMMARY])
+            self.assertEqual(LABEL_WITHDRAW["counter_account"], rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_subaccount"], rows[0][COL_DEBIT_SUBACCOUNT])
+            self.assertEqual("ORIG_BANK_SUB", rows[0][COL_CREDIT_SUBACCOUNT])
+            self.assertEqual("KEEP_BANK_TAX", rows[0][COL_CREDIT_TAX_DIVISION])
+
+            review_path = Path(manifest["reports"]["review_report_csv"])
+            with review_path.open("r", encoding="utf-8-sig", newline="") as f:
+                row = next(csv.DictReader(f))
+            self.assertEqual(ROUTE_KANA_SIGN, row["evidence_type"])
+            self.assertEqual("none", row["bank_sub_evidence"])
+            self.assertEqual("3", row["bank_sub_sample_total"])
+            self.assertEqual("2", row["bank_sub_top_count"])
+            self.assertIn("bank_sub:kana_sign_not_deterministic", row["reasons"])
+
+    def test_counter_replacement_is_unaffected_when_bank_side_subaccount_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_BANK_COUNTER_ONLY"
+            line_root, cache_path = _prepare_learning_cache(repo_root, client_id)
+
+            in_path = line_root / "inputs" / "kari_shiwake" / "target_counter_only.csv"
+            _write_yayoi_rows(
+                in_path,
+                [
+                    _build_row(
+                        date_text="2026/02/08",
+                        summary=OCR_SUMMARY_WITHDRAW,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=WITHDRAW_AMOUNT,
+                        memo="SIGN=debit",
+                        debit_subaccount="ORIG_COUNTER_SUB",
+                        debit_tax_division="ORIG_COUNTER_TAX",
+                        credit_subaccount="ORIG_BANK_SUB",
+                        credit_tax_division="KEEP_BANK_TAX",
+                    )
+                ],
+            )
+
+            run_dir = line_root / "outputs" / "runs" / "R_TEST_COUNTER_ONLY"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            out_path = run_dir / "target_counter_only_replaced.csv"
+            manifest = replace_bank_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                cache_path=cache_path,
+                config=_runtime_config(
+                    bank_side_subaccount={
+                        "enabled": False,
+                        "weak_enabled": True,
+                        "weak_min_count": 3,
+                    }
+                ),
+                run_dir=run_dir,
+                artifact_prefix="target_counter_only",
+            )
+
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual(0, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual({}, manifest["bank_side_subaccount_evidence_counts"])
+
+            rows = _read_csv_rows(out_path)
+            self.assertEqual(LABEL_WITHDRAW["summary"], rows[0][COL_SUMMARY])
+            self.assertEqual(LABEL_WITHDRAW["counter_account"], rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_subaccount"], rows[0][COL_DEBIT_SUBACCOUNT])
+            self.assertEqual("ORIG_BANK_SUB", rows[0][COL_CREDIT_SUBACCOUNT])
+            self.assertEqual("KEEP_BANK_TAX", rows[0][COL_CREDIT_TAX_DIVISION])
+
+            review_path = Path(manifest["reports"]["review_report_csv"])
+            with review_path.open("r", encoding="utf-8-sig", newline="") as f:
+                row = next(csv.DictReader(f))
+            self.assertEqual(ROUTE_KANA_SIGN_AMOUNT, row["evidence_type"])
+            self.assertEqual("none", row["bank_sub_evidence"])
+            self.assertIn("bank_sub:disabled", row["reasons"])
 
     def test_threshold_gating_min_count_and_p_majority(self) -> None:
         with tempfile.TemporaryDirectory() as td:

@@ -44,6 +44,7 @@ from .yayoi_csv import read_yayoi_csv, text_to_token, token_to_text, write_yayoi
 
 _NONE_EVIDENCE = "none"
 _BANK_SUB_STRONG_EVIDENCE = "bank_sub_kana_sign_amount"
+_BANK_SUB_WEAK_EVIDENCE = "bank_sub_kana_sign"
 _PLACEHOLDER_DEFAULT = "仮払金"
 _BANK_ACCOUNT_DEFAULT = "普通預金"
 _AMOUNT_RE = re.compile(r"[+-]?\d+")
@@ -97,6 +98,23 @@ class _RouteEval:
     selected: bool
     label_id: Optional[str]
     label: Optional[BankLabel]
+    sample_total: int
+    p_majority: float
+    top_count: int
+    reasons: List[str]
+
+
+@dataclass
+class _BankSideSubaccountConfig:
+    enabled: bool
+    weak_enabled: bool
+    weak_min_count: int
+
+
+@dataclass
+class _BankSubEval:
+    maybe_value: Optional[str]
+    evidence_type: str
     sample_total: int
     p_majority: float
     top_count: int
@@ -179,6 +197,191 @@ def _resolve_thresholds(config: Dict[str, Any], cache: BankClientCache) -> Dict[
             min_p_majority=0.80,
         ),
     }
+
+
+def _as_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if s in {"1", "true", "yes", "on"}:
+            return True
+        if s in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _as_int(value: Any, default: int) -> int:
+    try:
+        return int(value)
+    except Exception:
+        return int(default)
+
+
+def _resolve_bank_side_subaccount_config(config: Dict[str, Any]) -> _BankSideSubaccountConfig:
+    section = config.get("bank_side_subaccount")
+    section_obj = section if isinstance(section, dict) else {}
+    weak_min_count = max(3, _as_int(section_obj.get("weak_min_count"), 3))
+    return _BankSideSubaccountConfig(
+        enabled=_as_bool(section_obj.get("enabled"), True),
+        weak_enabled=_as_bool(section_obj.get("weak_enabled"), True),
+        weak_min_count=weak_min_count,
+    )
+
+
+def _load_bank_sub_stats_entry(
+    *,
+    cache: BankClientCache,
+    route: str,
+    lookup_key: str,
+) -> Optional[ValueStatsEntry]:
+    route_stats = cache.bank_account_subaccount_stats.get(route)
+    if not isinstance(route_stats, dict):
+        return None
+    entry = route_stats.get(lookup_key)
+    if isinstance(entry, dict):
+        entry = ValueStatsEntry.from_obj(entry)
+    return entry if isinstance(entry, ValueStatsEntry) else None
+
+
+def _evaluate_bank_sub_entry(
+    *,
+    entry: Optional[ValueStatsEntry],
+    route: str,
+    evidence_type: str,
+    min_count: Optional[int] = None,
+) -> _BankSubEval:
+    if not isinstance(entry, ValueStatsEntry):
+        return _BankSubEval(
+            maybe_value=None,
+            evidence_type=_NONE_EVIDENCE,
+            sample_total=0,
+            p_majority=0.0,
+            top_count=0,
+            reasons=[f"bank_sub:{route}_stats_not_found"],
+        )
+
+    sample_total = int(entry.sample_total)
+    p_majority = float(entry.p_majority)
+    top_count = int(entry.top_count)
+    top_value = str(entry.top_value or "").strip()
+
+    reasons: List[str] = []
+    if not top_value:
+        reasons.append(f"bank_sub:{route}_top_value_missing")
+    if sample_total <= 0 or top_count <= 0:
+        reasons.append(f"bank_sub:{route}_counts_invalid")
+    if min_count is not None and sample_total < int(min_count):
+        reasons.append(f"bank_sub:{route}_min_count_not_met")
+    if sample_total > 0 and top_count != sample_total:
+        reasons.append(f"bank_sub:{route}_not_deterministic")
+
+    if reasons:
+        return _BankSubEval(
+            maybe_value=None,
+            evidence_type=_NONE_EVIDENCE,
+            sample_total=sample_total,
+            p_majority=p_majority,
+            top_count=top_count,
+            reasons=reasons,
+        )
+
+    return _BankSubEval(
+        maybe_value=top_value,
+        evidence_type=evidence_type,
+        sample_total=sample_total,
+        p_majority=p_majority,
+        top_count=top_count,
+        reasons=[f"bank_sub:{route}_selected"],
+    )
+
+
+def _select_bank_side_subaccount(
+    *,
+    cache: BankClientCache,
+    bank_side: str,
+    key_strong: str,
+    key_weak: str,
+    cfg: _BankSideSubaccountConfig,
+) -> _BankSubEval:
+    if not bank_side:
+        return _BankSubEval(
+            maybe_value=None,
+            evidence_type=_NONE_EVIDENCE,
+            sample_total=0,
+            p_majority=0.0,
+            top_count=0,
+            reasons=["bank_sub:bank_side_not_determined"],
+        )
+    if not cfg.enabled:
+        return _BankSubEval(
+            maybe_value=None,
+            evidence_type=_NONE_EVIDENCE,
+            sample_total=0,
+            p_majority=0.0,
+            top_count=0,
+            reasons=["bank_sub:disabled"],
+        )
+
+    strong_entry = _load_bank_sub_stats_entry(
+        cache=cache,
+        route=ROUTE_KANA_SIGN_AMOUNT,
+        lookup_key=key_strong,
+    )
+    strong_eval = _evaluate_bank_sub_entry(
+        entry=strong_entry,
+        route=ROUTE_KANA_SIGN_AMOUNT,
+        evidence_type=_BANK_SUB_STRONG_EVIDENCE,
+    )
+    if strong_eval.maybe_value:
+        return strong_eval
+
+    if not cfg.weak_enabled:
+        return _BankSubEval(
+            maybe_value=None,
+            evidence_type=_NONE_EVIDENCE,
+            sample_total=strong_eval.sample_total,
+            p_majority=strong_eval.p_majority,
+            top_count=strong_eval.top_count,
+            reasons=[*strong_eval.reasons, "bank_sub:weak_disabled"],
+        )
+
+    weak_entry = _load_bank_sub_stats_entry(
+        cache=cache,
+        route=ROUTE_KANA_SIGN,
+        lookup_key=key_weak,
+    )
+    weak_eval = _evaluate_bank_sub_entry(
+        entry=weak_entry,
+        route=ROUTE_KANA_SIGN,
+        evidence_type=_BANK_SUB_WEAK_EVIDENCE,
+        min_count=cfg.weak_min_count,
+    )
+    if weak_eval.maybe_value:
+        return _BankSubEval(
+            maybe_value=weak_eval.maybe_value,
+            evidence_type=weak_eval.evidence_type,
+            sample_total=weak_eval.sample_total,
+            p_majority=weak_eval.p_majority,
+            top_count=weak_eval.top_count,
+            reasons=[*strong_eval.reasons, *weak_eval.reasons],
+        )
+
+    sample_total = weak_eval.sample_total if weak_eval.sample_total > 0 else strong_eval.sample_total
+    p_majority = weak_eval.p_majority if weak_eval.sample_total > 0 else strong_eval.p_majority
+    top_count = weak_eval.top_count if weak_eval.sample_total > 0 else strong_eval.top_count
+    return _BankSubEval(
+        maybe_value=None,
+        evidence_type=_NONE_EVIDENCE,
+        sample_total=sample_total,
+        p_majority=p_majority,
+        top_count=top_count,
+        reasons=[*strong_eval.reasons, *weak_eval.reasons],
+    )
 
 
 def _evaluate_route(
@@ -423,45 +626,38 @@ def decide_bank_row(
     key_strong = f"{dec.kana_key}|{dec.sign}|{dec.amount}"
     key_weak = f"{dec.kana_key}|{dec.sign}"
     thresholds = _resolve_thresholds(config, cache)
+    bank_sub_cfg = _resolve_bank_side_subaccount_config(config)
     strong_thr = thresholds.get(ROUTE_KANA_SIGN_AMOUNT) or {}
     weak_thr = thresholds.get(ROUTE_KANA_SIGN) or {}
 
-    strong_sub_stats = (
-        cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT)
-        if isinstance(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT), dict)
-        else {}
+    bank_sub_eval = _select_bank_side_subaccount(
+        cache=cache,
+        bank_side=dec.bank_side,
+        key_strong=key_strong,
+        key_weak=key_weak,
+        cfg=bank_sub_cfg,
     )
-    strong_sub_entry = strong_sub_stats.get(key_strong)
-    if isinstance(strong_sub_entry, dict):
-        strong_sub_entry = ValueStatsEntry.from_obj(strong_sub_entry)
+    dec.reasons.extend(bank_sub_eval.reasons)
+    dec.bank_sub_sample_total = int(bank_sub_eval.sample_total)
+    dec.bank_sub_p_majority = float(bank_sub_eval.p_majority)
+    dec.bank_sub_top_count = int(bank_sub_eval.top_count)
 
-    if not dec.bank_side:
-        dec.reasons.append("bank_sub:bank_side_not_determined")
-    elif not isinstance(strong_sub_entry, ValueStatsEntry):
-        dec.reasons.append("bank_sub:kana_sign_amount_stats_not_found")
-    else:
-        dec.bank_sub_sample_total = int(strong_sub_entry.sample_total)
-        dec.bank_sub_p_majority = float(strong_sub_entry.p_majority)
-        dec.bank_sub_top_count = int(strong_sub_entry.top_count)
-        top_value = str(strong_sub_entry.top_value or "").strip()
-        if not top_value:
-            dec.reasons.append("bank_sub:kana_sign_amount_top_value_missing")
-        elif dec.bank_sub_sample_total <= 0 or dec.bank_sub_top_count <= 0:
-            dec.reasons.append("bank_sub:kana_sign_amount_counts_invalid")
-        elif dec.bank_sub_top_count != dec.bank_sub_sample_total:
-            dec.reasons.append("bank_sub:kana_sign_amount_not_deterministic")
+    selected_bank_sub = str(bank_sub_eval.maybe_value or "").strip()
+    if selected_bank_sub and dec.bank_side:
+        bank_sub_col = COL_DEBIT_SUBACCOUNT if dec.bank_side == "debit" else COL_CREDIT_SUBACCOUNT
+        new_tokens[bank_sub_col] = text_to_token(
+            selected_bank_sub,
+            encoding,
+            template_token=tokens[bank_sub_col],
+        )
+        dec.bank_sub_evidence = bank_sub_eval.evidence_type
+        route_name = ROUTE_KANA_SIGN_AMOUNT
+        if dec.bank_sub_evidence == _BANK_SUB_WEAK_EVIDENCE:
+            route_name = ROUTE_KANA_SIGN
+        if selected_bank_sub == dec.bank_sub_before:
+            dec.reasons.append(f"bank_sub:{route_name}_same_as_current")
         else:
-            bank_sub_col = COL_DEBIT_SUBACCOUNT if dec.bank_side == "debit" else COL_CREDIT_SUBACCOUNT
-            new_tokens[bank_sub_col] = text_to_token(
-                top_value,
-                encoding,
-                template_token=tokens[bank_sub_col],
-            )
-            dec.bank_sub_evidence = _BANK_SUB_STRONG_EVIDENCE
-            if top_value == dec.bank_sub_before:
-                dec.reasons.append("bank_sub:kana_sign_amount_same_as_current")
-            else:
-                dec.reasons.append("bank_sub:kana_sign_amount_applied")
+            dec.reasons.append(f"bank_sub:{route_name}_applied")
 
     strong_eval = _evaluate_route(
         cache=cache,
@@ -603,8 +799,13 @@ def replace_bank_yayoi_csv(
         evidence_counts[decision.evidence_type] = evidence_counts.get(decision.evidence_type, 0) + 1
         if decision.bank_sub_changed:
             bank_side_subaccount_changed_count += 1
-            bank_side_subaccount_evidence_counts[decision.bank_sub_evidence] = (
-                bank_side_subaccount_evidence_counts.get(decision.bank_sub_evidence, 0) + 1
+            evidence_bucket = decision.bank_sub_evidence
+            if decision.bank_sub_evidence == _BANK_SUB_STRONG_EVIDENCE:
+                evidence_bucket = "strong"
+            elif decision.bank_sub_evidence == _BANK_SUB_WEAK_EVIDENCE:
+                evidence_bucket = "weak"
+            bank_side_subaccount_evidence_counts[evidence_bucket] = (
+                bank_side_subaccount_evidence_counts.get(evidence_bucket, 0) + 1
             )
 
     write_yayoi_csv(csv_obj, out_path)

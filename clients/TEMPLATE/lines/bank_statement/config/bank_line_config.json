@@ -4,6 +4,11 @@
   "placeholder_account_name": "仮払金",
   "bank_account_name": "普通預金",
   "bank_account_subaccount": "",
+  "bank_side_subaccount": {
+    "enabled": true,
+    "weak_enabled": true,
+    "weak_min_count": 3
+  },
   "pairing": {
     "join_key": [
       "date",
