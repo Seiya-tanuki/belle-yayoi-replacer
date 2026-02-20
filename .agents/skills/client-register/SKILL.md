@@ -14,11 +14,15 @@ Creates a new client workspace from the template.
 ## What this skill does
 1. Validates user input and canonicalizes to a Windows-safe `CLIENT_ID`.
 2. Copies `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.
-3. Generates full-expanded `clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json`.
-4. Prepares input directories:
-   1. `lines/receipt/inputs/kari_shiwake/`
-   2. `lines/receipt/inputs/ledger_ref/`
-5. `receipt` only in Phase 1 (`--line receipt`).
+3. `--line receipt`:
+   1. Generates full-expanded `clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json`.
+   2. Requires and prepares receipt input directories including `inputs/ledger_ref/`.
+4. `--line bank_statement`:
+   1. Requires Phase 4 bank template layout (`inputs/training/*`, `inputs/kari_shiwake`, `artifacts/ingest/*`).
+   2. Ensures `clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json` exists.
+   3. Does not require or initialize receipt-only assets (`inputs/ledger_ref`, `category_overrides`, `lexicon/defaults/rulesets`).
+5. `--line credit_card_statement`:
+   1. Registration is allowed (copy template only), even while replacer implementation is pending.
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.
@@ -32,4 +36,5 @@ Creates a new client workspace from the template.
 ## Execution
 ```bash
 python .agents/skills/client-register/register_client.py --line receipt
+python .agents/skills/client-register/register_client.py --line bank_statement
 ```

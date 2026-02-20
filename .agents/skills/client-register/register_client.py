@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 import sys
@@ -12,6 +13,31 @@ from pathlib import Path
 
 FORBIDDEN_CHARS = set('\\/:*?"<>|')
 RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
+SUPPORTED_REGISTER_LINES = {"receipt", "bank_statement", "credit_card_statement"}
+
+BANK_LINE_CONFIG_MINIMAL = {
+    "schema": "belle.bank_line_config.v0",
+    "version": "0.1",
+    "placeholder_account_name": "仮払金",
+    "bank_account_name": "普通預金",
+    "bank_account_subaccount": "",
+    "pairing": {
+        "join_key": ["date", "sign", "amount"],
+        "require_unique_on_both_sides": True,
+    },
+    "thresholds": {
+        "kana_sign_amount": {"min_count": 2, "min_p_majority": 0.85},
+        "kana_sign": {"min_count": 3, "min_p_majority": 0.80},
+    },
+    "notes": {
+        "status": "template_only_not_used_yet",
+        "source_specs": [
+            "spec/BANK_LINE_INPUTS_SPEC.md",
+            "spec/BANK_CLIENT_CACHE_SPEC.md",
+            "spec/BANK_REPLACER_SPEC.md",
+        ],
+    },
+}
 
 
 @dataclass(frozen=True)
@@ -96,6 +122,73 @@ def _display_path(path: Path, repo_root: Path) -> str:
         return str(path)
 
 
+def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path]:
+    if line_id == "receipt":
+        return [
+            template_line_root / "config",
+            template_line_root / "outputs" / "runs",
+            template_line_root / "artifacts" / "cache",
+            template_line_root / "artifacts" / "ingest",
+            template_line_root / "artifacts" / "ingest" / "ledger_ref",
+            template_line_root / "artifacts" / "ingest" / "kari_shiwake",
+            template_line_root / "artifacts" / "telemetry",
+            template_line_root / "inputs" / "kari_shiwake",
+            template_line_root / "inputs" / "ledger_ref",
+        ]
+    if line_id == "bank_statement":
+        return [
+            template_line_root / "config",
+            template_line_root / "outputs" / "runs",
+            template_line_root / "artifacts" / "cache",
+            template_line_root / "artifacts" / "ingest",
+            template_line_root / "artifacts" / "ingest" / "training_ocr",
+            template_line_root / "artifacts" / "ingest" / "training_reference",
+            template_line_root / "artifacts" / "ingest" / "kari_shiwake",
+            template_line_root / "artifacts" / "telemetry",
+            template_line_root / "inputs" / "kari_shiwake",
+            template_line_root / "inputs" / "training",
+            template_line_root / "inputs" / "training" / "ocr_kari_shiwake",
+            template_line_root / "inputs" / "training" / "reference_yayoi",
+        ]
+    if line_id == "credit_card_statement":
+        return [template_line_root]
+    raise ValueError(f"unsupported line for registration: {line_id}")
+
+
+def _initialize_receipt_category_overrides(repo_root: Path, client_id: str, line_id: str) -> None:
+    from belle.defaults import generate_full_category_overrides, load_category_defaults
+    from belle.lexicon import load_lexicon
+    from belle.lines import line_asset_paths
+    from belle.paths import get_category_overrides_path
+
+    assets = line_asset_paths(repo_root, line_id)
+    lex = load_lexicon(assets["lexicon_path"])
+    global_defaults = load_category_defaults(assets["defaults_path"])
+    generate_full_category_overrides(
+        path=get_category_overrides_path(repo_root, client_id, line_id=line_id),
+        client_id=client_id,
+        global_defaults=global_defaults,
+        lexicon_category_keys=set(lex.categories_by_key.keys()),
+    )
+
+
+def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Path) -> None:
+    destination_config_path = destination_line_root / "config" / "bank_line_config.json"
+    if destination_config_path.exists():
+        return
+
+    destination_config_path.parent.mkdir(parents=True, exist_ok=True)
+    template_config_path = template_line_root / "config" / "bank_line_config.json"
+    if template_config_path.exists():
+        shutil.copy2(template_config_path, destination_config_path)
+        return
+
+    destination_config_path.write_text(
+        json.dumps(BANK_LINE_CONFIG_MINIMAL, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--line", default="receipt", help="Document processing line_id")
@@ -108,17 +201,17 @@ def main() -> int:
 
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from belle.defaults import generate_full_category_overrides, load_category_defaults
-    from belle.lexicon import load_lexicon
-    from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
-    from belle.paths import get_category_overrides_path
+    from belle.lines import is_line_implemented, validate_line_id
 
     try:
         line_id = validate_line_id(args.line)
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         return 2
-    if not is_line_implemented(line_id):
+    if line_id not in SUPPORTED_REGISTER_LINES:
+        print(f"[ERROR] line is unsupported for register: {line_id}")
+        return 2
+    if line_id != "credit_card_statement" and not is_line_implemented(line_id):
         print("[ERROR] line is unimplemented in Phase 1")
         return 2
 
@@ -130,20 +223,14 @@ def main() -> int:
         return 2
 
     template_line_root = template_dir / "lines" / line_id
-    required_dirs = [
-        template_line_root / "config",
-        template_line_root / "outputs" / "runs",
-        template_line_root / "artifacts" / "cache",
-        template_line_root / "artifacts" / "ingest",
-        template_line_root / "artifacts" / "ingest" / "ledger_ref",
-        template_line_root / "artifacts" / "ingest" / "kari_shiwake",
-        template_line_root / "artifacts" / "telemetry",
-        template_line_root / "inputs" / "kari_shiwake",
-        template_line_root / "inputs" / "ledger_ref",
-    ]
-    missing_required = [p for p in required_dirs if not p.exists()]
+    if not template_line_root.exists() or not template_line_root.is_dir():
+        print(f"[ERROR] `clients/TEMPLATE/lines/{line_id}/` が見つかりません。")
+        return 2
+
+    required_dirs = _required_template_dirs(template_line_root, line_id)
+    missing_required = [p for p in required_dirs if not p.exists() or not p.is_dir()]
     if missing_required:
-        print("[ERROR] `clients/TEMPLATE/` に必要ディレクトリが不足しています。")
+        print(f"[ERROR] `clients/TEMPLATE/lines/{line_id}/` に必要ディレクトリが不足しています。")
         for p in missing_required:
             print(f"  - {_display_path(p, repo_root)}")
         return 2
@@ -177,26 +264,35 @@ def main() -> int:
     shutil.copytree(template_dir, destination)
     (destination / "config").mkdir(parents=True, exist_ok=True)
 
-    try:
-        assets = line_asset_paths(repo_root, line_id)
-        lex = load_lexicon(assets["lexicon_path"])
-        global_defaults = load_category_defaults(assets["defaults_path"])
-        generate_full_category_overrides(
-            path=get_category_overrides_path(repo_root, result.canonical, line_id=line_id),
-            client_id=result.canonical,
-            global_defaults=global_defaults,
-            lexicon_category_keys=set(lex.categories_by_key.keys()),
-        )
-    except Exception as exc:
-        print("[ERROR] category_overrides.json の初期化に失敗しました。")
-        print(f"[ERROR] {exc}")
-        return 2
+    destination_line_root = destination / "lines" / line_id
+    if line_id == "receipt":
+        try:
+            _initialize_receipt_category_overrides(repo_root, result.canonical, line_id)
+        except Exception as exc:
+            print("[ERROR] category_overrides.json の初期化に失敗しました。")
+            print(f"[ERROR] {exc}")
+            return 2
+    elif line_id == "bank_statement":
+        try:
+            _ensure_bank_line_config(template_line_root, destination_line_root)
+        except Exception as exc:
+            print("[ERROR] bank_line_config.json の初期化に失敗しました。")
+            print(f"[ERROR] {exc}")
+            return 2
 
     created_path = _display_path(destination, repo_root)
     print(f"[OK] 作成完了: {created_path}")
-    print("- 置換入力: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
-    print("- 参照入力: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")
-    print("- 上書き設定: clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json")
+    if line_id == "receipt":
+        print("- 置換入力: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
+        print("- 参照入力: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")
+        print("- 上書き設定: clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json")
+    elif line_id == "bank_statement":
+        print("- 学習入力(ocr): clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/")
+        print("- 学習入力(弥生): clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/")
+        print("- 置換入力: clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/")
+        print("- ライン設定: clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json")
+    else:
+        print(f"- ライン: clients/<CLIENT_ID>/lines/{line_id}/")
     return 0
 
 
