@@ -43,6 +43,18 @@ def _load_replacer_script_module(repo_root: Path):
     return module
 
 
+def _load_cache_builder_script_module(repo_root: Path):
+    script_path = (
+        repo_root / ".agents" / "skills" / "client-cache-builder" / "scripts" / "build_client_cache.py"
+    )
+    spec = importlib.util.spec_from_file_location(f"build_client_cache_{uuid4().hex}", script_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)  # type: ignore[arg-type]
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
+
+
 def _line_root(repo_root: Path, client_id: str) -> Path:
     return repo_root / "clients" / client_id / "lines" / "bank_statement"
 
@@ -218,6 +230,99 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             self.assertTrue(review_reports, msg=buf.getvalue())
             self.assertTrue(input_manifests, msg=buf.getvalue())
             self.assertTrue(run_manifest_path.exists(), msg=buf.getvalue())
+            self.assertFalse(
+                (line_root / "artifacts" / "ingest" / "ledger_ref").exists(),
+                msg=buf.getvalue(),
+            )
+
+    def test_bank_line_client_cache_builder_does_not_create_ledger_ref_ingest_dir(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C_BANK_CACHE_SMOKE"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(temp_repo_root, client_id)
+
+            training_ocr_rows = [
+                _build_row(
+                    date_text="2026/01/05",
+                    summary=OCR_SUMMARY,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=TARGET_AMOUNT,
+                    memo="SIGN=debit",
+                    credit_subaccount=BANK_SUBACCOUNT,
+                ),
+                _build_row(
+                    date_text="2026/01/06",
+                    summary=OCR_SUMMARY,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=TARGET_AMOUNT,
+                    memo="SIGN=debit",
+                    credit_subaccount=BANK_SUBACCOUNT,
+                ),
+            ]
+            _write_yayoi_rows(
+                line_root / "inputs" / "training" / "ocr_kari_shiwake" / "training_ocr.csv",
+                training_ocr_rows,
+            )
+
+            teacher_rows = [
+                _build_row(
+                    date_text="2026/01/05",
+                    summary=TEACHER_SUMMARY,
+                    debit_account=COUNTER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=TARGET_AMOUNT,
+                    memo="",
+                    credit_subaccount=BANK_SUBACCOUNT,
+                ),
+                _build_row(
+                    date_text="2026/01/06",
+                    summary=TEACHER_SUMMARY,
+                    debit_account=COUNTER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=TARGET_AMOUNT,
+                    memo="",
+                    credit_subaccount=BANK_SUBACCOUNT,
+                ),
+            ]
+            _write_yayoi_rows(
+                line_root / "inputs" / "training" / "reference_yayoi" / "teacher.csv",
+                teacher_rows,
+            )
+
+            module = _load_cache_builder_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root
+                / ".agents"
+                / "skills"
+                / "client-cache-builder"
+                / "scripts"
+                / "build_client_cache.py"
+            )
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "build_client_cache.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "bank_statement",
+                        ],
+                    ):
+                        module.main()
+
+            self.assertTrue((line_root / "artifacts" / "cache" / "client_cache.json").exists(), msg=buf.getvalue())
+            self.assertFalse(
+                (line_root / "artifacts" / "ingest" / "ledger_ref").exists(),
+                msg=buf.getvalue(),
+            )
 
 
 if __name__ == "__main__":

@@ -78,6 +78,14 @@ def get_kari_shiwake_ingest_dir(repo_root: Path, client_id: str, line_id: Option
     return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "kari_shiwake"
 
 
+def get_training_ocr_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "training_ocr"
+
+
+def get_training_reference_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "training_reference"
+
+
 def get_kari_shiwake_ingested_path(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
     return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "kari_shiwake_ingested.json"
 
@@ -157,12 +165,29 @@ def make_run_dir(
 
 
 def ensure_client_system_dirs(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> None:
-    get_outputs_runs_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_cache_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
-    get_ledger_ref_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
-    get_kari_shiwake_ingest_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
-    get_artifacts_telemetry_dir(repo_root, client_id, line_id=line_id).mkdir(parents=True, exist_ok=True)
+    resolved_line_id = _resolve_line_id(line_id)
+    get_outputs_runs_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_cache_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
+    get_kari_shiwake_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
+    get_artifacts_telemetry_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
+
+    if resolved_line_id in (None, "receipt"):
+        get_ledger_ref_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        return
+
+    if resolved_line_id == "bank_statement":
+        get_training_ocr_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        get_training_reference_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
 
 
 def resolve_ledger_ref_stored_path(
