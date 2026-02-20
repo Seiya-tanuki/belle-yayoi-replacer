@@ -41,6 +41,11 @@ Learned label tuple:
 3. `counter_subaccount`
 4. `counter_tax_division`
 
+Independent learned value (separate from label tuple):
+1. `bank_account_subaccount` (bank-side subaccount where account name is `bank_account_name`, usually `普通預金`)
+2. This must be learned/stored in dedicated value stats, not merged into `BankLabel`.
+3. Rationale: avoid label fragmentation and preserve existing counter-label replacement behavior.
+
 Stats are keyed by:
 1. Strong key: `kana_key + sign + amount`
 2. Weak key: `kana_key + sign`
@@ -75,6 +80,7 @@ Required fields:
 9. `applied_training_sets`
 10. `label_dictionary`
 11. `stats`
+12. `bank_account_subaccount_stats`
 
 ## `applied_training_sets` (required telemetry)
 
@@ -118,3 +124,25 @@ Each label entry includes:
    2. same value schema as strong
 
 All counters are monotonic under append-only updates.
+
+## `bank_account_subaccount_stats` structure (high level)
+
+`bank_account_subaccount_stats` is independent from `stats` (counter label statistics).
+It stores value statistics over the teacher-row bank-side subaccount string.
+
+1. `kana_sign_amount`:
+   1. key format: `<kana_key>|<sign>|<amount>`
+   2. value schema (`ValueStatsEntry`):
+      1. `sample_total`
+      2. `top_value`
+      3. `top_count`
+      4. `p_majority`
+      5. `value_counts`
+2. `kana_sign`:
+   1. key format: `<kana_key>|<sign>`
+   2. same `ValueStatsEntry` schema
+
+Learning source for this block:
+1. training teacher row bank-side subaccount (the side where account name equals `bank_account_name`)
+2. extraction is deterministic from teacher row fields
+3. if bank-side subaccount is empty, implementation may skip updating this block (fail-closed / no guess)

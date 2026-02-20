@@ -84,3 +84,9 @@ Normalization steps:
 1. Ambiguous pairing keys are skipped, never guessed.
 2. Missing sign/date/amount needed for pairing causes skip.
 3. Unsupported lines (e.g. `credit_card_statement`) remain unimplemented and fail-closed.
+
+## Teacher-side bank subaccount learning note
+
+1. Teacher rows also provide bank-side subaccount (the side whose account equals `bank_account_name`).
+2. This value is used only for `bank_account_subaccount_stats` learning in bank client cache.
+3. It is independent from counter-label (`BankLabel`) statistics.

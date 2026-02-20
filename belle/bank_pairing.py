@@ -157,6 +157,24 @@ def derive_sign_from_accounts(
     return None
 
 
+def extract_teacher_bank_subaccount(
+    tokens: Sequence[bytes],
+    encoding: str,
+    bank_account_name: str,
+) -> str:
+    bank_name_key = _normalize_name_for_match(bank_account_name)
+    if not bank_name_key:
+        return ""
+
+    debit_account = _safe_text(tokens, COL_DEBIT_ACCOUNT, encoding)
+    credit_account = _safe_text(tokens, COL_CREDIT_ACCOUNT, encoding)
+    if _normalize_name_for_match(debit_account) == bank_name_key:
+        return _safe_text(tokens, COL_DEBIT_SUBACCOUNT, encoding)
+    if _normalize_name_for_match(credit_account) == bank_name_key:
+        return _safe_text(tokens, COL_CREDIT_SUBACCOUNT, encoding)
+    return ""
+
+
 def extract_sign_from_memo(tokens: Sequence[bytes], encoding: str) -> Optional[str]:
     memo = unicodedata.normalize("NFKC", _safe_text(tokens, COL_MEMO, encoding))
     if not memo:
@@ -322,6 +340,11 @@ def build_training_pairs(
             counter_account = _safe_text(tokens, COL_CREDIT_ACCOUNT, ref_csv.encoding)
             counter_subaccount = _safe_text(tokens, COL_CREDIT_SUBACCOUNT, ref_csv.encoding)
             counter_tax_division = _safe_text(tokens, COL_CREDIT_TAX_DIVISION, ref_csv.encoding)
+        bank_subaccount = extract_teacher_bank_subaccount(
+            tokens,
+            ref_csv.encoding,
+            bank_account_name=bank_account_name,
+        )
 
         corrected_summary = _safe_text(tokens, COL_SUMMARY, ref_csv.encoding)
         if not corrected_summary or not counter_account:
@@ -337,6 +360,7 @@ def build_training_pairs(
                     "counter_account": counter_account,
                     "counter_subaccount": counter_subaccount,
                     "counter_tax_division": counter_tax_division,
+                    "bank_subaccount": bank_subaccount,
                     "sign": sign,
                     "amount": int(amount),
                 },

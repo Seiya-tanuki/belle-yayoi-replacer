@@ -10,6 +10,7 @@ from .bank_cache import (
     BankClientCache,
     BankLabel,
     LabelStatsEntry,
+    ValueStatsEntry,
     LINE_ID_BANK_STATEMENT,
     ROUTE_KANA_SIGN,
     ROUTE_KANA_SIGN_AMOUNT,
@@ -39,6 +40,12 @@ def _resolve_stored_path(line_root: Path, default_store_dir: Path, entry: Dict[s
 def _ensure_stats_entry(stats_map: Dict[str, LabelStatsEntry], key: str) -> LabelStatsEntry:
     if key not in stats_map:
         stats_map[key] = LabelStatsEntry.empty()
+    return stats_map[key]
+
+
+def _ensure_value_stats_entry(stats_map: Dict[str, ValueStatsEntry], key: str) -> ValueStatsEntry:
+    if key not in stats_map:
+        stats_map[key] = ValueStatsEntry.empty()
     return stats_map[key]
 
 
@@ -172,6 +179,8 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
         cache.decision_thresholds = thresholds
     cache.stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
     cache.stats.setdefault(ROUTE_KANA_SIGN, {})
+    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
+    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN, {})
 
     ocr_ingested = manifest_ocr.get("ingested") if isinstance(manifest_ocr.get("ingested"), dict) else {}
     ocr_order_raw = manifest_ocr.get("ingested_order") if isinstance(manifest_ocr.get("ingested_order"), list) else []
@@ -248,6 +257,17 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
             _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN_AMOUNT], key_strong).add_label(label_id)
             _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN], key_weak).add_label(label_id)
 
+            bank_subaccount = str(teacher.get("bank_subaccount") or "").strip()
+            if bank_subaccount:
+                _ensure_value_stats_entry(
+                    cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN_AMOUNT],
+                    key_strong,
+                ).update(bank_subaccount)
+                _ensure_value_stats_entry(
+                    cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN],
+                    key_weak,
+                ).update(bank_subaccount)
+
         pairs_unique_used_total += int(metrics.get("pairs_unique_used") or 0)
         sign_mismatch_skipped_total += int(metrics.get("sign_mismatch_skipped") or 0)
 
@@ -311,5 +331,11 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
         "labels_total": int(len(cache.labels)),
         "stats_kana_sign_amount_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN_AMOUNT, {}))),
         "stats_kana_sign_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN, {}))),
+        "bank_subaccount_stats_kana_sign_amount_keys": int(
+            len(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT, {}))
+        ),
+        "bank_subaccount_stats_kana_sign_keys": int(
+            len(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN, {}))
+        ),
         "warnings": warnings,
     }

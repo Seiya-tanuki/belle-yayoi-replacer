@@ -23,6 +23,10 @@ from belle.yayoi_columns import (
     COL_SUMMARY,
 )
 
+PLACEHOLDER_ACCOUNT = "仮払金"
+BANK_ACCOUNT = "普通預金"
+LEARNED_BANK_SUBACCOUNT = "武銀/新白岡175"
+
 
 def _line_root(repo_root: Path, client_id: str) -> Path:
     return repo_root / "clients" / client_id / "lines" / "bank_statement"
@@ -39,8 +43,8 @@ def _prepare_bank_layout(repo_root: Path, client_id: str) -> Path:
             {
                 "schema": "belle.bank_line_config.v0",
                 "version": "0.1",
-                "placeholder_account_name": "仮払金",
-                "bank_account_name": "普通預金",
+                "placeholder_account_name": PLACEHOLDER_ACCOUNT,
+                "bank_account_name": BANK_ACCOUNT,
                 "bank_account_subaccount": "",
                 "thresholds": {
                     "kana_sign_amount": {"min_count": 2, "min_p_majority": 0.85},
@@ -97,20 +101,22 @@ class BankCachePairLearningTests(unittest.TestCase):
             client_id = "C1"
             line_root = _prepare_bank_layout(repo_root, client_id)
 
+            ocr_summary_withdraw = "PBキャッシュカード"
+            ocr_summary_deposit = "振込入金"
             ocr_rows = [
                 _build_row(
                     date_text="2026/01/05",
-                    summary="PBﾃｽﾄ",
-                    debit_account="仮払金",
-                    credit_account="普通預金",
+                    summary=ocr_summary_withdraw,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
                     amount=1200,
                     memo="SIGN=debit",
                 ),
                 _build_row(
                     date_text="2026/01/06",
-                    summary="ﾆｺｳﾃｽﾄ",
-                    debit_account="普通預金",
-                    credit_account="仮払金",
+                    summary=ocr_summary_deposit,
+                    debit_account=BANK_ACCOUNT,
+                    credit_account=PLACEHOLDER_ACCOUNT,
                     amount=2500,
                     memo="SIGN=credit",
                 ),
@@ -120,21 +126,25 @@ class BankCachePairLearningTests(unittest.TestCase):
                 ocr_rows,
             )
 
+            teacher_summary_withdraw = "雑費精算"
+            teacher_summary_deposit = "売上入金"
             teacher_rows = [
                 _build_row(
                     date_text="2026/01/05",
-                    summary="教師摘要A",
-                    debit_account="消耗品費",
-                    credit_account="普通預金",
+                    summary=teacher_summary_withdraw,
+                    debit_account="旅費交通費",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
                     debit_tax_division="課税仕入10%",
                     amount=1200,
                 ),
                 _build_row(
                     date_text="2026/01/06",
-                    summary="教師摘要B",
-                    debit_account="普通預金",
+                    summary=teacher_summary_deposit,
+                    debit_account=BANK_ACCOUNT,
+                    debit_subaccount=LEARNED_BANK_SUBACCOUNT,
                     credit_account="売上高",
-                    credit_tax_division="課税売上10%",
+                    credit_tax_division="対象外",
                     amount=2500,
                 ),
             ]
@@ -149,20 +159,36 @@ class BankCachePairLearningTests(unittest.TestCase):
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             self.assertTrue(cache_path.exists())
             cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-
             self.assertEqual(cache_obj.get("schema"), "belle.bank_client_cache.v0")
 
-            label_withdraw = make_bank_label_id("教師摘要A", "消耗品費", "", "課税仕入10%")
-            label_deposit = make_bank_label_id("教師摘要B", "売上高", "", "課税売上10%")
+            label_withdraw = make_bank_label_id(teacher_summary_withdraw, "旅費交通費", "", "課税仕入10%")
+            label_deposit = make_bank_label_id(teacher_summary_deposit, "売上高", "", "対象外")
             labels = cache_obj.get("labels") or {}
             self.assertIn(label_withdraw, labels)
             self.assertIn(label_deposit, labels)
 
-            key_withdraw = f"{normalize_kana_key('PBﾃｽﾄ')}|debit|1200"
-            key_deposit = f"{normalize_kana_key('ﾆｺｳﾃｽﾄ')}|credit|2500"
+            key_withdraw = f"{normalize_kana_key(ocr_summary_withdraw)}|debit|1200"
+            key_deposit = f"{normalize_kana_key(ocr_summary_deposit)}|credit|2500"
             stats = ((cache_obj.get("stats") or {}).get("kana_sign_amount") or {})
             self.assertEqual(int((stats.get(key_withdraw) or {}).get("sample_total") or -1), 1)
             self.assertEqual(int((stats.get(key_deposit) or {}).get("sample_total") or -1), 1)
+
+            bank_sub_stats = cache_obj.get("bank_account_subaccount_stats") or {}
+            self.assertIn("kana_sign_amount", bank_sub_stats)
+            self.assertIn("kana_sign", bank_sub_stats)
+            sub_stats_strong = bank_sub_stats.get("kana_sign_amount") or {}
+            sub_stats_weak = bank_sub_stats.get("kana_sign") or {}
+            self.assertEqual((sub_stats_strong.get(key_withdraw) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
+            self.assertEqual(int((sub_stats_strong.get(key_withdraw) or {}).get("sample_total") or -1), 1)
+            self.assertEqual((sub_stats_strong.get(key_deposit) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
+            self.assertEqual(int((sub_stats_strong.get(key_deposit) or {}).get("sample_total") or -1), 1)
+
+            key_withdraw_weak = f"{normalize_kana_key(ocr_summary_withdraw)}|debit"
+            key_deposit_weak = f"{normalize_kana_key(ocr_summary_deposit)}|credit"
+            self.assertEqual((sub_stats_weak.get(key_withdraw_weak) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
+            self.assertEqual(int((sub_stats_weak.get(key_withdraw_weak) or {}).get("sample_total") or -1), 1)
+            self.assertEqual((sub_stats_weak.get(key_deposit_weak) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
+            self.assertEqual(int((sub_stats_weak.get(key_deposit_weak) or {}).get("sample_total") or -1), 1)
 
     def test_ambiguous_join_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -173,17 +199,17 @@ class BankCachePairLearningTests(unittest.TestCase):
             ocr_rows = [
                 _build_row(
                     date_text="2026/01/10",
-                    summary="ｱｲﾏｲ1",
-                    debit_account="仮払金",
-                    credit_account="普通預金",
+                    summary="重複キー1",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
                     amount=1000,
                     memo="SIGN=debit",
                 ),
                 _build_row(
                     date_text="2026/01/10",
-                    summary="ｱｲﾏｲ2",
-                    debit_account="仮払金",
-                    credit_account="普通預金",
+                    summary="重複キー2",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
                     amount=1000,
                     memo="SIGN=debit",
                 ),
@@ -196,9 +222,10 @@ class BankCachePairLearningTests(unittest.TestCase):
             teacher_rows = [
                 _build_row(
                     date_text="2026/01/10",
-                    summary="教師摘要C",
-                    debit_account="消耗品費",
-                    credit_account="普通預金",
+                    summary="交通費",
+                    debit_account="旅費交通費",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
                     debit_tax_division="課税仕入10%",
                     amount=1000,
                 ),
@@ -216,6 +243,9 @@ class BankCachePairLearningTests(unittest.TestCase):
             stats = cache_obj.get("stats") or {}
             self.assertEqual(stats.get("kana_sign_amount") or {}, {})
             self.assertEqual(stats.get("kana_sign") or {}, {})
+            bank_sub_stats = cache_obj.get("bank_account_subaccount_stats") or {}
+            self.assertEqual(bank_sub_stats.get("kana_sign_amount") or {}, {})
+            self.assertEqual(bank_sub_stats.get("kana_sign") or {}, {})
 
             applied = cache_obj.get("applied_training_sets") or {}
             self.assertEqual(len(applied), 1)
@@ -229,12 +259,13 @@ class BankCachePairLearningTests(unittest.TestCase):
             client_id = "C3"
             line_root = _prepare_bank_layout(repo_root, client_id)
 
+            ocr_summary = "外注費支払"
             ocr_rows = [
                 _build_row(
                     date_text="2026/01/20",
-                    summary="ﾘﾋﾟｰﾄ",
-                    debit_account="仮払金",
-                    credit_account="普通預金",
+                    summary=ocr_summary,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
                     amount=3300,
                     memo="SIGN=debit",
                 ),
@@ -247,10 +278,11 @@ class BankCachePairLearningTests(unittest.TestCase):
             teacher_rows = [
                 _build_row(
                     date_text="2026/01/20",
-                    summary="教師摘要D",
-                    debit_account="旅費交通費",
-                    credit_account="普通預金",
-                    debit_tax_division="対象外",
+                    summary="外注費",
+                    debit_account="外注費",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                    debit_tax_division="課税仕入10%",
                     amount=3300,
                 ),
             ]
@@ -262,9 +294,16 @@ class BankCachePairLearningTests(unittest.TestCase):
             ensure_bank_client_cache_updated(repo_root, client_id)
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             first_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-            key = f"{normalize_kana_key('ﾘﾋﾟｰﾄ')}|debit|3300"
+            key = f"{normalize_kana_key(ocr_summary)}|debit|3300"
             first_total = int(
                 (((first_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}).get("sample_total")
+                or 0
+            )
+            first_sub_total = int(
+                (
+                    (((first_obj.get("bank_account_subaccount_stats") or {}).get("kana_sign_amount") or {}).get(key) or {})
+                    .get("sample_total")
+                )
                 or 0
             )
             first_applied_size = len(first_obj.get("applied_training_sets") or {})
@@ -275,10 +314,21 @@ class BankCachePairLearningTests(unittest.TestCase):
                 (((second_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}).get("sample_total")
                 or 0
             )
+            second_sub_total = int(
+                (
+                    (
+                        ((second_obj.get("bank_account_subaccount_stats") or {}).get("kana_sign_amount") or {}).get(key)
+                        or {}
+                    ).get("sample_total")
+                )
+                or 0
+            )
             second_applied_size = len(second_obj.get("applied_training_sets") or {})
 
             self.assertEqual(first_total, 1)
             self.assertEqual(second_total, 1)
+            self.assertEqual(first_sub_total, 1)
+            self.assertEqual(second_sub_total, 1)
             self.assertEqual(first_applied_size, 1)
             self.assertEqual(second_applied_size, 1)
 

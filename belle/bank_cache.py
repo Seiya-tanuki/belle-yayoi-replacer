@@ -119,6 +119,77 @@ class LabelStatsEntry:
 
 
 @dataclass
+class ValueStatsEntry:
+    sample_total: int
+    top_value: Optional[str]
+    top_count: int
+    p_majority: float
+    value_counts: Dict[str, int]
+
+    @staticmethod
+    def empty() -> "ValueStatsEntry":
+        return ValueStatsEntry(
+            sample_total=0,
+            top_value=None,
+            top_count=0,
+            p_majority=0.0,
+            value_counts={},
+        )
+
+    @staticmethod
+    def from_obj(obj: Dict[str, Any]) -> "ValueStatsEntry":
+        raw_counts = obj.get("value_counts")
+        if not isinstance(raw_counts, dict):
+            raw_counts = obj.get("values") or {}
+        counts = {str(k): _as_int(v) for k, v in (raw_counts or {}).items()}
+        sample_total = _as_int(obj.get("sample_total"), default=sum(counts.values()))
+        top_value = obj.get("top_value") or obj.get("top")
+        top_count = _as_int(obj.get("top_count"), default=counts.get(str(top_value), 0))
+        p_majority = _as_float(obj.get("p_majority"), default=0.0)
+        return ValueStatsEntry(
+            sample_total=sample_total,
+            top_value=str(top_value) if top_value is not None and str(top_value) != "" else None,
+            top_count=top_count,
+            p_majority=p_majority,
+            value_counts=counts,
+        )
+
+    def to_obj(self) -> Dict[str, Any]:
+        return {
+            "sample_total": int(self.sample_total),
+            "top_value": self.top_value,
+            "top_count": int(self.top_count),
+            "p_majority": float(self.p_majority),
+            "value_counts": {str(k): int(v) for k, v in self.value_counts.items()},
+        }
+
+    def update(self, value: str, n: int = 1) -> None:
+        if n <= 0:
+            return
+        v = str(value)
+        self.value_counts[v] = int(self.value_counts.get(v, 0)) + int(n)
+        self.sample_total = int(self.sample_total) + int(n)
+
+        top_value, top_count = self._compute_top()
+        self.top_value = top_value
+        self.top_count = top_count
+        if self.sample_total > 0 and self.top_count > 0:
+            self.p_majority = float(self.top_count / self.sample_total)
+        else:
+            self.p_majority = 0.0
+
+    def _compute_top(self) -> Tuple[Optional[str], int]:
+        if not self.value_counts:
+            return None, 0
+        # Deterministic tie-break for cache serialization.
+        top_value, top_count = min(
+            ((value, int(cnt)) for value, cnt in self.value_counts.items()),
+            key=lambda kv: (-kv[1], kv[0]),
+        )
+        return str(top_value), int(top_count)
+
+
+@dataclass
 class BankLabel:
     corrected_summary: str
     counter_account: str
@@ -182,6 +253,7 @@ class BankClientCache:
     applied_training_sets: Dict[str, Dict[str, Any]]
     labels: Dict[str, BankLabel]
     stats: Dict[str, Dict[str, LabelStatsEntry]]
+    bank_account_subaccount_stats: Dict[str, Dict[str, ValueStatsEntry]]
 
     @staticmethod
     def empty(
@@ -204,6 +276,10 @@ class BankClientCache:
             applied_training_sets={},
             labels={},
             stats={
+                ROUTE_KANA_SIGN_AMOUNT: {},
+                ROUTE_KANA_SIGN: {},
+            },
+            bank_account_subaccount_stats={
                 ROUTE_KANA_SIGN_AMOUNT: {},
                 ROUTE_KANA_SIGN: {},
             },
@@ -231,6 +307,29 @@ class BankClientCache:
             ROUTE_KANA_SIGN: {
                 str(k): LabelStatsEntry.from_obj(v if isinstance(v, dict) else {})
                 for k, v in weak_obj.items()
+            },
+        }
+
+        raw_bank_sub_stats = (
+            obj.get("bank_account_subaccount_stats")
+            if isinstance(obj.get("bank_account_subaccount_stats"), dict)
+            else {}
+        )
+        bank_sub_strong_obj = raw_bank_sub_stats.get(ROUTE_KANA_SIGN_AMOUNT)
+        if not isinstance(bank_sub_strong_obj, dict):
+            bank_sub_strong_obj = {}
+        bank_sub_weak_obj = raw_bank_sub_stats.get(ROUTE_KANA_SIGN)
+        if not isinstance(bank_sub_weak_obj, dict):
+            bank_sub_weak_obj = {}
+
+        bank_account_subaccount_stats = {
+            ROUTE_KANA_SIGN_AMOUNT: {
+                str(k): ValueStatsEntry.from_obj(v if isinstance(v, dict) else {})
+                for k, v in bank_sub_strong_obj.items()
+            },
+            ROUTE_KANA_SIGN: {
+                str(k): ValueStatsEntry.from_obj(v if isinstance(v, dict) else {})
+                for k, v in bank_sub_weak_obj.items()
             },
         }
 
@@ -263,6 +362,7 @@ class BankClientCache:
                 for label_id, item in labels_obj.items()
             },
             stats=stats,
+            bank_account_subaccount_stats=bank_account_subaccount_stats,
         )
 
     def to_obj(self) -> Dict[str, Any]:
@@ -283,6 +383,16 @@ class BankClientCache:
                 },
                 ROUTE_KANA_SIGN: {
                     k: v.to_obj() for k, v in self.stats.get(ROUTE_KANA_SIGN, {}).items()
+                },
+            },
+            "bank_account_subaccount_stats": {
+                ROUTE_KANA_SIGN_AMOUNT: {
+                    k: v.to_obj()
+                    for k, v in self.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT, {}).items()
+                },
+                ROUTE_KANA_SIGN: {
+                    k: v.to_obj()
+                    for k, v in self.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN, {}).items()
                 },
             },
         }
