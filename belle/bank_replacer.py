@@ -18,6 +18,7 @@ from .bank_cache import (
     LabelStatsEntry,
     ROUTE_KANA_SIGN,
     ROUTE_KANA_SIGN_AMOUNT,
+    ValueStatsEntry,
     load_bank_cache,
 )
 from .bank_pairing import (
@@ -42,6 +43,7 @@ from .yayoi_columns import (
 from .yayoi_csv import read_yayoi_csv, text_to_token, token_to_text, write_yayoi_csv
 
 _NONE_EVIDENCE = "none"
+_BANK_SUB_STRONG_EVIDENCE = "bank_sub_kana_sign_amount"
 _PLACEHOLDER_DEFAULT = "仮払金"
 _BANK_ACCOUNT_DEFAULT = "普通預金"
 _AMOUNT_RE = re.compile(r"[+-]?\d+")
@@ -69,6 +71,14 @@ class BankRowDecision:
     credit_sub_after: str
     credit_tax_before: str
     credit_tax_after: str
+    bank_side: str
+    bank_sub_before: str
+    bank_sub_after: str
+    bank_sub_changed: bool
+    bank_sub_evidence: str
+    bank_sub_sample_total: int
+    bank_sub_p_majority: float
+    bank_sub_top_count: int
     evidence_type: str
     lookup_key: str
     sample_total: int
@@ -275,6 +285,14 @@ def _default_decision(*, tokens: Sequence[bytes], encoding: str) -> BankRowDecis
         credit_sub_after=credit_sub,
         credit_tax_before=credit_tax,
         credit_tax_after=credit_tax,
+        bank_side="",
+        bank_sub_before="",
+        bank_sub_after="",
+        bank_sub_changed=False,
+        bank_sub_evidence=_NONE_EVIDENCE,
+        bank_sub_sample_total=0,
+        bank_sub_p_majority=0.0,
+        bank_sub_top_count=0,
         evidence_type=_NONE_EVIDENCE,
         lookup_key="",
         sample_total=0,
@@ -285,6 +303,41 @@ def _default_decision(*, tokens: Sequence[bytes], encoding: str) -> BankRowDecis
         priority="HIGH",
         reasons=[],
     )
+
+
+def _finalize_decision(
+    *,
+    tokens: Sequence[bytes],
+    new_tokens: Sequence[bytes],
+    dec: BankRowDecision,
+    encoding: str,
+) -> None:
+    dec.summary_after = _safe_text(new_tokens, COL_SUMMARY, encoding)
+    dec.debit_account_after = _safe_text(new_tokens, COL_DEBIT_ACCOUNT, encoding)
+    dec.debit_sub_after = _safe_text(new_tokens, COL_DEBIT_SUBACCOUNT, encoding)
+    dec.debit_tax_after = _safe_text(new_tokens, COL_DEBIT_TAX_DIVISION, encoding)
+    dec.credit_account_after = _safe_text(new_tokens, COL_CREDIT_ACCOUNT, encoding)
+    dec.credit_sub_after = _safe_text(new_tokens, COL_CREDIT_SUBACCOUNT, encoding)
+    dec.credit_tax_after = _safe_text(new_tokens, COL_CREDIT_TAX_DIVISION, encoding)
+
+    if dec.bank_side == "debit":
+        dec.bank_sub_after = dec.debit_sub_after
+    elif dec.bank_side == "credit":
+        dec.bank_sub_after = dec.credit_sub_after
+    else:
+        dec.bank_sub_after = dec.bank_sub_before
+    dec.bank_sub_changed = dec.bank_sub_before != dec.bank_sub_after
+
+    target_indexes = [
+        COL_SUMMARY,
+        COL_DEBIT_ACCOUNT,
+        COL_DEBIT_SUBACCOUNT,
+        COL_DEBIT_TAX_DIVISION,
+        COL_CREDIT_ACCOUNT,
+        COL_CREDIT_SUBACCOUNT,
+        COL_CREDIT_TAX_DIVISION,
+    ]
+    dec.changed = any(new_tokens[idx] != tokens[idx] for idx in target_indexes)
 
 
 def decide_bank_row(
@@ -304,6 +357,14 @@ def decide_bank_row(
     credit_account_key = _normalize_name_for_match(dec.credit_account_before)
     placeholder_key = _normalize_name_for_match(placeholder_account_name)
     bank_key = _normalize_name_for_match(bank_account_name)
+    if debit_account_key == bank_key and credit_account_key != bank_key:
+        dec.bank_side = "debit"
+        dec.bank_sub_before = dec.debit_sub_before
+        dec.bank_sub_after = dec.debit_sub_before
+    elif credit_account_key == bank_key and debit_account_key != bank_key:
+        dec.bank_side = "credit"
+        dec.bank_sub_before = dec.credit_sub_before
+        dec.bank_sub_after = dec.credit_sub_before
 
     if debit_account_key == placeholder_key and credit_account_key == bank_key:
         dec.placeholder_side = "debit"
@@ -365,6 +426,43 @@ def decide_bank_row(
     strong_thr = thresholds.get(ROUTE_KANA_SIGN_AMOUNT) or {}
     weak_thr = thresholds.get(ROUTE_KANA_SIGN) or {}
 
+    strong_sub_stats = (
+        cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT)
+        if isinstance(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT), dict)
+        else {}
+    )
+    strong_sub_entry = strong_sub_stats.get(key_strong)
+    if isinstance(strong_sub_entry, dict):
+        strong_sub_entry = ValueStatsEntry.from_obj(strong_sub_entry)
+
+    if not dec.bank_side:
+        dec.reasons.append("bank_sub:bank_side_not_determined")
+    elif not isinstance(strong_sub_entry, ValueStatsEntry):
+        dec.reasons.append("bank_sub:kana_sign_amount_stats_not_found")
+    else:
+        dec.bank_sub_sample_total = int(strong_sub_entry.sample_total)
+        dec.bank_sub_p_majority = float(strong_sub_entry.p_majority)
+        dec.bank_sub_top_count = int(strong_sub_entry.top_count)
+        top_value = str(strong_sub_entry.top_value or "").strip()
+        if not top_value:
+            dec.reasons.append("bank_sub:kana_sign_amount_top_value_missing")
+        elif dec.bank_sub_sample_total <= 0 or dec.bank_sub_top_count <= 0:
+            dec.reasons.append("bank_sub:kana_sign_amount_counts_invalid")
+        elif dec.bank_sub_top_count != dec.bank_sub_sample_total:
+            dec.reasons.append("bank_sub:kana_sign_amount_not_deterministic")
+        else:
+            bank_sub_col = COL_DEBIT_SUBACCOUNT if dec.bank_side == "debit" else COL_CREDIT_SUBACCOUNT
+            new_tokens[bank_sub_col] = text_to_token(
+                top_value,
+                encoding,
+                template_token=tokens[bank_sub_col],
+            )
+            dec.bank_sub_evidence = _BANK_SUB_STRONG_EVIDENCE
+            if top_value == dec.bank_sub_before:
+                dec.reasons.append("bank_sub:kana_sign_amount_same_as_current")
+            else:
+                dec.reasons.append("bank_sub:kana_sign_amount_applied")
+
     strong_eval = _evaluate_route(
         cache=cache,
         route=ROUTE_KANA_SIGN_AMOUNT,
@@ -400,12 +498,14 @@ def decide_bank_row(
             dec.top_count = int(weak_eval.top_count)
         dec.reasons.extend(strong_eval.reasons)
         dec.reasons.extend(weak_eval.reasons)
+        _finalize_decision(tokens=tokens, new_tokens=new_tokens, dec=dec, encoding=encoding)
         return new_tokens, dec
 
     label = selected.label
     if label is None or not selected.label_id:
         dec.reasons.extend(selected.reasons)
         dec.reasons.append("selected_label_missing")
+        _finalize_decision(tokens=tokens, new_tokens=new_tokens, dec=dec, encoding=encoding)
         return new_tokens, dec
 
     dec.evidence_type = selected.route
@@ -429,7 +529,6 @@ def decide_bank_row(
         encoding,
         template_token=tokens[COL_SUMMARY],
     )
-    dec.summary_after = label.corrected_summary
 
     if dec.placeholder_side == "debit":
         new_tokens[COL_DEBIT_ACCOUNT] = text_to_token(
@@ -447,9 +546,6 @@ def decide_bank_row(
             encoding,
             template_token=tokens[COL_DEBIT_TAX_DIVISION],
         )
-        dec.debit_account_after = label.counter_account
-        dec.debit_sub_after = label.counter_subaccount
-        dec.debit_tax_after = label.counter_tax_division
     else:
         new_tokens[COL_CREDIT_ACCOUNT] = text_to_token(
             label.counter_account,
@@ -466,20 +562,8 @@ def decide_bank_row(
             encoding,
             template_token=tokens[COL_CREDIT_TAX_DIVISION],
         )
-        dec.credit_account_after = label.counter_account
-        dec.credit_sub_after = label.counter_subaccount
-        dec.credit_tax_after = label.counter_tax_division
 
-    target_indexes = [
-        COL_SUMMARY,
-        COL_DEBIT_ACCOUNT,
-        COL_DEBIT_SUBACCOUNT,
-        COL_DEBIT_TAX_DIVISION,
-        COL_CREDIT_ACCOUNT,
-        COL_CREDIT_SUBACCOUNT,
-        COL_CREDIT_TAX_DIVISION,
-    ]
-    dec.changed = any(new_tokens[idx] != tokens[idx] for idx in target_indexes)
+    _finalize_decision(tokens=tokens, new_tokens=new_tokens, dec=dec, encoding=encoding)
     if not dec.changed:
         dec.reasons.append("selected_label_same_as_current")
 
@@ -501,6 +585,8 @@ def replace_bank_yayoi_csv(
     decisions: List[BankRowDecision] = []
     changed_count = 0
     evidence_counts: Dict[str, int] = {}
+    bank_side_subaccount_changed_count = 0
+    bank_side_subaccount_evidence_counts: Dict[str, int] = {}
 
     for row_index_1b, row in enumerate(csv_obj.rows, start=1):
         new_tokens, decision = decide_bank_row(
@@ -515,6 +601,11 @@ def replace_bank_yayoi_csv(
             row.tokens = new_tokens
         decisions.append(decision)
         evidence_counts[decision.evidence_type] = evidence_counts.get(decision.evidence_type, 0) + 1
+        if decision.bank_sub_changed:
+            bank_side_subaccount_changed_count += 1
+            bank_side_subaccount_evidence_counts[decision.bank_sub_evidence] = (
+                bank_side_subaccount_evidence_counts.get(decision.bank_sub_evidence, 0) + 1
+            )
 
     write_yayoi_csv(csv_obj, out_path)
 
@@ -556,6 +647,14 @@ def replace_bank_yayoi_csv(
         "credit_tax_before",
         "credit_tax_after",
         "reasons",
+        "bank_side",
+        "bank_sub_before",
+        "bank_sub_after",
+        "bank_sub_changed",
+        "bank_sub_evidence",
+        "bank_sub_sample_total",
+        "bank_sub_p_majority",
+        "bank_sub_top_count",
     ]
     with report_path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv_lib.writer(f, dialect="excel", lineterminator="\r\n", quoting=csv_lib.QUOTE_MINIMAL)
@@ -592,6 +691,14 @@ def replace_bank_yayoi_csv(
                     d.credit_tax_before,
                     d.credit_tax_after,
                     " | ".join(d.reasons),
+                    d.bank_side,
+                    d.bank_sub_before,
+                    d.bank_sub_after,
+                    "1" if d.bank_sub_changed else "0",
+                    d.bank_sub_evidence,
+                    str(d.bank_sub_sample_total),
+                    f"{d.bank_sub_p_majority:.6f}",
+                    str(d.bank_sub_top_count),
                 ]
             )
 
@@ -611,6 +718,8 @@ def replace_bank_yayoi_csv(
         "changed_count": int(changed_count),
         "changed_ratio": (changed_count / row_count) if row_count else 0.0,
         "evidence_counts": evidence_counts,
+        "bank_side_subaccount_changed_count": int(bank_side_subaccount_changed_count),
+        "bank_side_subaccount_evidence_counts": bank_side_subaccount_evidence_counts,
         "decision_thresholds": thresholds,
         "reports": {
             "review_report_csv": str(report_path),
@@ -619,4 +728,3 @@ def replace_bank_yayoi_csv(
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return manifest
-

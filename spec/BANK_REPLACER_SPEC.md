@@ -22,6 +22,7 @@ Transform target OCR draft rows into teacher-like fields, with replacements limi
 2. counter-side account
 3. counter-side subaccount
 4. counter-side tax division
+5. bank-account-side subaccount (ordinary-deposit side subaccount), when deterministically inferred
 
 Counter-side means the side currently containing placeholder account `仮払金`.
 Side selection must be done by account-name detection, not fixed column positions.
@@ -66,6 +67,28 @@ Amount consistency check:
 
 Threshold gates and `p_majority` semantics follow `spec/BANK_CLIENT_CACHE_SPEC.md`.
 
+## Bank-account-side subaccount replacement (普通預金側補助科目)
+
+This replacement is independent from counter-label replacement.
+It may apply even when counter-label replacement applies; it must not reduce counter replacement coverage.
+
+Learning source:
+1. `cache.bank_account_subaccount_stats["kana_sign_amount"]`
+
+Apply key and policy (initial conservative phase):
+1. strong-only key: `kana_key + sign + amount` (`kana_sign_amount`)
+2. weak key (`kana_key + sign`) is NOT applied in this phase
+3. deterministic-only:
+   1. stats entry must exist
+   2. `top_value` must be non-empty
+   3. `top_count == sample_total` (equivalent to `p_majority == 1.0`)
+4. ambiguous/non-deterministic keys fail-closed (no bank-side subaccount overwrite)
+
+Apply target and non-target guarantees:
+1. only the bank-account-side subaccount column is writable
+2. bank-account-side account name is NOT changed
+3. bank-account-side tax division is NOT changed
+
 ## Replacement apply contract
 
 When a route returns a label:
@@ -73,7 +96,9 @@ When a route returns a label:
 2. replace counter-side account/subaccount/tax-division with label values
 3. keep all non-target fields unchanged
 
-When no route returns a valid label:
+Bank-account-side subaccount replacement is evaluated independently using the rule above.
+
+When no route returns a valid label and bank-side subaccount is not deterministically inferred:
 1. keep the row unchanged
 2. emit review evidence explaining why no replacement occurred
 
@@ -92,8 +117,11 @@ Review report must include at least:
 5. `top_count`
 6. selected label (if any)
 7. fail reason (if no replacement)
+8. bank-side subaccount before/after and evidence fields
 
-Manifest must include run metadata and input artifact references.
+Manifest must include run metadata and input artifact references, including:
+1. `bank_side_subaccount_changed_count`
+2. optional bank-side subaccount evidence counts
 
 ## Fail-closed invariants
 

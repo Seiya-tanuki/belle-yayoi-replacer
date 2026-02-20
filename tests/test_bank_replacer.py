@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 from belle.bank_cache import ROUTE_KANA_SIGN, ROUTE_KANA_SIGN_AMOUNT
+from belle.bank_pairing import normalize_kana_key
 from belle.bank_replacer import replace_bank_yayoi_csv
 from belle.build_bank_cache import ensure_bank_client_cache_updated
 from belle.yayoi_columns import (
@@ -59,13 +60,17 @@ def _default_thresholds() -> dict[str, dict[str, float | int]]:
     }
 
 
-def _runtime_config(thresholds: dict[str, dict[str, float | int]] | None = None) -> dict[str, object]:
+def _runtime_config(
+    thresholds: dict[str, dict[str, float | int]] | None = None,
+    *,
+    bank_account_subaccount: str = BANK_SUBACCOUNT,
+) -> dict[str, object]:
     return {
         "schema": "belle.bank_line_config.v0",
         "version": "0.1",
         "placeholder_account_name": PLACEHOLDER_ACCOUNT,
         "bank_account_name": BANK_ACCOUNT,
-        "bank_account_subaccount": BANK_SUBACCOUNT,
+        "bank_account_subaccount": bank_account_subaccount,
         "thresholds": thresholds or _default_thresholds(),
     }
 
@@ -116,14 +121,20 @@ def _read_csv_rows(path: Path) -> list[list[str]]:
     return [[token_to_text(tok, csv_obj.encoding) for tok in row.tokens] for row in csv_obj.rows]
 
 
-def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path]:
+def _prepare_learning_cache(
+    repo_root: Path,
+    client_id: str,
+    *,
+    teacher_bank_subaccounts: tuple[str, str, str, str] | None = None,
+    config_bank_subaccount: str = BANK_SUBACCOUNT,
+) -> tuple[Path, Path]:
     line_root = _line_root(repo_root, client_id)
     ocr_dir = line_root / "inputs" / "training" / "ocr_kari_shiwake"
     ref_dir = line_root / "inputs" / "training" / "reference_yayoi"
     ocr_dir.mkdir(parents=True, exist_ok=True)
     ref_dir.mkdir(parents=True, exist_ok=True)
 
-    _write_bank_config(line_root, _runtime_config())
+    _write_bank_config(line_root, _runtime_config(bank_account_subaccount=config_bank_subaccount))
 
     ocr_training_rows = [
         _build_row(
@@ -177,6 +188,12 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
     ]
     _write_yayoi_rows(ocr_dir / "training_ocr.csv", ocr_training_rows)
 
+    teacher_bank_subs = teacher_bank_subaccounts or (
+        BANK_SUBACCOUNT,
+        BANK_SUBACCOUNT,
+        BANK_SUBACCOUNT,
+        BANK_SUBACCOUNT,
+    )
     teacher_rows = [
         _build_row(
             date_text="2026/01/05",
@@ -186,7 +203,7 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
             amount=WITHDRAW_AMOUNT,
             debit_subaccount=LABEL_WITHDRAW["counter_subaccount"],
             debit_tax_division=LABEL_WITHDRAW["counter_tax_division"],
-            credit_subaccount=BANK_SUBACCOUNT,
+            credit_subaccount=teacher_bank_subs[0],
             credit_tax_division="TEACHER_BANK_TAX_1",
         ),
         _build_row(
@@ -197,7 +214,7 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
             amount=WITHDRAW_AMOUNT,
             debit_subaccount=LABEL_WITHDRAW["counter_subaccount"],
             debit_tax_division=LABEL_WITHDRAW["counter_tax_division"],
-            credit_subaccount=BANK_SUBACCOUNT,
+            credit_subaccount=teacher_bank_subs[1],
             credit_tax_division="TEACHER_BANK_TAX_2",
         ),
         _build_row(
@@ -206,7 +223,7 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
             debit_account=BANK_ACCOUNT,
             credit_account=LABEL_DEPOSIT["counter_account"],
             amount=DEPOSIT_AMOUNT,
-            debit_subaccount=BANK_SUBACCOUNT,
+            debit_subaccount=teacher_bank_subs[2],
             debit_tax_division="TEACHER_BANK_TAX_3",
             credit_subaccount=LABEL_DEPOSIT["counter_subaccount"],
             credit_tax_division=LABEL_DEPOSIT["counter_tax_division"],
@@ -217,7 +234,7 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
             debit_account=BANK_ACCOUNT,
             credit_account=LABEL_DEPOSIT["counter_account"],
             amount=DEPOSIT_AMOUNT,
-            debit_subaccount=BANK_SUBACCOUNT,
+            debit_subaccount=teacher_bank_subs[3],
             debit_tax_division="TEACHER_BANK_TAX_4",
             credit_subaccount=LABEL_DEPOSIT["counter_subaccount"],
             credit_tax_division=LABEL_DEPOSIT["counter_tax_division"],
@@ -236,7 +253,7 @@ def _prepare_learning_cache(repo_root: Path, client_id: str) -> tuple[Path, Path
 
 
 class BankReplacerTests(unittest.TestCase):
-    def test_replaces_placeholder_side_for_withdrawal_and_deposit(self) -> None:
+    def test_replaces_counter_and_bank_side_subaccount_when_strong_is_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C_BANK_1"
@@ -252,7 +269,7 @@ class BankReplacerTests(unittest.TestCase):
                     memo="SIGN=debit",
                     debit_subaccount="OLD_DEBIT_SUB",
                     debit_tax_division="OLD_DEBIT_TAX",
-                    credit_subaccount=BANK_SUBACCOUNT,
+                    credit_subaccount="OLD_BANK_SUB_WITHDRAW",
                     credit_tax_division="KEEP_CREDIT_TAX",
                 ),
                 _build_row(
@@ -262,7 +279,7 @@ class BankReplacerTests(unittest.TestCase):
                     credit_account=PLACEHOLDER_ACCOUNT,
                     amount=DEPOSIT_AMOUNT,
                     memo="SIGN=credit",
-                    debit_subaccount=BANK_SUBACCOUNT,
+                    debit_subaccount="OLD_BANK_SUB_DEPOSIT",
                     debit_tax_division="KEEP_DEBIT_TAX",
                     credit_subaccount="OLD_CREDIT_SUB",
                     credit_tax_division="OLD_CREDIT_TAX",
@@ -286,6 +303,11 @@ class BankReplacerTests(unittest.TestCase):
             self.assertEqual(2, int(manifest["row_count"]))
             self.assertEqual(2, int(manifest["changed_count"]))
             self.assertIn(ROUTE_KANA_SIGN_AMOUNT, manifest["evidence_counts"])
+            self.assertEqual(2, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual(
+                2,
+                int((manifest["bank_side_subaccount_evidence_counts"] or {}).get("bank_sub_kana_sign_amount") or 0),
+            )
 
             rows = _read_csv_rows(out_path)
 
@@ -320,6 +342,87 @@ class BankReplacerTests(unittest.TestCase):
                 {ROUTE_KANA_SIGN_AMOUNT},
                 {row["evidence_type"] for row in report_rows},
             )
+            self.assertEqual({"1"}, {row["bank_sub_changed"] for row in report_rows})
+            self.assertEqual({"bank_sub_kana_sign_amount"}, {row["bank_sub_evidence"] for row in report_rows})
+
+    def test_bank_side_subaccount_is_not_replaced_when_strong_key_is_ambiguous(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_BANK_1_AMBIG"
+            line_root, cache_path = _prepare_learning_cache(
+                repo_root,
+                client_id,
+                teacher_bank_subaccounts=(
+                    "BANK_SUB_A",
+                    "BANK_SUB_B",
+                    BANK_SUBACCOUNT,
+                    BANK_SUBACCOUNT,
+                ),
+                config_bank_subaccount="",
+            )
+
+            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+            strong_stats = (((cache_obj.get("bank_account_subaccount_stats") or {}).get(ROUTE_KANA_SIGN_AMOUNT)) or {})
+            strong_key = f"{normalize_kana_key(OCR_SUMMARY_WITHDRAW)}|debit|{WITHDRAW_AMOUNT}"
+            entry = strong_stats.get(strong_key) or {}
+            self.assertEqual(2, int(entry.get("sample_total") or 0))
+            self.assertEqual(1, int(entry.get("top_count") or 0))
+
+            target_rows = [
+                _build_row(
+                    date_text="2026/02/03",
+                    summary=OCR_SUMMARY_WITHDRAW,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=WITHDRAW_AMOUNT,
+                    memo="SIGN=debit",
+                    debit_subaccount="OLD_DEBIT_SUB",
+                    debit_tax_division="OLD_DEBIT_TAX",
+                    credit_subaccount="ORIG_BANK_SUB",
+                    credit_tax_division="KEEP_BANK_TAX",
+                )
+            ]
+            in_path = line_root / "inputs" / "kari_shiwake" / "target_ambiguous.csv"
+            _write_yayoi_rows(in_path, target_rows)
+
+            run_dir = line_root / "outputs" / "runs" / "R_TEST_01_AMBIG"
+            run_dir.mkdir(parents=True, exist_ok=True)
+            out_path = run_dir / "target_ambiguous_replaced.csv"
+            manifest = replace_bank_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                cache_path=cache_path,
+                config=_runtime_config(bank_account_subaccount=""),
+                run_dir=run_dir,
+                artifact_prefix="target_ambiguous",
+            )
+
+            self.assertEqual(1, int(manifest["row_count"]))
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual(0, int(manifest["bank_side_subaccount_changed_count"]))
+            self.assertEqual({}, manifest["bank_side_subaccount_evidence_counts"])
+
+            rows = _read_csv_rows(out_path)
+            self.assertEqual(LABEL_WITHDRAW["summary"], rows[0][COL_SUMMARY])
+            self.assertEqual(LABEL_WITHDRAW["counter_account"], rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_subaccount"], rows[0][COL_DEBIT_SUBACCOUNT])
+            self.assertEqual(LABEL_WITHDRAW["counter_tax_division"], rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual(BANK_ACCOUNT, rows[0][COL_CREDIT_ACCOUNT])
+            self.assertEqual("ORIG_BANK_SUB", rows[0][COL_CREDIT_SUBACCOUNT])
+            self.assertEqual("KEEP_BANK_TAX", rows[0][COL_CREDIT_TAX_DIVISION])
+
+            review_path = Path(manifest["reports"]["review_report_csv"])
+            with review_path.open("r", encoding="utf-8-sig", newline="") as f:
+                row = next(csv.DictReader(f))
+            self.assertEqual(ROUTE_KANA_SIGN_AMOUNT, row["evidence_type"])
+            self.assertEqual("credit", row["bank_side"])
+            self.assertEqual("ORIG_BANK_SUB", row["bank_sub_before"])
+            self.assertEqual("ORIG_BANK_SUB", row["bank_sub_after"])
+            self.assertEqual("0", row["bank_sub_changed"])
+            self.assertEqual("none", row["bank_sub_evidence"])
+            self.assertEqual("2", row["bank_sub_sample_total"])
+            self.assertEqual("1", row["bank_sub_top_count"])
+            self.assertIn("bank_sub:kana_sign_amount_not_deterministic", row["reasons"])
 
     def test_threshold_gating_min_count_and_p_majority(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -446,4 +549,3 @@ class BankReplacerTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
