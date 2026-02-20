@@ -197,8 +197,9 @@ def _ensure_required_dirs(repo_root: Path, line_id: str) -> List[Path]:
         Path("exports/system_diagnose"),
         Path("exports/gpts_lexicon_review"),
         Path("exports/backups"),
-        Path("lexicon") / line_id / "pending" / "locks",
     ]
+    if line_id == "receipt":
+        required_rel_paths.append(Path("lexicon") / line_id / "pending" / "locks")
     created: List[Path] = []
     for rel_path in required_rel_paths:
         abs_path = repo_root / rel_path
@@ -460,18 +461,6 @@ def main() -> int:
 
     # C) Required files / dirs
     required_paths = [
-        (
-            "C1",
-            f"lexicon/{line_id}/lexicon.json exists",
-            repo_root / "lexicon" / line_id / "lexicon.json",
-            False,
-        ),
-        (
-            "C2",
-            f"defaults/{line_id}/category_defaults.json exists",
-            repo_root / "defaults" / line_id / "category_defaults.json",
-            False,
-        ),
         ("C4", "spec/FILE_LAYOUT.md exists", repo_root / "spec" / "FILE_LAYOUT.md", False),
         ("C5", "spec/REPLACER_SPEC.md exists", repo_root / "spec" / "REPLACER_SPEC.md", False),
         ("C6", "spec/CLIENT_CACHE_SPEC.md exists", repo_root / "spec" / "CLIENT_CACHE_SPEC.md", False),
@@ -525,6 +514,21 @@ def main() -> int:
             True,
         ),
     ]
+    if line_id == "receipt":
+        required_paths = [
+            (
+                "C1",
+                f"lexicon/{line_id}/lexicon.json exists",
+                repo_root / "lexicon" / line_id / "lexicon.json",
+                False,
+            ),
+            (
+                "C2",
+                f"defaults/{line_id}/category_defaults.json exists",
+                repo_root / "defaults" / line_id / "category_defaults.json",
+                False,
+            ),
+        ] + required_paths
     for check_id, label, path, expect_dir in required_paths:
         passed = path.is_dir() if expect_dir else path.is_file()
         add_hard(
@@ -535,138 +539,237 @@ def main() -> int:
             "Restore required repository files/directories from source control.",
         )
 
-    detected_cfg, cfg_evidence = _detect_replacer_config(repo_root, line_id)
-    add_hard(
-        "C3",
-        f"rulesets/{line_id}/replacer_config_v1_15.json or current configured replacer config exists",
-        detected_cfg is not None and detected_cfg.exists(),
-        cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
-        "Add the active replacer config back under rulesets/ and align references.",
-    )
+    if line_id == "receipt":
+        detected_cfg, cfg_evidence = _detect_replacer_config(repo_root, line_id)
+        add_hard(
+            "C3",
+            f"rulesets/{line_id}/replacer_config_v1_15.json or current configured replacer config exists",
+            detected_cfg is not None and detected_cfg.exists(),
+            cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
+            "Add the active replacer config back under rulesets/ and align references.",
+        )
 
     if line_id == "bank_statement":
         bank_clients = _discover_bank_line_clients(repo_root)
-        if bank_clients:
+        invalid_line_roots: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            if not line_root.is_dir():
+                invalid_line_roots.append(f"{bank_client_id}:{line_root}")
+        if not bank_clients:
+            c16_passed = True
+            c16_evidence = "N/A: no clients/<ID>/lines/bank_statement/ directories found"
+        elif not invalid_line_roots:
             bank_preview = ", ".join(client_id for client_id, _ in bank_clients[:5])
             if len(bank_clients) > 5:
                 bank_preview += ", ..."
             c16_passed = True
-            c16_evidence = f"found {len(bank_clients)} client(s): {bank_preview}"
+            c16_evidence = f"validated {len(bank_clients)} client(s): {bank_preview}"
         else:
             c16_passed = False
-            c16_evidence = "no clients/<ID>/lines/bank_statement directory found"
+            c16_evidence = "invalid line roots: " + "; ".join(invalid_line_roots)
         add_hard(
             "C16",
-            "bank_statement client line roots exist",
+            "bank_statement line root exists for opted-in clients",
             c16_passed,
             c16_evidence,
-            "Create clients/<ID>/lines/bank_statement via $client-register or by applying the standard line layout.",
+            "Create clients/<ID>/lines/bank_statement/ via $client-register and keep it as a directory.",
         )
 
-        required_bank_dirs = [
-            Path("inputs/training/ocr_kari_shiwake"),
-            Path("inputs/training/reference_yayoi"),
-            Path("inputs/kari_shiwake"),
-            Path("artifacts/cache"),
-        ]
-        missing_bank_dirs: List[str] = []
+        missing_ocr_training_dirs: List[str] = []
+        empty_ocr_training_dirs: List[str] = []
         for bank_client_id, line_root in bank_clients:
-            for rel in required_bank_dirs:
-                target = line_root / rel
-                if not target.is_dir():
-                    missing_bank_dirs.append(f"{bank_client_id}:{rel.as_posix()}")
-        if bank_clients and not missing_bank_dirs:
+            ocr_dir = line_root / "inputs" / "training" / "ocr_kari_shiwake"
+            if not ocr_dir.is_dir():
+                missing_ocr_training_dirs.append(f"{bank_client_id}:{ocr_dir.relative_to(line_root).as_posix()}")
+                continue
+            if len(_iter_non_placeholder_files(ocr_dir)) == 0:
+                empty_ocr_training_dirs.append(bank_client_id)
+        if not bank_clients:
             c17_passed = True
-            c17_evidence = f"all required bank directories present across {len(bank_clients)} client(s)"
-        elif not bank_clients:
-            c17_passed = False
-            c17_evidence = "not validated because no bank_statement client line root exists"
+            c17_evidence = "N/A: no bank_statement clients found"
+        elif not missing_ocr_training_dirs:
+            c17_passed = True
+            c17_evidence = f"inputs/training/ocr_kari_shiwake exists for {len(bank_clients)} client(s)"
         else:
             c17_passed = False
-            c17_evidence = "missing dirs: " + "; ".join(missing_bank_dirs[:20])
-            if len(missing_bank_dirs) > 20:
-                c17_evidence += f"; ... (+{len(missing_bank_dirs) - 20} more)"
+            c17_evidence = "missing dirs: " + "; ".join(missing_ocr_training_dirs[:20])
+            if len(missing_ocr_training_dirs) > 20:
+                c17_evidence += f"; ... (+{len(missing_ocr_training_dirs) - 20} more)"
         add_hard(
             "C17",
-            "bank_statement required directories exist per client",
+            "bank_statement ocr training directory exists",
             c17_passed,
             c17_evidence,
-            "For each client, create inputs/training/ocr_kari_shiwake, "
-            "inputs/training/reference_yayoi, inputs/kari_shiwake, and artifacts/cache under lines/bank_statement.",
+            "Create clients/<ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/ for each bank client.",
+        )
+        if not bank_clients:
+            s6_passed = True
+            s6_evidence = "N/A: no bank_statement clients found"
+        elif not empty_ocr_training_dirs:
+            s6_passed = True
+            s6_evidence = "all clients have 1+ files in inputs/training/ocr_kari_shiwake"
+        else:
+            s6_passed = False
+            s6_evidence = (
+                f"0 files in inputs/training/ocr_kari_shiwake for {len(empty_ocr_training_dirs)} client(s): "
+                + ", ".join(empty_ocr_training_dirs[:10])
+            )
+            if len(empty_ocr_training_dirs) > 10:
+                s6_evidence += ", ..."
+        add_soft(
+            "S6",
+            "bank_statement ocr training file count (warn when 0 files)",
+            s6_passed,
+            s6_evidence,
+            "Add OCR training files under inputs/training/ocr_kari_shiwake when available.",
         )
 
         reference_rule_failures: List[str] = []
         reference_rule_evidence: List[str] = []
         for bank_client_id, line_root in bank_clients:
             reference_dir = line_root / "inputs" / "training" / "reference_yayoi"
-            inbox_files = [
-                p
-                for p in _iter_non_placeholder_files(reference_dir)
-                if p.suffix.lower() in {".csv", ".txt"}
-            ]
-            ingested_manifest = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
-            ingested_count, manifest_issue = _count_ingested_entries(ingested_manifest)
-            inbox_count = len(inbox_files)
-            rule_ok = ingested_count == 1 or inbox_count >= 1
-            detail = f"{bank_client_id}(ingested={ingested_count}, inbox={inbox_count})"
-            if manifest_issue and ingested_count == 0:
-                detail += f"[{manifest_issue}]"
-            reference_rule_evidence.append(detail)
-            if not rule_ok:
+            if not reference_dir.is_dir():
                 reference_rule_failures.append(
-                    f"{bank_client_id}: ingested={ingested_count}, inbox={inbox_count}"
+                    f"{bank_client_id}: missing {reference_dir.relative_to(line_root).as_posix()}"
                 )
-        if bank_clients and not reference_rule_failures:
+                continue
+            inbox_files = _iter_non_placeholder_files(reference_dir)
+            inbox_count = len(inbox_files)
+            file_preview = ",".join(p.name for p in inbox_files[:3]) if inbox_files else "-"
+            detail = f"{bank_client_id}(count={inbox_count}, files={file_preview})"
+            reference_rule_evidence.append(detail)
+            if inbox_count != 1:
+                reference_rule_failures.append(
+                    f"{bank_client_id}: count={inbox_count} in inputs/training/reference_yayoi"
+                )
+        if not bank_clients:
+            c18_passed = True
+            c18_evidence = "N/A: no bank_statement clients found"
+        elif not reference_rule_failures:
             c18_passed = True
             c18_evidence = "; ".join(reference_rule_evidence)
-        elif not bank_clients:
-            c18_passed = False
-            c18_evidence = "not validated because no bank_statement client line root exists"
         else:
             c18_passed = False
-            c18_evidence = "reference rule failed for: " + "; ".join(reference_rule_failures)
+            c18_evidence = "teacher reference count!=1: " + "; ".join(reference_rule_failures)
         add_hard(
             "C18",
-            "bank_statement teacher reference rule (exactly one ingested OR at least one inbox file)",
+            "bank_statement teacher reference file count is exactly 1 (AUD-004)",
             c18_passed,
             c18_evidence,
-            "Place at least one teacher file under "
-            "clients/<ID>/lines/bank_statement/inputs/training/reference_yayoi/ "
-            "or ensure artifacts/ingest/training_reference_ingested.json has exactly one ingested file.",
+            "Leave exactly one teacher file under "
+            "clients/<ID>/lines/bank_statement/inputs/training/reference_yayoi/. "
+            "If multiple files exist, keep one canonical file and remove the rest.",
+        )
+
+        target_rule_failures: List[str] = []
+        target_rule_evidence: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            target_dir = line_root / "inputs" / "kari_shiwake"
+            if not target_dir.is_dir():
+                target_rule_failures.append(
+                    f"{bank_client_id}: missing {target_dir.relative_to(line_root).as_posix()}"
+                )
+                continue
+            target_files = _iter_non_placeholder_files(target_dir)
+            target_count = len(target_files)
+            file_preview = ",".join(p.name for p in target_files[:3]) if target_files else "-"
+            target_rule_evidence.append(f"{bank_client_id}(count={target_count}, files={file_preview})")
+            if target_count != 1:
+                target_rule_failures.append(
+                    f"{bank_client_id}: count={target_count} in inputs/kari_shiwake"
+                )
+        if not bank_clients:
+            c19_passed = True
+            c19_evidence = "N/A: no bank_statement clients found"
+        elif not target_rule_failures:
+            c19_passed = True
+            c19_evidence = "; ".join(target_rule_evidence)
+        else:
+            c19_passed = False
+            c19_evidence = "target file count!=1: " + "; ".join(target_rule_failures)
+        add_hard(
+            "C19",
+            "bank_statement target kari_shiwake file count is exactly 1",
+            c19_passed,
+            c19_evidence,
+            "Leave exactly one target file under clients/<ID>/lines/bank_statement/inputs/kari_shiwake/.",
+        )
+
+        missing_configs: List[str] = []
+        config_evidence: List[str] = []
+        for bank_client_id, line_root in bank_clients:
+            config_path = line_root / "config" / "bank_line_config.json"
+            config_evidence.append(
+                f"{bank_client_id}:{config_path.relative_to(line_root).as_posix()}={config_path.exists()}"
+            )
+            if not config_path.is_file():
+                missing_configs.append(bank_client_id)
+        if not bank_clients:
+            c20_passed = True
+            c20_evidence = "N/A: no bank_statement clients found"
+        elif not missing_configs:
+            c20_passed = True
+            c20_evidence = "; ".join(config_evidence)
+        else:
+            c20_passed = False
+            c20_evidence = f"missing bank_line_config.json for client(s): {', '.join(missing_configs)}"
+        add_hard(
+            "C20",
+            "bank_statement config/bank_line_config.json exists",
+            c20_passed,
+            c20_evidence,
+            "Add config/bank_line_config.json under each bank_statement client line root.",
         )
 
         cache_details: List[str] = []
         cache_missing: List[str] = []
+        cache_parse_issues: List[str] = []
         for bank_client_id, line_root in bank_clients:
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             if cache_path.exists():
-                mtime_iso = datetime.fromtimestamp(cache_path.stat().st_mtime, tz=timezone.utc).isoformat()
-                cache_details.append(f"{bank_client_id}:{mtime_iso}")
+                try:
+                    cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+                    updated_at = str(cache_obj.get("updated_at") or "").strip()
+                    if updated_at:
+                        cache_details.append(f"{bank_client_id}:{updated_at}")
+                    else:
+                        cache_details.append(f"{bank_client_id}:(updated_at missing)")
+                        cache_parse_issues.append(f"{bank_client_id}:updated_at_missing")
+                except Exception as exc:
+                    cache_details.append(f"{bank_client_id}:(parse_error:{type(exc).__name__})")
+                    cache_parse_issues.append(f"{bank_client_id}:{type(exc).__name__}")
             else:
                 cache_missing.append(bank_client_id)
         if not bank_clients:
-            s6_passed = True
-            s6_evidence = "no bank_statement clients found (cache check skipped)"
-        elif cache_missing:
-            s6_passed = False
-            missing_preview = ", ".join(cache_missing[:10])
-            if len(cache_missing) > 10:
-                missing_preview += ", ..."
-            s6_evidence = (
-                f"missing cache for {len(cache_missing)} client(s): {missing_preview}; "
-                f"existing={len(cache_details)}"
-            )
+            s7_passed = True
+            s7_evidence = "N/A: no bank_statement clients found"
+        elif cache_missing or cache_parse_issues:
+            s7_passed = False
+            details: List[str] = []
+            if cache_missing:
+                missing_preview = ", ".join(cache_missing[:10])
+                if len(cache_missing) > 10:
+                    missing_preview += ", ..."
+                details.append(f"missing={missing_preview}")
+            if cache_parse_issues:
+                parse_preview = ", ".join(cache_parse_issues[:10])
+                if len(cache_parse_issues) > 10:
+                    parse_preview += ", ..."
+                details.append(f"issues={parse_preview}")
+            if cache_details:
+                details.append("updated_at=" + "; ".join(cache_details[:5]))
+            s7_evidence = "; ".join(details)
         else:
-            s6_passed = True
+            s7_passed = True
             preview = "; ".join(cache_details[:5])
             if len(cache_details) > 5:
                 preview += f"; ... (+{len(cache_details) - 5} more)"
-            s6_evidence = f"all caches exist. updated_at(utc): {preview}"
+            s7_evidence = f"all caches present. updated_at: {preview}"
         add_soft(
-            "S6",
+            "S7",
             "bank_statement cache file presence and last update time",
-            s6_passed,
-            s6_evidence,
+            s7_passed,
+            s7_evidence,
             "Run $client-cache-builder --line bank_statement --client <CLIENT_ID> for clients with missing cache.",
         )
 
@@ -710,11 +813,13 @@ def main() -> int:
     )
 
     # F) Write permissions (create+delete tiny file)
-    for check_id, rel in [
-        ("F1", Path("lexicon") / line_id / "pending" / "locks"),
+    write_probe_targets: List[tuple[str, Path]] = [
         ("F2", Path("exports")),
         ("F3", Path("clients") / "TEMPLATE" / "lines" / line_id / "artifacts" / "ingest"),
-    ]:
+    ]
+    if line_id == "receipt":
+        write_probe_targets = [("F1", Path("lexicon") / line_id / "pending" / "locks")] + write_probe_targets
+    for check_id, rel in write_probe_targets:
         ok, message = _probe_write_delete(repo_root / rel)
         add_hard(
             check_id,
