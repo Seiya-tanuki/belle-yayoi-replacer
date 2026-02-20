@@ -1,0 +1,23 @@
+{
+  "schema": "belle.bank_line_config.v0",
+  "version": "0.1",
+  "placeholder_account_name": "仮払金",
+  "bank_account_name": "普通預金",
+  "bank_account_subaccount": "",
+  "pairing": {
+    "join_key": ["date", "sign", "amount"],
+    "require_unique_on_both_sides": true
+  },
+  "thresholds": {
+    "kana_sign_amount": { "min_count": 2, "min_p_majority": 0.85 },
+    "kana_sign":        { "min_count": 3, "min_p_majority": 0.80 }
+  },
+  "notes": {
+    "status": "template_only_not_used_yet",
+    "source_specs": [
+      "spec/BANK_LINE_INPUTS_SPEC.md",
+      "spec/BANK_CLIENT_CACHE_SPEC.md",
+      "spec/BANK_REPLACER_SPEC.md"
+    ]
+  }
+}
