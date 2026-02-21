@@ -252,7 +252,7 @@ class BankCachePairLearningTests(unittest.TestCase):
             self.assertEqual(0, _manifest_ingested_count(ocr_manifest_path))
             self.assertEqual(0, _manifest_ingested_count(ref_manifest_path))
 
-    def test_idempotent_second_run(self) -> None:
+    def test_skip_duplicate_pair_set_ingests_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C3"
@@ -281,9 +281,13 @@ class BankCachePairLearningTests(unittest.TestCase):
                 ),
             ]
 
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+
             _write_training_pair(line_root, ocr_rows=ocr_rows, ref_rows=ref_rows, ocr_name="ocr_once.csv")
             first_summary = ensure_bank_client_cache_updated(repo_root, client_id)
             self.assertEqual(1, int(first_summary.get("pairs_unique_used_total") or 0))
+            self.assertEqual(1, len(first_summary.get("applied_pair_set_ids") or []))
 
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             first_obj = _load_json(cache_path)
@@ -295,7 +299,13 @@ class BankCachePairLearningTests(unittest.TestCase):
             first_applied_size = len(first_obj.get("applied_training_sets") or {})
 
             # Re-insert the same content with different filenames: should be detected as same pair_set and skipped.
-            _write_training_pair(line_root, ocr_rows=ocr_rows, ref_rows=ref_rows, ocr_name="ocr_once_again.csv", ref_name="teacher_again.csv")
+            _write_training_pair(
+                line_root,
+                ocr_rows=ocr_rows,
+                ref_rows=ref_rows,
+                ocr_name="ocr_once_again.csv",
+                ref_name="teacher_again.csv",
+            )
             second_summary = ensure_bank_client_cache_updated(repo_root, client_id)
             self.assertEqual(0, int(second_summary.get("pairs_unique_used_total") or 0))
             self.assertEqual(1, len(second_summary.get("skipped_pair_set_ids") or []))
@@ -313,6 +323,47 @@ class BankCachePairLearningTests(unittest.TestCase):
             self.assertEqual(second_applied_size, 1)
             self.assertEqual(0, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
             self.assertEqual(0, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
+
+            ocr_manifest = _load_json(ocr_manifest_path)
+            ref_manifest = _load_json(ref_manifest_path)
+            ocr_ingested = ocr_manifest.get("ingested") or {}
+            ref_ingested = ref_manifest.get("ingested") or {}
+            self.assertEqual(1, len(ocr_ingested))
+            self.assertEqual(1, len(ref_ingested))
+
+            ocr_sha = next(iter(ocr_ingested.keys()))
+            ref_sha = next(iter(ref_ingested.keys()))
+            ocr_ignored = ocr_manifest.get("ignored_duplicates") or {}
+            ref_ignored = ref_manifest.get("ignored_duplicates") or {}
+            self.assertIn(ocr_sha, ocr_ignored)
+            self.assertIn(ref_sha, ref_ignored)
+            self.assertGreaterEqual(len(ocr_ignored.get(ocr_sha) or []), 1)
+            self.assertGreaterEqual(len(ref_ignored.get(ref_sha) or []), 1)
+
+            self.assertIn(ocr_sha, second_summary.get("ingested_duplicate_training_ocr_shas") or [])
+            self.assertIn(ref_sha, second_summary.get("ingested_duplicate_training_reference_shas") or [])
+
+    def test_noop_when_no_training_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C6"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            self.assertFalse(cache_path.exists())
+            self.assertFalse(ocr_manifest_path.exists())
+            self.assertFalse(ref_manifest_path.exists())
+
+            summary = ensure_bank_client_cache_updated(repo_root, client_id)
+            self.assertEqual("none", summary.get("training_input_state"))
+            self.assertEqual(0, int(summary.get("training_ocr_input_count", -1)))
+            self.assertEqual(0, int(summary.get("training_reference_input_count", -1)))
+
+            self.assertFalse(cache_path.exists())
+            self.assertFalse(ocr_manifest_path.exists())
+            self.assertFalse(ref_manifest_path.exists())
 
     def test_multiple_pair_sets_accumulate(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -453,6 +504,71 @@ class BankCachePairLearningTests(unittest.TestCase):
 
             self.assertEqual(1, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
             self.assertEqual(1, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
+
+    def test_fail_when_multiple_training_files(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C7"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            ocr_rows_1 = [
+                _build_row(
+                    date_text="2026/01/13",
+                    summary="OCR_MULTI_1",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=1500,
+                    memo="SIGN=debit",
+                )
+            ]
+            ocr_rows_2 = [
+                _build_row(
+                    date_text="2026/01/14",
+                    summary="OCR_MULTI_2",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=1600,
+                    memo="SIGN=debit",
+                )
+            ]
+            ref_rows = [
+                _build_row(
+                    date_text="2026/01/13",
+                    summary="TEACHER_MULTI",
+                    debit_account="COUNTER_MULTI",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                    debit_tax_division="TAX_D10",
+                    amount=1500,
+                )
+            ]
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=ocr_rows_1,
+                ref_rows=ref_rows,
+                ocr_name="ocr_multi_1.csv",
+                ref_name="teacher_multi.csv",
+            )
+            _write_yayoi_rows(
+                line_root / "inputs" / "training" / "ocr_kari_shiwake" / "ocr_multi_2.csv",
+                ocr_rows_2,
+            )
+
+            with self.assertRaises(SystemExit):
+                ensure_bank_client_cache_updated(repo_root, client_id)
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            self.assertFalse(cache_path.exists())
+            self.assertFalse(ocr_manifest_path.exists())
+            self.assertFalse(ref_manifest_path.exists())
+
+            ocr_inbox = line_root / "inputs" / "training" / "ocr_kari_shiwake"
+            ref_inbox = line_root / "inputs" / "training" / "reference_yayoi"
+            self.assertEqual(2, len(list(ocr_inbox.glob("*.csv"))))
+            self.assertEqual(1, len(list(ref_inbox.glob("*.csv"))))
 
 
 if __name__ == "__main__":
