@@ -199,10 +199,18 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             self.assertTrue(latest_path.exists(), msg=combined)
             report_name = latest_path.read_text(encoding="utf-8").strip()
             report_text = (temp_root / "exports" / "system_diagnose" / report_name).read_text(encoding="utf-8")
+            report_files = sorted((temp_root / "exports" / "system_diagnose").glob("system_diagnose_*.md"))
+            self.assertEqual(1, len(report_files), msg=[p.name for p in report_files])
             self.assertIn("| receipt | GO |", report_text)
             self.assertIn("| bank_statement | GO |", report_text)
             self.assertIn("| credit_card_statement | GO |", report_text)
             self.assertIn("template-only check; unimplemented is warn-only", report_text)
+            self.assertIn("## receipt", report_text)
+            self.assertIn("## bank_statement", report_text)
+            self.assertIn("## credit_card_statement", report_text)
+            self.assertIn("- Line ID: receipt", report_text)
+            self.assertIn("- Line ID: bank_statement", report_text)
+            self.assertIn("- Line ID: credit_card_statement", report_text)
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 

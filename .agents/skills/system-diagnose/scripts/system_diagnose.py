@@ -24,6 +24,9 @@ from belle.lines import is_line_implemented, validate_line_id
 
 _SUPPORTED_LINE_IDS = ("receipt", "bank_statement", "credit_card_statement")
 _SUPPORTED_LINE_IDS_WITH_ALL = _SUPPORTED_LINE_IDS + ("all",)
+_REPORT_RENDER_ONLY_ENV = "BELLE_SYSTEM_DIAGNOSE_RENDER_ONLY"
+_REPORT_BEGIN_MARKER = "<<<SYSTEM_DIAGNOSE_REPORT_BEGIN>>>"
+_REPORT_END_MARKER = "<<<SYSTEM_DIAGNOSE_REPORT_END>>>"
 
 
 @dataclass
@@ -333,16 +336,41 @@ def _default_next_steps(go: bool, risks: Sequence[Risk]) -> List[str]:
     ]
 
 
+def _extract_embedded_report(text: str) -> tuple[str | None, str]:
+    start = text.find(_REPORT_BEGIN_MARKER)
+    if start < 0:
+        return None, text.strip()
+    end = text.find(_REPORT_END_MARKER, start + len(_REPORT_BEGIN_MARKER))
+    if end < 0:
+        return None, text.strip()
+    body = text[start + len(_REPORT_BEGIN_MARKER) : end].strip("\n")
+    cleaned = (text[:start] + text[end + len(_REPORT_END_MARKER) :]).strip()
+    return (body + "\n") if body else "", cleaned
+
+
+def _normalize_line_report_for_combined(report_content: str) -> str:
+    lines = report_content.splitlines()
+    if lines and lines[0].strip() == "# System Diagnose Report":
+        lines = lines[1:]
+        if lines and lines[0].strip() == "":
+            lines = lines[1:]
+    body = "\n".join(lines).rstrip()
+    return (body + "\n") if body else ""
+
+
 def _run_all_lines_mode(repo_root: Path) -> int:
     audit_time = _utc_now()
-    line_results: List[tuple[str, int, str, Path | None]] = []
+    line_results: List[tuple[str, int, str, str]] = []
     script_path = Path(__file__).resolve()
 
     print("[INFO] running all-line diagnosis: receipt, bank_statement, credit_card_statement")
     for line_id in _SUPPORTED_LINE_IDS:
+        child_env = os.environ.copy()
+        child_env[_REPORT_RENDER_ONLY_ENV] = "1"
         proc = subprocess.run(
             [sys.executable, str(script_path), "--line", line_id],
             cwd=str(repo_root),
+            env=child_env,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -352,14 +380,19 @@ def _run_all_lines_mode(repo_root: Path) -> int:
         combined_output = (proc.stdout or "").strip()
         if proc.stderr:
             combined_output = (combined_output + "\n" + proc.stderr.strip()).strip()
-        latest_file = repo_root / "exports" / "system_diagnose" / "LATEST.txt"
-        child_report_path: Path | None = None
-        if latest_file.exists():
-            child_report_name = latest_file.read_text(encoding="utf-8", errors="replace").strip()
-            candidate = latest_file.parent / child_report_name
-            if child_report_name and candidate.exists():
-                child_report_path = candidate
-        line_results.append((line_id, proc.returncode, combined_output, child_report_path))
+        line_report, combined_output = _extract_embedded_report(combined_output)
+        if line_report is None:
+            line_report = "\n".join(
+                [
+                    "# System Diagnose Report",
+                    "",
+                    "## 0) Internal capture warning",
+                    f"- Line ID: {line_id}",
+                    "- Render-only markdown capture failed in all-mode child execution.",
+                    "",
+                ]
+            )
+        line_results.append((line_id, proc.returncode, combined_output, line_report))
 
     overall_go = all(return_code == 0 for _, return_code, _, _ in line_results)
     go_text = "GO" if overall_go else "NO-GO"
@@ -375,15 +408,25 @@ def _run_all_lines_mode(repo_root: Path) -> int:
     summary_lines.append("## 2) Per-line summary")
     summary_lines.append("| Line | Result | Notes |")
     summary_lines.append("|---|---|---|")
-    for line_id, return_code, _, report_path in line_results:
+    for line_id, return_code, _, _ in line_results:
         result = "GO" if return_code == 0 else "NO-GO"
         notes = "template-only check; unimplemented is warn-only" if line_id == "credit_card_statement" else ""
-        if report_path is not None:
-            notes = (notes + "; " if notes else "") + f"report: {report_path.relative_to(repo_root).as_posix()}"
         summary_lines.append(f"| {line_id} | {result} | {notes} |")
 
     summary_lines.append("")
-    summary_lines.append("## 3) Child execution outputs (trimmed)")
+    summary_lines.append("## 3) Per-line diagnostic reports")
+    for line_id, _, _, line_report in line_results:
+        summary_lines.append("")
+        summary_lines.append(f"## {line_id}")
+        summary_lines.append("")
+        body = _normalize_line_report_for_combined(line_report)
+        if body:
+            summary_lines.append(body.rstrip())
+        else:
+            summary_lines.append("(empty report)")
+
+    summary_lines.append("")
+    summary_lines.append("## 4) Child execution outputs (trimmed)")
     for line_id, return_code, combined_output, _ in line_results:
         summary_lines.append("")
         summary_lines.append(f"### {line_id}")
@@ -1198,16 +1241,18 @@ def main() -> int:
     report_content = "\n".join(report_lines).rstrip() + "\n"
     report_sha8 = hashlib.sha256(report_content.encode("utf-8")).hexdigest()[:8]
     report_name = f"system_diagnose_{_utc_compact(audit_time)}_{report_sha8}.md"
+    render_only = os.environ.get(_REPORT_RENDER_ONLY_ENV) == "1"
+    report_path: Path | None = None
+    if not render_only:
+        export_dir = repo_root / "exports" / "system_diagnose"
+        export_dir.mkdir(parents=True, exist_ok=True)
+        report_path = export_dir / report_name
+        report_path.write_text(report_content, encoding="utf-8", newline="\n")
 
-    export_dir = repo_root / "exports" / "system_diagnose"
-    export_dir.mkdir(parents=True, exist_ok=True)
-    report_path = export_dir / report_name
-    report_path.write_text(report_content, encoding="utf-8", newline="\n")
-
-    latest_tmp = export_dir / "LATEST.txt.tmp"
-    latest_file = export_dir / "LATEST.txt"
-    latest_tmp.write_text(f"{report_name}\n", encoding="utf-8", newline="\n")
-    latest_tmp.replace(latest_file)
+        latest_tmp = export_dir / "LATEST.txt.tmp"
+        latest_file = export_dir / "LATEST.txt"
+        latest_tmp.write_text(f"{report_name}\n", encoding="utf-8", newline="\n")
+        latest_tmp.replace(latest_file)
     print(f"判定: {go_text}")
     if a3.returncode == 0 and repo_dirty:
         print("[WARN] 作業ツリーに未コミットの変更があります（dirty）")
@@ -1232,7 +1277,13 @@ def main() -> int:
     else:
         next_step_ja = "現在の状態を維持し、必要時に再診断してください。"
     print(f"次の一手: {next_step_ja}")
-    print(f"レポート: {report_path}")
+    if render_only:
+        print(_REPORT_BEGIN_MARKER)
+        print(report_content, end="")
+        print(_REPORT_END_MARKER)
+    else:
+        assert report_path is not None
+        print(f"レポート: {report_path}")
     return 0 if go else 1
 
 
