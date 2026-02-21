@@ -70,13 +70,19 @@ def _utc_compact(ts: datetime) -> str:
     return ts.strftime("%Y%m%dT%H%M%SZ")
 
 
-def _run_command(command: str, cwd: Path, timeout_sec: int = 30) -> CommandResult:
+def _run_command(
+    command: str,
+    cwd: Path,
+    timeout_sec: int = 30,
+    env: dict[str, str] | None = None,
+) -> CommandResult:
     started = time.perf_counter()
     try:
         proc = subprocess.run(
             command,
             cwd=str(cwd),
             shell=True,
+            env=env,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -366,7 +372,6 @@ def _run_all_lines_mode(repo_root: Path) -> int:
     print("[INFO] running all-line diagnosis: receipt, bank_statement, credit_card_statement")
     for line_id in _SUPPORTED_LINE_IDS:
         child_env = os.environ.copy()
-        child_env[_REPORT_RENDER_ONLY_ENV] = "1"
         child_env["PYTHONUTF8"] = "1"
         child_env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.run(
@@ -495,8 +500,22 @@ def main() -> int:
     hard_checks: List[CheckResult] = []
     soft_checks: List[CheckResult] = []
 
-    def run_and_store(check_id: str, command: str, timeout_sec: int = 30) -> CommandResult:
-        res = _run_command(command=command, cwd=repo_root, timeout_sec=timeout_sec)
+    def run_and_store(
+        check_id: str,
+        command: str,
+        timeout_sec: int = 30,
+        env: dict[str, str] | None = None,
+    ) -> CommandResult:
+        if env is None:
+            res = _run_command(command=command, cwd=repo_root, timeout_sec=timeout_sec)
+        else:
+            try:
+                res = _run_command(command=command, cwd=repo_root, timeout_sec=timeout_sec, env=env)
+            except TypeError as exc:
+                if "unexpected keyword argument 'env'" not in str(exc):
+                    raise
+                # Keep backward compatibility with tests that patch _run_command without env.
+                res = _run_command(command=command, cwd=repo_root, timeout_sec=timeout_sec)
         command_logs[check_id] = res
         return res
 
@@ -1091,7 +1110,9 @@ def main() -> int:
         "Fix syntax/import issues surfaced by compileall before proceeding.",
     )
 
-    d3 = run_and_store("D3", "python -m unittest discover -s tests -v", timeout_sec=180)
+    d3_env = os.environ.copy()
+    d3_env.pop(_REPORT_RENDER_ONLY_ENV, None)
+    d3 = run_and_store("D3", "python -m unittest discover -s tests -v", timeout_sec=180, env=d3_env)
     add_hard(
         "D3",
         "python -m unittest discover -s tests -v returns 0",
@@ -1248,7 +1269,7 @@ def main() -> int:
     report_content = "\n".join(report_lines).rstrip() + "\n"
     report_sha8 = hashlib.sha256(report_content.encode("utf-8")).hexdigest()[:8]
     report_name = f"system_diagnose_{_utc_compact(audit_time)}_{report_sha8}.md"
-    render_only = args.render_only or os.environ.get(_REPORT_RENDER_ONLY_ENV) == "1"
+    render_only = args.render_only
     report_path: Path | None = None
     if not render_only:
         export_dir = repo_root / "exports" / "system_diagnose"
