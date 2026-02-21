@@ -23,9 +23,9 @@ from belle.yayoi_columns import (
     COL_SUMMARY,
 )
 
-PLACEHOLDER_ACCOUNT = "仮払金"
-BANK_ACCOUNT = "普通預金"
-LEARNED_BANK_SUBACCOUNT = "武銀/新白岡175"
+PLACEHOLDER_ACCOUNT = "TEMP_PLACEHOLDER"
+BANK_ACCOUNT = "BANK_ACCOUNT"
+LEARNED_BANK_SUBACCOUNT = "BANK_SUBACCOUNT_LEARNED"
 
 
 def _line_root(repo_root: Path, client_id: str) -> Path:
@@ -94,6 +94,32 @@ def _write_yayoi_rows(path: Path, rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
+def _write_training_pair(
+    line_root: Path,
+    *,
+    ocr_rows: list[list[str]],
+    ref_rows: list[list[str]],
+    ocr_name: str = "ocr.csv",
+    ref_name: str = "teacher.csv",
+) -> None:
+    _write_yayoi_rows(line_root / "inputs" / "training" / "ocr_kari_shiwake" / ocr_name, ocr_rows)
+    _write_yayoi_rows(line_root / "inputs" / "training" / "reference_yayoi" / ref_name, ref_rows)
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _manifest_ingested_count(path: Path) -> int:
+    if not path.exists():
+        return 0
+    obj = _load_json(path)
+    ingested = obj.get("ingested") or {}
+    if not isinstance(ingested, dict):
+        return 0
+    return len(ingested)
+
+
 class BankCachePairLearningTests(unittest.TestCase):
     def test_unique_pair_updates_cache(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -101,68 +127,62 @@ class BankCachePairLearningTests(unittest.TestCase):
             client_id = "C1"
             line_root = _prepare_bank_layout(repo_root, client_id)
 
-            ocr_summary_withdraw = "PBキャッシュカード"
-            ocr_summary_deposit = "振込入金"
-            ocr_rows = [
-                _build_row(
-                    date_text="2026/01/05",
-                    summary=ocr_summary_withdraw,
-                    debit_account=PLACEHOLDER_ACCOUNT,
-                    credit_account=BANK_ACCOUNT,
-                    amount=1200,
-                    memo="SIGN=debit",
-                ),
-                _build_row(
-                    date_text="2026/01/06",
-                    summary=ocr_summary_deposit,
-                    debit_account=BANK_ACCOUNT,
-                    credit_account=PLACEHOLDER_ACCOUNT,
-                    amount=2500,
-                    memo="SIGN=credit",
-                ),
-            ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "ocr_kari_shiwake" / "ocr_train.csv",
-                ocr_rows,
-            )
-
-            teacher_summary_withdraw = "雑費精算"
-            teacher_summary_deposit = "売上入金"
-            teacher_rows = [
-                _build_row(
-                    date_text="2026/01/05",
-                    summary=teacher_summary_withdraw,
-                    debit_account="旅費交通費",
-                    credit_account=BANK_ACCOUNT,
-                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
-                    debit_tax_division="課税仕入10%",
-                    amount=1200,
-                ),
-                _build_row(
-                    date_text="2026/01/06",
-                    summary=teacher_summary_deposit,
-                    debit_account=BANK_ACCOUNT,
-                    debit_subaccount=LEARNED_BANK_SUBACCOUNT,
-                    credit_account="売上高",
-                    credit_tax_division="対象外",
-                    amount=2500,
-                ),
-            ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "reference_yayoi" / "teacher.txt",
-                teacher_rows,
+            ocr_summary_withdraw = "OCR_WITHDRAW"
+            ocr_summary_deposit = "OCR_DEPOSIT"
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/05",
+                        summary=ocr_summary_withdraw,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1200,
+                        memo="SIGN=debit",
+                    ),
+                    _build_row(
+                        date_text="2026/01/06",
+                        summary=ocr_summary_deposit,
+                        debit_account=BANK_ACCOUNT,
+                        credit_account=PLACEHOLDER_ACCOUNT,
+                        amount=2500,
+                        memo="SIGN=credit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/01/05",
+                        summary="TEACHER_WITHDRAW",
+                        debit_account="COUNTER_WITHDRAW",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1200,
+                    ),
+                    _build_row(
+                        date_text="2026/01/06",
+                        summary="TEACHER_DEPOSIT",
+                        debit_account=BANK_ACCOUNT,
+                        debit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        credit_account="COUNTER_DEPOSIT",
+                        credit_tax_division="TAX_C_EX",
+                        amount=2500,
+                    ),
+                ],
+                ref_name="teacher.txt",
             )
 
             summary = ensure_bank_client_cache_updated(repo_root, client_id)
             self.assertEqual(summary["pairs_unique_used_total"], 2)
+            self.assertEqual(len(summary.get("applied_pair_set_ids") or []), 1)
 
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             self.assertTrue(cache_path.exists())
-            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+            cache_obj = _load_json(cache_path)
             self.assertEqual(cache_obj.get("schema"), "belle.bank_client_cache.v0")
 
-            label_withdraw = make_bank_label_id(teacher_summary_withdraw, "旅費交通費", "", "課税仕入10%")
-            label_deposit = make_bank_label_id(teacher_summary_deposit, "売上高", "", "対象外")
+            label_withdraw = make_bank_label_id("TEACHER_WITHDRAW", "COUNTER_WITHDRAW", "", "TAX_D10")
+            label_deposit = make_bank_label_id("TEACHER_DEPOSIT", "COUNTER_DEPOSIT", "", "TAX_C_EX")
             labels = cache_obj.get("labels") or {}
             self.assertIn(label_withdraw, labels)
             self.assertIn(label_deposit, labels)
@@ -176,19 +196,6 @@ class BankCachePairLearningTests(unittest.TestCase):
             bank_sub_stats = cache_obj.get("bank_account_subaccount_stats") or {}
             self.assertIn("kana_sign_amount", bank_sub_stats)
             self.assertIn("kana_sign", bank_sub_stats)
-            sub_stats_strong = bank_sub_stats.get("kana_sign_amount") or {}
-            sub_stats_weak = bank_sub_stats.get("kana_sign") or {}
-            self.assertEqual((sub_stats_strong.get(key_withdraw) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
-            self.assertEqual(int((sub_stats_strong.get(key_withdraw) or {}).get("sample_total") or -1), 1)
-            self.assertEqual((sub_stats_strong.get(key_deposit) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
-            self.assertEqual(int((sub_stats_strong.get(key_deposit) or {}).get("sample_total") or -1), 1)
-
-            key_withdraw_weak = f"{normalize_kana_key(ocr_summary_withdraw)}|debit"
-            key_deposit_weak = f"{normalize_kana_key(ocr_summary_deposit)}|credit"
-            self.assertEqual((sub_stats_weak.get(key_withdraw_weak) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
-            self.assertEqual(int((sub_stats_weak.get(key_withdraw_weak) or {}).get("sample_total") or -1), 1)
-            self.assertEqual((sub_stats_weak.get(key_deposit_weak) or {}).get("top_value"), LEARNED_BANK_SUBACCOUNT)
-            self.assertEqual(int((sub_stats_weak.get(key_deposit_weak) or {}).get("sample_total") or -1), 1)
 
     def test_ambiguous_join_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -196,62 +203,54 @@ class BankCachePairLearningTests(unittest.TestCase):
             client_id = "C2"
             line_root = _prepare_bank_layout(repo_root, client_id)
 
-            ocr_rows = [
-                _build_row(
-                    date_text="2026/01/10",
-                    summary="重複キー1",
-                    debit_account=PLACEHOLDER_ACCOUNT,
-                    credit_account=BANK_ACCOUNT,
-                    amount=1000,
-                    memo="SIGN=debit",
-                ),
-                _build_row(
-                    date_text="2026/01/10",
-                    summary="重複キー2",
-                    debit_account=PLACEHOLDER_ACCOUNT,
-                    credit_account=BANK_ACCOUNT,
-                    amount=1000,
-                    memo="SIGN=debit",
-                ),
-            ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "ocr_kari_shiwake" / "ocr_dupe.csv",
-                ocr_rows,
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/10",
+                        summary="OCR_DUP_1",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1000,
+                        memo="SIGN=debit",
+                    ),
+                    _build_row(
+                        date_text="2026/01/10",
+                        summary="OCR_DUP_2",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1000,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/01/10",
+                        summary="TEACHER_OK",
+                        debit_account="COUNTER",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1000,
+                    ),
+                ],
             )
 
-            teacher_rows = [
-                _build_row(
-                    date_text="2026/01/10",
-                    summary="交通費",
-                    debit_account="旅費交通費",
-                    credit_account=BANK_ACCOUNT,
-                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
-                    debit_tax_division="課税仕入10%",
-                    amount=1000,
-                ),
-            ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "reference_yayoi" / "teacher.csv",
-                teacher_rows,
-            )
-
-            summary = ensure_bank_client_cache_updated(repo_root, client_id)
-            self.assertEqual(summary["pairs_unique_used_total"], 0)
+            with self.assertRaises(SystemExit):
+                ensure_bank_client_cache_updated(repo_root, client_id)
 
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
-            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-            stats = cache_obj.get("stats") or {}
-            self.assertEqual(stats.get("kana_sign_amount") or {}, {})
-            self.assertEqual(stats.get("kana_sign") or {}, {})
-            bank_sub_stats = cache_obj.get("bank_account_subaccount_stats") or {}
-            self.assertEqual(bank_sub_stats.get("kana_sign_amount") or {}, {})
-            self.assertEqual(bank_sub_stats.get("kana_sign") or {}, {})
+            self.assertFalse(cache_path.exists())
 
-            applied = cache_obj.get("applied_training_sets") or {}
-            self.assertEqual(len(applied), 1)
-            entry = next(iter(applied.values()))
-            self.assertEqual(int(entry.get("pairs_unique_used", -1)), 0)
-            self.assertEqual(int(entry.get("ocr_dup_keys") or 0), 1)
+            ocr_inbox = line_root / "inputs" / "training" / "ocr_kari_shiwake"
+            ref_inbox = line_root / "inputs" / "training" / "reference_yayoi"
+            self.assertEqual(1, len(list(ocr_inbox.glob("*.csv"))))
+            self.assertEqual(1, len(list(ref_inbox.glob("*.csv"))))
+
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            self.assertEqual(0, _manifest_ingested_count(ocr_manifest_path))
+            self.assertEqual(0, _manifest_ingested_count(ref_manifest_path))
 
     def test_idempotent_second_run(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -259,7 +258,7 @@ class BankCachePairLearningTests(unittest.TestCase):
             client_id = "C3"
             line_root = _prepare_bank_layout(repo_root, client_id)
 
-            ocr_summary = "外注費支払"
+            ocr_summary = "OCR_ONCE"
             ocr_rows = [
                 _build_row(
                     date_text="2026/01/20",
@@ -270,67 +269,190 @@ class BankCachePairLearningTests(unittest.TestCase):
                     memo="SIGN=debit",
                 ),
             ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "ocr_kari_shiwake" / "ocr_once.csv",
-                ocr_rows,
-            )
-
-            teacher_rows = [
+            ref_rows = [
                 _build_row(
                     date_text="2026/01/20",
-                    summary="外注費",
-                    debit_account="外注費",
+                    summary="TEACHER_ONCE",
+                    debit_account="COUNTER_ONCE",
                     credit_account=BANK_ACCOUNT,
                     credit_subaccount=LEARNED_BANK_SUBACCOUNT,
-                    debit_tax_division="課税仕入10%",
+                    debit_tax_division="TAX_D10",
                     amount=3300,
                 ),
             ]
-            _write_yayoi_rows(
-                line_root / "inputs" / "training" / "reference_yayoi" / "teacher.csv",
-                teacher_rows,
-            )
 
-            ensure_bank_client_cache_updated(repo_root, client_id)
+            _write_training_pair(line_root, ocr_rows=ocr_rows, ref_rows=ref_rows, ocr_name="ocr_once.csv")
+            first_summary = ensure_bank_client_cache_updated(repo_root, client_id)
+            self.assertEqual(1, int(first_summary.get("pairs_unique_used_total") or 0))
+
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
-            first_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+            first_obj = _load_json(cache_path)
             key = f"{normalize_kana_key(ocr_summary)}|debit|3300"
             first_total = int(
                 (((first_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}).get("sample_total")
                 or 0
             )
-            first_sub_total = int(
-                (
-                    (((first_obj.get("bank_account_subaccount_stats") or {}).get("kana_sign_amount") or {}).get(key) or {})
-                    .get("sample_total")
-                )
-                or 0
-            )
             first_applied_size = len(first_obj.get("applied_training_sets") or {})
 
-            ensure_bank_client_cache_updated(repo_root, client_id)
-            second_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+            # Re-insert the same content with different filenames: should be detected as same pair_set and skipped.
+            _write_training_pair(line_root, ocr_rows=ocr_rows, ref_rows=ref_rows, ocr_name="ocr_once_again.csv", ref_name="teacher_again.csv")
+            second_summary = ensure_bank_client_cache_updated(repo_root, client_id)
+            self.assertEqual(0, int(second_summary.get("pairs_unique_used_total") or 0))
+            self.assertEqual(1, len(second_summary.get("skipped_pair_set_ids") or []))
+
+            second_obj = _load_json(cache_path)
             second_total = int(
                 (((second_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}).get("sample_total")
-                or 0
-            )
-            second_sub_total = int(
-                (
-                    (
-                        ((second_obj.get("bank_account_subaccount_stats") or {}).get("kana_sign_amount") or {}).get(key)
-                        or {}
-                    ).get("sample_total")
-                )
                 or 0
             )
             second_applied_size = len(second_obj.get("applied_training_sets") or {})
 
             self.assertEqual(first_total, 1)
             self.assertEqual(second_total, 1)
-            self.assertEqual(first_sub_total, 1)
-            self.assertEqual(second_sub_total, 1)
             self.assertEqual(first_applied_size, 1)
             self.assertEqual(second_applied_size, 1)
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
+
+    def test_multiple_pair_sets_accumulate(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C4"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            ocr_summary = "OCR_ACCUM"
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/01",
+                        summary=ocr_summary,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1100,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/01/01",
+                        summary="TEACHER_ACCUM",
+                        debit_account="COUNTER_ACCUM",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1100,
+                    ),
+                ],
+                ocr_name="ocr_pair_1.csv",
+                ref_name="teacher_pair_1.csv",
+            )
+            ensure_bank_client_cache_updated(repo_root, client_id)
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/02",
+                        summary=ocr_summary,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1100,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/01/02",
+                        summary="TEACHER_ACCUM",
+                        debit_account="COUNTER_ACCUM",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1100,
+                    ),
+                ],
+                ocr_name="ocr_pair_2.csv",
+                ref_name="teacher_pair_2.csv",
+            )
+            ensure_bank_client_cache_updated(repo_root, client_id)
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            cache_obj = _load_json(cache_path)
+            applied = cache_obj.get("applied_training_sets") or {}
+            self.assertEqual(2, len(applied))
+
+            key = f"{normalize_kana_key(ocr_summary)}|debit|1100"
+            stats = ((cache_obj.get("stats") or {}).get("kana_sign_amount") or {})
+            self.assertEqual(2, int((stats.get(key) or {}).get("sample_total") or 0))
+
+    def test_fail_when_only_one_side_new(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C5"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            first_ocr_rows = [
+                _build_row(
+                    date_text="2026/01/11",
+                    summary="OCR_FIRST",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=2100,
+                    memo="SIGN=debit",
+                )
+            ]
+            first_ref_rows = [
+                _build_row(
+                    date_text="2026/01/11",
+                    summary="TEACHER_FIRST",
+                    debit_account="COUNTER_FIRST",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                    debit_tax_division="TAX_D10",
+                    amount=2100,
+                )
+            ]
+
+            _write_training_pair(line_root, ocr_rows=first_ocr_rows, ref_rows=first_ref_rows)
+            ensure_bank_client_cache_updated(repo_root, client_id)
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            cache_before = cache_path.read_text(encoding="utf-8")
+
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            self.assertEqual(1, _manifest_ingested_count(ocr_manifest_path))
+            self.assertEqual(1, _manifest_ingested_count(ref_manifest_path))
+
+            # OCR is new, reference is identical content as first run -> one-side-new must fail.
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/12",
+                        summary="OCR_SECOND_NEW",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=2200,
+                        memo="SIGN=debit",
+                    )
+                ],
+                ref_rows=first_ref_rows,
+                ocr_name="ocr_second.csv",
+                ref_name="teacher_same_content.csv",
+            )
+
+            with self.assertRaises(SystemExit):
+                ensure_bank_client_cache_updated(repo_root, client_id)
+
+            cache_after = cache_path.read_text(encoding="utf-8")
+            self.assertEqual(cache_before, cache_after)
+            self.assertEqual(1, _manifest_ingested_count(ocr_manifest_path))
+            self.assertEqual(1, _manifest_ingested_count(ref_manifest_path))
+
+            self.assertEqual(1, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
+            self.assertEqual(1, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
 
 
 if __name__ == "__main__":

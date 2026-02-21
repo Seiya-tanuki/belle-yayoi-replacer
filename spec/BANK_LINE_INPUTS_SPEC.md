@@ -30,6 +30,29 @@ Forbidden paths for bank v0:
 1. `clients/<CLIENT_ID>/lines/bank_statement/inputs/ledger_ref/**`
 2. `clients/<CLIENT_ID>/lines/bank_statement/artifacts/ingest/ledger_ref/**`
 
+## Training inbox contract (fail-closed)
+
+Training ingestion unit is exactly one pair-set per update:
+1. OCR training input:
+   1. `inputs/training/ocr_kari_shiwake/` and `*.csv` only
+2. Teacher training input:
+   1. `inputs/training/reference_yayoi/` and `*.csv` or `*.txt`
+
+Per update, file-count behavior is fixed:
+1. OCR=0 and teacher=0:
+   1. learning is skipped (normal, no-op)
+2. one-side only (`1/0` or `0/1`):
+   1. fail-closed (`SystemExit`)
+3. either side has `2+` target files:
+   1. fail-closed (`SystemExit`)
+4. non-target extensions (example: `.DS_Store`) are ignored for counting.
+
+Idempotency unit is pair-set SHA256:
+1. `pair_set_sha256 = sha256(\"ocr=\" + ocr_sha256 + \"|ref=\" + ref_sha256)`
+2. if the same `pair_set_sha256` is already applied:
+   1. learning stats update is skipped
+   2. inbox files may still be ingested as duplicates for cleanup
+
 ## Training pair concept (before/after)
 
 Training uses before/after row pairs built from:

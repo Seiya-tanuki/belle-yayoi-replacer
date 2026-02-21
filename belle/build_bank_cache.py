@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
@@ -20,7 +21,7 @@ from .bank_cache import (
     save_bank_cache,
 )
 from .bank_pairing import build_training_pairs
-from .ingest import ingest_csv_dir
+from .ingest import ingest_single_file, load_manifest_strict, sha256_file
 
 
 def _now_utc_iso() -> str:
@@ -35,6 +36,110 @@ def _resolve_stored_path(line_root: Path, default_store_dir: Path, entry: Dict[s
     if not stored_name:
         return None
     return default_store_dir / stored_name
+
+
+_TRAINING_OCR_EXTS = {".csv"}
+_TRAINING_REFERENCE_EXTS = {".csv", ".txt"}
+
+
+def _list_training_files(dir_path: Path, *, allowed_exts: set[str]) -> List[Path]:
+    if not dir_path.exists():
+        return []
+    files: List[Path] = []
+    for p in sorted(dir_path.iterdir(), key=lambda v: v.name):
+        if not p.is_file():
+            continue
+        if p.name == ".gitkeep":
+            continue
+        if p.name.endswith(".tmp"):
+            continue
+        if p.suffix.lower() not in allowed_exts:
+            continue
+        files.append(p)
+    return files
+
+
+def _load_ingested_entries_or_empty(manifest_path: Path) -> Dict[str, Dict[str, Any]]:
+    if not manifest_path.exists():
+        return {}
+    try:
+        obj = load_manifest_strict(manifest_path)
+    except Exception as exc:
+        raise SystemExit(f"failed to read ingest manifest (fail-closed): {manifest_path}: {exc}") from exc
+    raw = obj.get("ingested")
+    if not isinstance(raw, dict):
+        raise SystemExit(f"invalid ingest manifest shape (missing ingested object): {manifest_path}")
+    out: Dict[str, Dict[str, Any]] = {}
+    for k, v in raw.items():
+        sha = str(k).strip()
+        if not sha:
+            continue
+        out[sha] = v if isinstance(v, dict) else {}
+    return out
+
+
+def _to_relpath_from_line_root(line_root: Path, path: Path) -> str:
+    try:
+        return path.relative_to(line_root).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _entry_stored_meta(
+    *,
+    entry: Dict[str, Any],
+    fallback_store_dir: Path,
+    fallback_stored_name: str,
+    line_root: Path,
+) -> Dict[str, str]:
+    stored_name = str(entry.get("stored_name") or fallback_stored_name).strip()
+    stored_relpath = str(entry.get("stored_relpath") or "").strip()
+    if not stored_relpath and stored_name:
+        stored_relpath = _to_relpath_from_line_root(line_root, fallback_store_dir / stored_name)
+    return {
+        "stored_name": stored_name,
+        "stored_relpath": stored_relpath,
+    }
+
+
+def _pair_set_sha256(ocr_sha256: str, ref_sha256: str) -> str:
+    payload = f"ocr={ocr_sha256}|ref={ref_sha256}".encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _prepare_cache(
+    *,
+    cache_path: Path,
+    client_id: str,
+    thresholds: Dict[str, Any],
+) -> BankClientCache:
+    cache = load_bank_cache(cache_path)
+    if not cache.client_id:
+        cache.client_id = str(client_id)
+    if not cache.line_id:
+        cache.line_id = LINE_ID_BANK_STATEMENT
+    if not cache.created_at:
+        cache.created_at = _now_utc_iso()
+    if not cache.decision_thresholds:
+        cache.decision_thresholds = thresholds
+    if not isinstance(cache.applied_training_sets, dict):
+        cache.applied_training_sets = {}
+    cache.stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
+    cache.stats.setdefault(ROUTE_KANA_SIGN, {})
+    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
+    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN, {})
+    return cache
+
+
+def _finalize_cache_meta(cache: BankClientCache, *, client_id: str, thresholds: Dict[str, Any]) -> None:
+    cache.schema = SCHEMA_BANK_CLIENT_CACHE_V0
+    cache.version = "0.1"
+    cache.client_id = str(client_id)
+    cache.line_id = LINE_ID_BANK_STATEMENT
+    cache.append_only = True
+    cache.updated_at = _now_utc_iso()
+    if not cache.decision_thresholds:
+        cache.decision_thresholds = thresholds
 
 
 def _ensure_stats_entry(stats_map: Dict[str, LabelStatsEntry], key: str) -> LabelStatsEntry:
@@ -111,207 +216,317 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
     ]:
         d.mkdir(parents=True, exist_ok=True)
 
-    manifest_ocr, new_ocr_shas, dup_ocr_shas = ingest_csv_dir(
-        dir_path=ocr_training_dir,
-        store_dir=training_ocr_store_dir,
-        manifest_path=training_ocr_ingested_path,
-        client_id=client_id,
-        kind="training_ocr",
-        allow_rename=True,
-        include_glob="*.csv",
-        relpath_base_dir=line_root,
-    )
-    manifest_ref, new_ref_csv_shas, dup_ref_csv_shas = ingest_csv_dir(
-        dir_path=ref_training_dir,
-        store_dir=training_ref_store_dir,
-        manifest_path=training_ref_ingested_path,
-        client_id=client_id,
-        kind="training_reference",
-        allow_rename=True,
-        include_glob="*.csv",
-        relpath_base_dir=line_root,
-    )
-    manifest_ref, new_ref_txt_shas, dup_ref_txt_shas = ingest_csv_dir(
-        dir_path=ref_training_dir,
-        store_dir=training_ref_store_dir,
-        manifest_path=training_ref_ingested_path,
-        client_id=client_id,
-        kind="training_reference",
-        allow_rename=True,
-        include_glob="*.txt",
-        relpath_base_dir=line_root,
-    )
-
     config = load_bank_line_config(repo_root, client_id)
     thresholds = config.get("thresholds") if isinstance(config.get("thresholds"), dict) else {}
 
-    ref_ingested = manifest_ref.get("ingested") if isinstance(manifest_ref.get("ingested"), dict) else {}
-    ref_order_raw = manifest_ref.get("ingested_order") if isinstance(manifest_ref.get("ingested_order"), list) else []
-    ref_order = [str(sha) for sha in ref_order_raw if str(sha) in ref_ingested]
-    if not ref_order:
-        ref_order = [str(sha) for sha in ref_ingested.keys()]
-    ref_unique_sha_list = sorted(set(ref_order))
-    if len(ref_unique_sha_list) != 1:
-        count = len(ref_unique_sha_list)
+    ocr_inputs = _list_training_files(ocr_training_dir, allowed_exts=_TRAINING_OCR_EXTS)
+    ref_inputs = _list_training_files(ref_training_dir, allowed_exts=_TRAINING_REFERENCE_EXTS)
+    ocr_count = len(ocr_inputs)
+    ref_count = len(ref_inputs)
+
+    if ocr_count == 0 and ref_count == 0:
+        return {
+            "client_id": str(client_id),
+            "line_id": LINE_ID_BANK_STATEMENT,
+            "cache_path": str(cache_path),
+            "training_ocr_ingest_manifest_path": str(training_ocr_ingested_path),
+            "training_reference_ingest_manifest_path": str(training_ref_ingested_path),
+            "training_input_state": "none",
+            "training_ocr_input_count": int(ocr_count),
+            "training_reference_input_count": int(ref_count),
+            "applied_pair_set_ids": [],
+            "skipped_pair_set_ids": [],
+            "applied_pair_ids": [],
+            "skipped_pair_ids": [],
+            "pairs_unique_used_total": 0,
+            "sign_mismatch_skipped_total": 0,
+            "ingested_new_training_ocr_shas": [],
+            "ingested_duplicate_training_ocr_shas": [],
+            "ingested_new_training_reference_shas": [],
+            "ingested_duplicate_training_reference_shas": [],
+            "warnings": [],
+        }
+
+    if ocr_count >= 2:
         raise SystemExit(
-            "bank_statement training reference requires exactly one ingested file in "
-            f"{training_ref_ingested_path}. current_count={count}. "
-            "Leave only one canonical teacher file under inputs/training/reference_yayoi/ and rerun."
+            "bank_statement training OCR input must be at most one *.csv per run. "
+            f"current_count={ocr_count} dir={ocr_training_dir}"
+        )
+    if ref_count >= 2:
+        raise SystemExit(
+            "bank_statement training reference input must be at most one (*.csv or *.txt) per run. "
+            f"current_count={ref_count} dir={ref_training_dir}"
+        )
+    if ocr_count != ref_count:
+        raise SystemExit(
+            "bank_statement training pair is incomplete (fail-closed): "
+            f"ocr_count={ocr_count}, reference_count={ref_count}. "
+            "Provide exactly one OCR and one reference file together."
         )
 
-    ref_sha = str(ref_unique_sha_list[0])
-    ref_entry = ref_ingested.get(ref_sha) or {}
-    ref_path = _resolve_stored_path(line_root, training_ref_store_dir, ref_entry)
-    if ref_path is None or not ref_path.exists():
-        raise SystemExit(
-            f"bank_statement training reference file is missing for sha={ref_sha}. "
-            f"expected path from manifest={training_ref_ingested_path}"
-        )
+    ocr_input_path = ocr_inputs[0]
+    ref_input_path = ref_inputs[0]
+    ocr_sha = sha256_file(ocr_input_path)
+    ref_sha = sha256_file(ref_input_path)
+    pair_set_id = _pair_set_sha256(ocr_sha, ref_sha)
 
-    cache = load_bank_cache(cache_path)
-    if not cache.client_id:
-        cache.client_id = str(client_id)
-    if not cache.line_id:
-        cache.line_id = LINE_ID_BANK_STATEMENT
-    if not cache.created_at:
-        cache.created_at = _now_utc_iso()
-    if not cache.decision_thresholds:
-        cache.decision_thresholds = thresholds
-    cache.stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
-    cache.stats.setdefault(ROUTE_KANA_SIGN, {})
-    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN_AMOUNT, {})
-    cache.bank_account_subaccount_stats.setdefault(ROUTE_KANA_SIGN, {})
+    cache = _prepare_cache(
+        cache_path=cache_path,
+        client_id=client_id,
+        thresholds=thresholds,
+    )
 
-    ocr_ingested = manifest_ocr.get("ingested") if isinstance(manifest_ocr.get("ingested"), dict) else {}
-    ocr_order_raw = manifest_ocr.get("ingested_order") if isinstance(manifest_ocr.get("ingested_order"), list) else []
-    ocr_order = [str(sha) for sha in ocr_order_raw if str(sha) in ocr_ingested]
-    if not ocr_order:
-        ocr_order = [str(sha) for sha in ocr_ingested.keys()]
-
+    applied_pair_set_ids: List[str] = []
+    skipped_pair_set_ids: List[str] = []
     warnings: List[str] = []
-    applied_pair_ids: List[str] = []
-    skipped_pair_ids: List[str] = []
-    pairs_unique_used_total = 0
-    sign_mismatch_skipped_total = 0
 
-    for ocr_sha in ocr_order:
-        ocr_entry = ocr_ingested.get(ocr_sha) or {}
-        pair_id = f"pair:{ocr_sha}:{ref_sha}"
-        if pair_id in (cache.applied_training_sets or {}):
-            skipped_pair_ids.append(pair_id)
-            continue
+    if pair_set_id in cache.applied_training_sets:
+        skipped_pair_set_ids.append(pair_set_id)
 
-        ocr_path = _resolve_stored_path(line_root, training_ocr_store_dir, ocr_entry)
-        if ocr_path is None or not ocr_path.exists():
-            warnings.append(f"missing_training_ocr_file: sha={ocr_sha}")
-            continue
-
-        pairs, metrics = build_training_pairs(
-            ocr_csv_path=ocr_path,
-            ref_csv_path=ref_path,
-            config=config,
+        _manifest_ocr, ocr_ingest_result = ingest_single_file(
+            source_path=ocr_input_path,
+            store_dir=training_ocr_store_dir,
+            manifest_path=training_ocr_ingested_path,
+            client_id=client_id,
+            kind="training_ocr",
         )
-        now = _now_utc_iso()
-        for pair in pairs:
-            ocr = pair.get("ocr") or {}
-            teacher = pair.get("teacher") or {}
-            sign = str(pair.get("sign") or ocr.get("sign") or "")
-            amount = int(pair.get("amount") or ocr.get("amount") or 0)
-            kana_key = str(ocr.get("kana_key") or "")
-            if not kana_key or not sign or amount <= 0:
-                continue
+        _manifest_ref, ref_ingest_result = ingest_single_file(
+            source_path=ref_input_path,
+            store_dir=training_ref_store_dir,
+            manifest_path=training_ref_ingested_path,
+            client_id=client_id,
+            kind="training_reference",
+        )
 
-            corrected_summary = str(teacher.get("corrected_summary") or "")
-            counter_account = str(teacher.get("counter_account") or "")
-            counter_subaccount = str(teacher.get("counter_subaccount") or "")
-            counter_tax_division = str(teacher.get("counter_tax_division") or "")
-            if not corrected_summary or not counter_account:
-                continue
+        ocr_ingested_after = _load_ingested_entries_or_empty(training_ocr_ingested_path)
+        ref_ingested_after = _load_ingested_entries_or_empty(training_ref_ingested_path)
+        ocr_meta = _entry_stored_meta(
+            entry=ocr_ingested_after.get(ocr_sha) or {},
+            fallback_store_dir=training_ocr_store_dir,
+            fallback_stored_name=ocr_ingest_result.stored_name,
+            line_root=line_root,
+        )
+        ref_meta = _entry_stored_meta(
+            entry=ref_ingested_after.get(ref_sha) or {},
+            fallback_store_dir=training_ref_store_dir,
+            fallback_stored_name=ref_ingest_result.stored_name,
+            line_root=line_root,
+        )
 
-            label_id = make_bank_label_id(
+        existing_entry = cache.applied_training_sets.get(pair_set_id)
+        if isinstance(existing_entry, dict):
+            changed = False
+            for key, value in {
+                "training_ocr_stored_name": ocr_meta["stored_name"],
+                "training_ocr_stored_relpath": ocr_meta["stored_relpath"],
+                "training_reference_stored_name": ref_meta["stored_name"],
+                "training_reference_stored_relpath": ref_meta["stored_relpath"],
+            }.items():
+                if value and str(existing_entry.get(key) or "") != value:
+                    existing_entry[key] = value
+                    changed = True
+            if changed:
+                _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
+                save_bank_cache(cache_path, cache)
+
+        ingested_new_training_ocr_shas = [ocr_sha] if ocr_ingest_result.status == "ingested" else []
+        ingested_dup_training_ocr_shas = [ocr_sha] if ocr_ingest_result.status != "ingested" else []
+        ingested_new_training_ref_shas = [ref_sha] if ref_ingest_result.status == "ingested" else []
+        ingested_dup_training_ref_shas = [ref_sha] if ref_ingest_result.status != "ingested" else []
+
+        return {
+            "client_id": str(client_id),
+            "line_id": LINE_ID_BANK_STATEMENT,
+            "cache_path": str(cache_path),
+            "training_ocr_ingest_manifest_path": str(training_ocr_ingested_path),
+            "training_reference_ingest_manifest_path": str(training_ref_ingested_path),
+            "training_input_state": "pair",
+            "training_ocr_input_count": int(ocr_count),
+            "training_reference_input_count": int(ref_count),
+            "reference_sha256": ref_sha,
+            "pair_set_sha256": pair_set_id,
+            "applied_pair_set_ids": [],
+            "skipped_pair_set_ids": skipped_pair_set_ids,
+            "applied_pair_ids": [],
+            "skipped_pair_ids": skipped_pair_set_ids,
+            "pairs_unique_used_total": 0,
+            "sign_mismatch_skipped_total": 0,
+            "labels_total": int(len(cache.labels)),
+            "stats_kana_sign_amount_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN_AMOUNT, {}))),
+            "stats_kana_sign_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN, {}))),
+            "bank_subaccount_stats_kana_sign_amount_keys": int(
+                len(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN_AMOUNT, {}))
+            ),
+            "bank_subaccount_stats_kana_sign_keys": int(
+                len(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN, {}))
+            ),
+            "ingested_new_training_ocr_shas": ingested_new_training_ocr_shas,
+            "ingested_duplicate_training_ocr_shas": ingested_dup_training_ocr_shas,
+            "ingested_new_training_reference_shas": ingested_new_training_ref_shas,
+            "ingested_duplicate_training_reference_shas": ingested_dup_training_ref_shas,
+            "warnings": warnings,
+        }
+
+    ocr_ingested_before = _load_ingested_entries_or_empty(training_ocr_ingested_path)
+    ref_ingested_before = _load_ingested_entries_or_empty(training_ref_ingested_path)
+    ocr_known = ocr_sha in ocr_ingested_before
+    ref_known = ref_sha in ref_ingested_before
+
+    if ocr_known != ref_known:
+        raise SystemExit(
+            "bank_statement training pair rejected (fail-closed): one-side-only new pair is not allowed. "
+            f"ocr_sha_known={ocr_known} ref_sha_known={ref_known}. "
+            "Use a fresh OCR+reference pair for the same period."
+        )
+    if ocr_known and ref_known:
+        raise SystemExit(
+            "bank_statement training state is inconsistent (fail-closed): both OCR/reference SHA are already "
+            "ingested but this pair_set is not applied in client_cache. "
+            "Reset cache/manifests consistently or provide a new training pair."
+        )
+
+    pairs, metrics = build_training_pairs(
+        ocr_csv_path=ocr_input_path,
+        ref_csv_path=ref_input_path,
+        config=config,
+    )
+
+    pairs_unique_used = int(metrics.get("pairs_unique_used") or 0)
+    if pairs_unique_used == 0:
+        raise SystemExit(
+            "bank_statement training pairing produced zero usable pairs (fail-closed). "
+            "No cache/ingest updates were made; keep inbox files for debugging."
+        )
+
+    now = _now_utc_iso()
+    for pair in pairs:
+        ocr = pair.get("ocr") or {}
+        teacher = pair.get("teacher") or {}
+        sign = str(pair.get("sign") or ocr.get("sign") or "")
+        amount = int(pair.get("amount") or ocr.get("amount") or 0)
+        kana_key = str(ocr.get("kana_key") or "")
+        if not kana_key or sign not in {"debit", "credit"} or amount <= 0:
+            raise SystemExit("invalid training pair emitted by build_training_pairs (ocr side)")
+
+        corrected_summary = str(teacher.get("corrected_summary") or "")
+        counter_account = str(teacher.get("counter_account") or "")
+        counter_subaccount = str(teacher.get("counter_subaccount") or "")
+        counter_tax_division = str(teacher.get("counter_tax_division") or "")
+        if not corrected_summary or not counter_account:
+            raise SystemExit("invalid training pair emitted by build_training_pairs (teacher side)")
+
+        label_id = make_bank_label_id(
+            corrected_summary=corrected_summary,
+            counter_account=counter_account,
+            counter_subaccount=counter_subaccount,
+            counter_tax_division=counter_tax_division,
+        )
+        label = cache.labels.get(label_id)
+        if label is None:
+            label = BankLabel(
                 corrected_summary=corrected_summary,
                 counter_account=counter_account,
                 counter_subaccount=counter_subaccount,
                 counter_tax_division=counter_tax_division,
+                first_seen_at=now,
+                last_seen_at=now,
+                count_total=0,
+                examples=[],
             )
-            label = cache.labels.get(label_id)
-            if label is None:
-                label = BankLabel(
-                    corrected_summary=corrected_summary,
-                    counter_account=counter_account,
-                    counter_subaccount=counter_subaccount,
-                    counter_tax_division=counter_tax_division,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                    count_total=0,
-                    examples=[],
-                )
-                cache.labels[label_id] = label
-            if not label.first_seen_at:
-                label.first_seen_at = now
-            label.last_seen_at = now
-            label.count_total = int(label.count_total) + 1
+            cache.labels[label_id] = label
+        if not label.first_seen_at:
+            label.first_seen_at = now
+        label.last_seen_at = now
+        label.count_total = int(label.count_total) + 1
 
-            key_strong = f"{kana_key}|{sign}|{amount}"
-            key_weak = f"{kana_key}|{sign}"
-            _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN_AMOUNT], key_strong).add_label(label_id)
-            _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN], key_weak).add_label(label_id)
+        key_strong = f"{kana_key}|{sign}|{amount}"
+        key_weak = f"{kana_key}|{sign}"
+        _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN_AMOUNT], key_strong).add_label(label_id)
+        _ensure_stats_entry(cache.stats[ROUTE_KANA_SIGN], key_weak).add_label(label_id)
 
-            bank_subaccount = str(teacher.get("bank_subaccount") or "").strip()
-            if bank_subaccount:
-                _ensure_value_stats_entry(
-                    cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN_AMOUNT],
-                    key_strong,
-                ).update(bank_subaccount)
-                _ensure_value_stats_entry(
-                    cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN],
-                    key_weak,
-                ).update(bank_subaccount)
+        bank_subaccount = str(teacher.get("bank_subaccount") or "").strip()
+        if bank_subaccount:
+            _ensure_value_stats_entry(
+                cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN_AMOUNT],
+                key_strong,
+            ).update(bank_subaccount)
+            _ensure_value_stats_entry(
+                cache.bank_account_subaccount_stats[ROUTE_KANA_SIGN],
+                key_weak,
+            ).update(bank_subaccount)
 
-        pairs_unique_used_total += int(metrics.get("pairs_unique_used") or 0)
-        sign_mismatch_skipped_total += int(metrics.get("sign_mismatch_skipped") or 0)
+    cache.applied_training_sets[pair_set_id] = {
+        "applied_at": now,
+        "pair_set_sha256": pair_set_id,
+        "training_ocr_sha256_set": [str(ocr_sha)],
+        "training_reference_sha256_set": [str(ref_sha)],
+        "training_ocr_sha256": str(ocr_sha),
+        "training_reference_sha256": str(ref_sha),
+        "training_ocr_original_name": ocr_input_path.name,
+        "training_reference_original_name": ref_input_path.name,
+        "rows_total_ocr": int(metrics.get("rows_total_ocr") or 0),
+        "rows_valid_ocr": int(metrics.get("rows_valid_ocr") or 0),
+        "rows_total_reference": int(metrics.get("rows_total_reference") or 0),
+        "ref_rows_valid": int(metrics.get("ref_rows_valid") or 0),
+        "ocr_dup_keys": int(metrics.get("ocr_dup_keys") or 0),
+        "ref_dup_keys": int(metrics.get("ref_dup_keys") or 0),
+        "pairs_unique_used": int(metrics.get("pairs_unique_used") or 0),
+        "pairs_missing_skipped": int(metrics.get("pairs_missing_skipped") or 0),
+        "sign_mismatch_skipped": int(metrics.get("sign_mismatch_skipped") or 0),
+        "pairs_used": int(metrics.get("pairs_unique_used") or 0),
+        "pairs_skipped_collision": int(metrics.get("ocr_dup_keys") or 0) + int(metrics.get("ref_dup_keys") or 0),
+        "pairs_skipped_missing": int(metrics.get("pairs_missing_skipped") or 0),
+    }
 
-        ocr_stored_name = str(ocr_entry.get("stored_name") or ocr_path.name)
-        ocr_stored_relpath = str(ocr_entry.get("stored_relpath") or "")
-        ref_stored_name = str(ref_entry.get("stored_name") or ref_path.name)
-        ref_stored_relpath = str(ref_entry.get("stored_relpath") or "")
-
-        cache.applied_training_sets[pair_id] = {
-            "applied_at": now,
-            "training_ocr_sha256_set": [str(ocr_sha)],
-            "training_reference_sha256_set": [str(ref_sha)],
-            "training_ocr_sha256": str(ocr_sha),
-            "training_reference_sha256": str(ref_sha),
-            "training_ocr_stored_name": ocr_stored_name,
-            "training_ocr_stored_relpath": ocr_stored_relpath,
-            "training_reference_stored_name": ref_stored_name,
-            "training_reference_stored_relpath": ref_stored_relpath,
-            "rows_total_ocr": int(metrics.get("rows_total_ocr") or 0),
-            "rows_valid_ocr": int(metrics.get("rows_valid_ocr") or 0),
-            "rows_total_reference": int(metrics.get("rows_total_reference") or 0),
-            "ref_rows_valid": int(metrics.get("ref_rows_valid") or 0),
-            "ocr_dup_keys": int(metrics.get("ocr_dup_keys") or 0),
-            "ref_dup_keys": int(metrics.get("ref_dup_keys") or 0),
-            "pairs_unique_used": int(metrics.get("pairs_unique_used") or 0),
-            "pairs_missing_skipped": int(metrics.get("pairs_missing_skipped") or 0),
-            "sign_mismatch_skipped": int(metrics.get("sign_mismatch_skipped") or 0),
-            # Compatibility aliases with BANK_CLIENT_CACHE_SPEC wording.
-            "pairs_used": int(metrics.get("pairs_unique_used") or 0),
-            "pairs_skipped_collision": int(metrics.get("ocr_dup_keys") or 0) + int(metrics.get("ref_dup_keys") or 0),
-            "pairs_skipped_missing": int(metrics.get("pairs_missing_skipped") or 0),
-        }
-        applied_pair_ids.append(pair_id)
-
-    cache.schema = SCHEMA_BANK_CLIENT_CACHE_V0
-    cache.version = "0.1"
-    cache.client_id = str(client_id)
-    cache.line_id = LINE_ID_BANK_STATEMENT
-    cache.append_only = True
-    cache.updated_at = _now_utc_iso()
-    if not cache.decision_thresholds:
-        cache.decision_thresholds = thresholds
-
+    _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
     save_bank_cache(cache_path, cache)
+
+    _manifest_ocr_after, ocr_ingest_result = ingest_single_file(
+        source_path=ocr_input_path,
+        store_dir=training_ocr_store_dir,
+        manifest_path=training_ocr_ingested_path,
+        client_id=client_id,
+        kind="training_ocr",
+    )
+    _manifest_ref_after, ref_ingest_result = ingest_single_file(
+        source_path=ref_input_path,
+        store_dir=training_ref_store_dir,
+        manifest_path=training_ref_ingested_path,
+        client_id=client_id,
+        kind="training_reference",
+    )
+
+    ocr_ingested_after = _load_ingested_entries_or_empty(training_ocr_ingested_path)
+    ref_ingested_after = _load_ingested_entries_or_empty(training_ref_ingested_path)
+    ocr_meta = _entry_stored_meta(
+        entry=ocr_ingested_after.get(ocr_sha) or {},
+        fallback_store_dir=training_ocr_store_dir,
+        fallback_stored_name=ocr_ingest_result.stored_name,
+        line_root=line_root,
+    )
+    ref_meta = _entry_stored_meta(
+        entry=ref_ingested_after.get(ref_sha) or {},
+        fallback_store_dir=training_ref_store_dir,
+        fallback_stored_name=ref_ingest_result.stored_name,
+        line_root=line_root,
+    )
+
+    applied_entry = cache.applied_training_sets.get(pair_set_id)
+    if isinstance(applied_entry, dict):
+        applied_entry["training_ocr_stored_name"] = ocr_meta["stored_name"]
+        applied_entry["training_ocr_stored_relpath"] = ocr_meta["stored_relpath"]
+        applied_entry["training_reference_stored_name"] = ref_meta["stored_name"]
+        applied_entry["training_reference_stored_relpath"] = ref_meta["stored_relpath"]
+
+    _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
+    save_bank_cache(cache_path, cache)
+
+    applied_pair_set_ids.append(pair_set_id)
+
+    ingested_new_training_ocr_shas = [ocr_sha] if ocr_ingest_result.status == "ingested" else []
+    ingested_dup_training_ocr_shas = [ocr_sha] if ocr_ingest_result.status != "ingested" else []
+    ingested_new_training_ref_shas = [ref_sha] if ref_ingest_result.status == "ingested" else []
+    ingested_dup_training_ref_shas = [ref_sha] if ref_ingest_result.status != "ingested" else []
 
     return {
         "client_id": str(client_id),
@@ -319,15 +534,17 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
         "cache_path": str(cache_path),
         "training_ocr_ingest_manifest_path": str(training_ocr_ingested_path),
         "training_reference_ingest_manifest_path": str(training_ref_ingested_path),
-        "ingested_new_training_ocr_shas": [str(v) for v in new_ocr_shas],
-        "ingested_duplicate_training_ocr_shas": [str(v) for v in dup_ocr_shas],
-        "ingested_new_training_reference_shas": [str(v) for v in (new_ref_csv_shas + new_ref_txt_shas)],
-        "ingested_duplicate_training_reference_shas": [str(v) for v in (dup_ref_csv_shas + dup_ref_txt_shas)],
+        "training_input_state": "pair",
+        "training_ocr_input_count": int(ocr_count),
+        "training_reference_input_count": int(ref_count),
         "reference_sha256": ref_sha,
-        "applied_pair_ids": applied_pair_ids,
-        "skipped_pair_ids": skipped_pair_ids,
-        "pairs_unique_used_total": int(pairs_unique_used_total),
-        "sign_mismatch_skipped_total": int(sign_mismatch_skipped_total),
+        "pair_set_sha256": pair_set_id,
+        "applied_pair_set_ids": applied_pair_set_ids,
+        "skipped_pair_set_ids": skipped_pair_set_ids,
+        "applied_pair_ids": applied_pair_set_ids,
+        "skipped_pair_ids": skipped_pair_set_ids,
+        "pairs_unique_used_total": int(metrics.get("pairs_unique_used") or 0),
+        "sign_mismatch_skipped_total": int(metrics.get("sign_mismatch_skipped") or 0),
         "labels_total": int(len(cache.labels)),
         "stats_kana_sign_amount_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN_AMOUNT, {}))),
         "stats_kana_sign_keys": int(len(cache.stats.get(ROUTE_KANA_SIGN, {}))),
@@ -337,5 +554,9 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
         "bank_subaccount_stats_kana_sign_keys": int(
             len(cache.bank_account_subaccount_stats.get(ROUTE_KANA_SIGN, {}))
         ),
+        "ingested_new_training_ocr_shas": ingested_new_training_ocr_shas,
+        "ingested_duplicate_training_ocr_shas": ingested_dup_training_ocr_shas,
+        "ingested_new_training_reference_shas": ingested_new_training_ref_shas,
+        "ingested_duplicate_training_reference_shas": ingested_dup_training_ref_shas,
         "warnings": warnings,
     }

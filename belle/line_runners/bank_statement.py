@@ -35,19 +35,61 @@ from .common import LinePlan, compute_target_file_status, list_input_files, reso
 LINE_ID_BANK = "bank_statement"
 
 
-def _count_teacher_reference(client_dir: Path) -> tuple[int, str]:
-    manifest_path = client_dir / "artifacts" / "ingest" / "training_reference_ingested.json"
-    if manifest_path.exists():
-        obj = json.loads(manifest_path.read_text(encoding="utf-8"))
-        ingested = obj.get("ingested")
-        if not isinstance(ingested, dict):
-            raise ValueError(f"ingested must be object in {manifest_path}")
-        shas = {str(k).strip() for k in ingested.keys() if str(k).strip()}
-        return len(shas), "ingested_manifest"
+def _list_training_files(dir_path: Path, *, allowed_exts: set[str]) -> list[Path]:
+    files = []
+    for p in list_input_files(dir_path):
+        if p.suffix.lower() in allowed_exts:
+            files.append(p)
+    return files
 
-    teacher_dir = client_dir / "inputs" / "training" / "reference_yayoi"
-    files = list_input_files(teacher_dir)
-    return len(files), "inputs_dir"
+
+def _inspect_training_pair_state(client_dir: Path) -> tuple[str, str, dict[str, object]]:
+    ocr_dir = client_dir / "inputs" / "training" / "ocr_kari_shiwake"
+    ref_dir = client_dir / "inputs" / "training" / "reference_yayoi"
+
+    ocr_files = _list_training_files(ocr_dir, allowed_exts={".csv"})
+    ref_files = _list_training_files(ref_dir, allowed_exts={".csv", ".txt"})
+    ocr_count = len(ocr_files)
+    ref_count = len(ref_files)
+
+    detail_obj: dict[str, object] = {
+        "training_pair_state": "none",
+        "training_pair_reason": "no training inputs",
+        "training_ocr_count": int(ocr_count),
+        "training_reference_count": int(ref_count),
+        "training_ocr_files": [p.name for p in ocr_files],
+        "training_reference_files": [p.name for p in ref_files],
+        "training_ocr_dir": str(ocr_dir),
+        "training_reference_dir": str(ref_dir),
+    }
+
+    if ocr_count == 0 and ref_count == 0:
+        return "none", "no training inputs", detail_obj
+
+    if ocr_count >= 2:
+        reason = f"training OCR count must be <=1 (current={ocr_count})"
+        detail_obj["training_pair_state"] = "fail"
+        detail_obj["training_pair_reason"] = reason
+        return "fail", reason, detail_obj
+
+    if ref_count >= 2:
+        reason = f"training reference count must be <=1 (current={ref_count})"
+        detail_obj["training_pair_state"] = "fail"
+        detail_obj["training_pair_reason"] = reason
+        return "fail", reason, detail_obj
+
+    if ocr_count != ref_count:
+        reason = (
+            "training pair is incomplete: provide exactly one OCR and one reference together "
+            f"(ocr={ocr_count}, reference={ref_count})"
+        )
+        detail_obj["training_pair_state"] = "fail"
+        detail_obj["training_pair_reason"] = reason
+        return "fail", reason, detail_obj
+
+    detail_obj["training_pair_state"] = "pair"
+    detail_obj["training_pair_reason"] = "single training pair detected"
+    return "pair", "single training pair detected", detail_obj
 
 
 def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
@@ -100,24 +142,14 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
             details=details,
         )
 
-    try:
-        teacher_count, teacher_source = _count_teacher_reference(client_dir)
-    except Exception as exc:
+    training_state, training_reason, training_details = _inspect_training_pair_state(client_dir)
+    details.update(training_details)
+    details["training_pair_summary"] = training_reason
+    if training_state == "fail":
         return LinePlan(
             line_id=LINE_ID_BANK,
             status="FAIL",
-            reason=f"teacher reference check failed: {exc}",
-            target_files=target_files,
-            details=details,
-        )
-
-    details["teacher_count"] = teacher_count
-    details["teacher_source"] = teacher_source
-    if teacher_count != 1:
-        return LinePlan(
-            line_id=LINE_ID_BANK,
-            status="FAIL",
-            reason=f"teacher reference count must be exactly 1 (current={teacher_count}, source={teacher_source})",
+            reason=training_reason,
             target_files=target_files,
             details=details,
         )
@@ -233,8 +265,10 @@ def run_bank(
         "run_id": run_id,
         "run_dir": str(run_dir),
         "bank_cache_update": {
-            "applied_pair_ids": int(len(cache_update.get("applied_pair_ids") or [])),
-            "skipped_pair_ids": int(len(cache_update.get("skipped_pair_ids") or [])),
+            "applied_pair_set_ids": int(len(cache_update.get("applied_pair_set_ids") or [])),
+            "skipped_pair_set_ids": int(len(cache_update.get("skipped_pair_set_ids") or [])),
+            "applied_pair_ids": int(len(cache_update.get("applied_pair_set_ids") or [])),
+            "skipped_pair_ids": int(len(cache_update.get("skipped_pair_set_ids") or [])),
             "pairs_unique_used_total": int(cache_update.get("pairs_unique_used_total") or 0),
             "sign_mismatch_skipped_total": int(cache_update.get("sign_mismatch_skipped_total") or 0),
             "warnings": list(cache_update.get("warnings") or []),

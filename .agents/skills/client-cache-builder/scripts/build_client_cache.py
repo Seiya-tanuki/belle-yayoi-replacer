@@ -159,8 +159,10 @@ def main() -> None:
             "client_id": client_id,
             "line_id": line_id,
             "summary": {
-                "applied_pair_ids": len(summary.get("applied_pair_ids") or []),
-                "skipped_pair_ids": len(summary.get("skipped_pair_ids") or []),
+                "applied_pair_set_ids": len(summary.get("applied_pair_set_ids") or []),
+                "skipped_pair_set_ids": len(summary.get("skipped_pair_set_ids") or []),
+                "applied_pair_ids": len(summary.get("applied_pair_set_ids") or []),
+                "skipped_pair_ids": len(summary.get("skipped_pair_set_ids") or []),
                 "pairs_unique_used_total": int(summary.get("pairs_unique_used_total") or 0),
                 "sign_mismatch_skipped_total": int(summary.get("sign_mismatch_skipped_total") or 0),
                 "labels_total": int(summary.get("labels_total") or 0),
