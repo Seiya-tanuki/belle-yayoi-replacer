@@ -22,6 +22,9 @@ if str(_REPO_ROOT) not in sys.path:
 
 from belle.lines import is_line_implemented, validate_line_id
 
+_SUPPORTED_LINE_IDS = ("receipt", "bank_statement", "credit_card_statement")
+_SUPPORTED_LINE_IDS_WITH_ALL = _SUPPORTED_LINE_IDS + ("all",)
+
 
 @dataclass
 class CommandResult:
@@ -330,21 +333,112 @@ def _default_next_steps(go: bool, risks: Sequence[Risk]) -> List[str]:
     ]
 
 
+def _run_all_lines_mode(repo_root: Path) -> int:
+    audit_time = _utc_now()
+    line_results: List[tuple[str, int, str, Path | None]] = []
+    script_path = Path(__file__).resolve()
+
+    print("[INFO] running all-line diagnosis: receipt, bank_statement, credit_card_statement")
+    for line_id in _SUPPORTED_LINE_IDS:
+        proc = subprocess.run(
+            [sys.executable, str(script_path), "--line", line_id],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        combined_output = (proc.stdout or "").strip()
+        if proc.stderr:
+            combined_output = (combined_output + "\n" + proc.stderr.strip()).strip()
+        latest_file = repo_root / "exports" / "system_diagnose" / "LATEST.txt"
+        child_report_path: Path | None = None
+        if latest_file.exists():
+            child_report_name = latest_file.read_text(encoding="utf-8", errors="replace").strip()
+            candidate = latest_file.parent / child_report_name
+            if child_report_name and candidate.exists():
+                child_report_path = candidate
+        line_results.append((line_id, proc.returncode, combined_output, child_report_path))
+
+    overall_go = all(return_code == 0 for _, return_code, _, _ in line_results)
+    go_text = "GO" if overall_go else "NO-GO"
+
+    summary_lines: List[str] = []
+    summary_lines.append("# System Diagnose Report")
+    summary_lines.append("")
+    summary_lines.append("## 1) Executive Summary")
+    summary_lines.append(f"- Audit time (UTC): {_utc_iso(audit_time)}")
+    summary_lines.append("- Line ID: all")
+    summary_lines.append(f"- Go/No-Go: {go_text}")
+    summary_lines.append("")
+    summary_lines.append("## 2) Per-line summary")
+    summary_lines.append("| Line | Result | Notes |")
+    summary_lines.append("|---|---|---|")
+    for line_id, return_code, _, report_path in line_results:
+        result = "GO" if return_code == 0 else "NO-GO"
+        notes = "template-only check; unimplemented is warn-only" if line_id == "credit_card_statement" else ""
+        if report_path is not None:
+            notes = (notes + "; " if notes else "") + f"report: {report_path.relative_to(repo_root).as_posix()}"
+        summary_lines.append(f"| {line_id} | {result} | {notes} |")
+
+    summary_lines.append("")
+    summary_lines.append("## 3) Child execution outputs (trimmed)")
+    for line_id, return_code, combined_output, _ in line_results:
+        summary_lines.append("")
+        summary_lines.append(f"### {line_id}")
+        summary_lines.append(f"- Exit code: {return_code}")
+        summary_lines.append("```text")
+        summary_lines.append(_trim_text(combined_output, max_chars=6000))
+        summary_lines.append("```")
+
+    summary_content = "\n".join(summary_lines).rstrip() + "\n"
+    summary_sha8 = hashlib.sha256(summary_content.encode("utf-8")).hexdigest()[:8]
+    summary_name = f"system_diagnose_{_utc_compact(audit_time)}_{summary_sha8}.md"
+    export_dir = repo_root / "exports" / "system_diagnose"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    summary_path = export_dir / summary_name
+    summary_path.write_text(summary_content, encoding="utf-8", newline="\n")
+
+    latest_tmp = export_dir / "LATEST.txt.tmp"
+    latest_file = export_dir / "LATEST.txt"
+    latest_tmp.write_text(f"{summary_name}\n", encoding="utf-8", newline="\n")
+    latest_tmp.replace(latest_file)
+
+    print("Line summary:")
+    for line_id, return_code, _, _ in line_results:
+        result = "GO" if return_code == 0 else "NO-GO"
+        suffix = " (template-only; unimplemented=warn-only)" if line_id == "credit_card_statement" else ""
+        print(f"- {line_id}: {result}{suffix}")
+    print(f"Overall: {go_text}")
+    print(f"Report: {summary_path}")
+
+    return 0 if overall_go else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--line", default="receipt", help="Document processing line_id")
+    parser.add_argument(
+        "--line",
+        default="all",
+        choices=list(_SUPPORTED_LINE_IDS_WITH_ALL),
+        help="Document processing line_id (receipt, bank_statement, credit_card_statement, all)",
+    )
     args = parser.parse_args()
+
+    repo_root = Path(__file__).resolve().parents[4]
+    if args.line == "all":
+        return _run_all_lines_mode(repo_root)
 
     try:
         line_id = validate_line_id(args.line)
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         return 2
-    if not is_line_implemented(line_id):
+    if line_id != "credit_card_statement" and not is_line_implemented(line_id):
         print(f"[ERROR] line is unimplemented: {line_id}")
         return 2
 
-    repo_root = Path(__file__).resolve().parents[4]
     audit_time = _utc_now()
     provisioned_dirs = _ensure_required_dirs(repo_root, line_id)
     command_logs: Dict[str, CommandResult] = {}
@@ -611,6 +705,52 @@ def main() -> int:
                 False,
             ),
         ]
+    if line_id == "credit_card_statement":
+        card_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement"
+        required_paths = required_paths + [
+            (
+                "C32",
+                "clients/TEMPLATE/lines/credit_card_statement directory exists",
+                card_template_root,
+                True,
+            ),
+            (
+                "C33",
+                "clients/TEMPLATE/lines/credit_card_statement/inputs/kari_shiwake directory exists",
+                card_template_root / "inputs" / "kari_shiwake",
+                True,
+            ),
+            (
+                "C34",
+                "clients/TEMPLATE/lines/credit_card_statement/inputs/ledger_ref directory exists",
+                card_template_root / "inputs" / "ledger_ref",
+                True,
+            ),
+            (
+                "C35",
+                "clients/TEMPLATE/lines/credit_card_statement/artifacts/ingest/kari_shiwake directory exists",
+                card_template_root / "artifacts" / "ingest" / "kari_shiwake",
+                True,
+            ),
+            (
+                "C36",
+                "clients/TEMPLATE/lines/credit_card_statement/artifacts/ingest/ledger_ref directory exists",
+                card_template_root / "artifacts" / "ingest" / "ledger_ref",
+                True,
+            ),
+            (
+                "C37",
+                "clients/TEMPLATE/lines/credit_card_statement/outputs/runs directory exists",
+                card_template_root / "outputs" / "runs",
+                True,
+            ),
+            (
+                "C38",
+                "clients/TEMPLATE/lines/credit_card_statement/artifacts/cache directory exists",
+                card_template_root / "artifacts" / "cache",
+                True,
+            ),
+        ]
     for check_id, label, path, expect_dir in required_paths:
         passed = path.is_dir() if expect_dir else path.is_file()
         add_hard(
@@ -871,6 +1011,14 @@ def main() -> int:
             s7_passed,
             s7_evidence,
             "Run $client-cache-builder --line bank_statement --client <CLIENT_ID> for clients with missing cache.",
+        )
+    if line_id == "credit_card_statement":
+        add_soft(
+            "S10",
+            "credit_card_statement implementation status (warn-only)",
+            False,
+            "WARN credit_card_statement is currently unimplemented. diagnose validates template structure only.",
+            "Keep using this line for structural/bootstrap diagnostics until implementation is released.",
         )
 
     # D) BOM / compilation / tests
