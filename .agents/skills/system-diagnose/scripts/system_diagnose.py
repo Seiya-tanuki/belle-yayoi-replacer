@@ -367,8 +367,10 @@ def _run_all_lines_mode(repo_root: Path) -> int:
     for line_id in _SUPPORTED_LINE_IDS:
         child_env = os.environ.copy()
         child_env[_REPORT_RENDER_ONLY_ENV] = "1"
+        child_env["PYTHONUTF8"] = "1"
+        child_env["PYTHONIOENCODING"] = "utf-8"
         proc = subprocess.run(
-            [sys.executable, str(script_path), "--line", line_id],
+            [sys.executable, "-X", "utf8", str(script_path), "--line", line_id, "--render-only"],
             cwd=str(repo_root),
             env=child_env,
             capture_output=True,
@@ -466,6 +468,11 @@ def main() -> int:
         default="all",
         choices=list(_SUPPORTED_LINE_IDS_WITH_ALL),
         help="Document processing line_id (receipt, bank_statement, credit_card_statement, all)",
+    )
+    parser.add_argument(
+        "--render-only",
+        action="store_true",
+        help="Render report to stdout between markers (for internal all-mode capture).",
     )
     args = parser.parse_args()
 
@@ -1241,7 +1248,7 @@ def main() -> int:
     report_content = "\n".join(report_lines).rstrip() + "\n"
     report_sha8 = hashlib.sha256(report_content.encode("utf-8")).hexdigest()[:8]
     report_name = f"system_diagnose_{_utc_compact(audit_time)}_{report_sha8}.md"
-    render_only = os.environ.get(_REPORT_RENDER_ONLY_ENV) == "1"
+    render_only = args.render_only or os.environ.get(_REPORT_RENDER_ONLY_ENV) == "1"
     report_path: Path | None = None
     if not render_only:
         export_dir = repo_root / "exports" / "system_diagnose"

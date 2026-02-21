@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -126,6 +127,8 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                 "bank_pairing.py",
             ]:
                 _write_text(temp_root / "belle" / module_name, "# fixture\n")
+            # cp932 では表現できない文字を含むファイル名で、all-mode 子実行の UTF-8 強制を検証する。
+            _write_text(temp_root / "belle" / "emoji_\U0001F680.py", "VALUE = 'ok'\n")
 
             _write_text(
                 temp_root / "tools" / "bom_guard.py",
@@ -181,11 +184,17 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                 text=True,
             )
 
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "cp932"
+            env["PYTHONUTF8"] = "0"
             proc = subprocess.run(
                 [sys.executable, str(script_target)],
                 cwd=temp_root,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=env,
                 timeout=480,
                 check=False,
             )
@@ -211,6 +220,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             self.assertIn("- Line ID: receipt", report_text)
             self.assertIn("- Line ID: bank_statement", report_text)
             self.assertIn("- Line ID: credit_card_statement", report_text)
+            self.assertNotIn("Internal capture warning", report_text)
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
 
