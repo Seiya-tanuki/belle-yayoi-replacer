@@ -14,15 +14,14 @@ Creates a new client workspace from the template.
 ## What this skill does
 1. Validates user input and canonicalizes to a Windows-safe `CLIENT_ID`.
 2. Copies `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.
-3. `--line receipt`:
-   1. Generates full-expanded `clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json`.
-   2. Requires and prepares receipt input directories including `inputs/ledger_ref/`.
-4. `--line bank_statement`:
-   1. Requires Phase 4 bank template layout (`inputs/training/*`, `inputs/kari_shiwake`, `artifacts/ingest/*`).
-   2. Ensures `clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json` exists.
-   3. Does not require or initialize receipt-only assets (`inputs/ledger_ref`, `category_overrides`, `lexicon/defaults/rulesets`).
-5. `--line credit_card_statement`:
-   1. Registration is allowed (copy template only), even while replacer implementation is pending.
+3. Always provisions all lines:
+   1. `receipt`
+   2. `bank_statement`
+   3. `credit_card_statement`
+4. Always runs line initialization hooks:
+   1. Initializes receipt `config/category_overrides.json` (same behavior as before).
+   2. Ensures bank `config/bank_line_config.json` exists (same behavior as before).
+   3. `credit_card_statement` is provisioned as directory-only (future-ready).
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.
@@ -30,11 +29,12 @@ Creates a new client workspace from the template.
 3. `clients/TEMPLATE/lines/receipt/artifacts/cache/` exists.
 4. `clients/TEMPLATE/lines/receipt/artifacts/ingest/` exists.
 5. `clients/TEMPLATE/lines/receipt/artifacts/telemetry/` exists.
-6. `clients/TEMPLATE/config/` may remain as optional shared config root.
-7. Use `.gitkeep` files as needed to keep empty directories in git.
+6. `clients/TEMPLATE/lines/bank_statement/config/` exists.
+7. `clients/TEMPLATE/lines/credit_card_statement/` exists.
+8. `clients/TEMPLATE/config/` may remain as optional shared config root.
+9. Use `.gitkeep` files as needed to keep empty directories in git.
 
 ## Execution
 ```bash
-python .agents/skills/client-register/register_client.py --line receipt
-python .agents/skills/client-register/register_client.py --line bank_statement
+python .agents/skills/client-register/register_client.py
 ```

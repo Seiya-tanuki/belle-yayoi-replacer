@@ -78,7 +78,7 @@ def _prepare_receipt_assets(repo_root: Path) -> None:
     )
 
 
-def _run_register(module, repo_root: Path, *, line_id: str, client_id: str) -> tuple[int, str]:
+def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]:
     fake_script_path = repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
     fake_script_path.parent.mkdir(parents=True, exist_ok=True)
     module.__file__ = str(fake_script_path)
@@ -86,7 +86,7 @@ def _run_register(module, repo_root: Path, *, line_id: str, client_id: str) -> t
     output_buffer = io.StringIO()
     original_sys_path = list(sys.path)
     try:
-        with mock.patch.object(sys, "argv", ["register_client.py", "--line", line_id]):
+        with mock.patch.object(sys, "argv", ["register_client.py"]):
             with mock.patch("builtins.input", side_effect=[client_id]):
                 with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
                     rc = module.main()
@@ -101,11 +101,12 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         self.test_tmp_root = self.real_repo_root / ".tmp"
         self.test_tmp_root.mkdir(parents=True, exist_ok=True)
 
-    def test_bank_statement_register_creates_bank_layout_without_receipt_assumptions(self) -> None:
+    def test_register_creates_bank_layout_without_receipt_artifacts_in_bank_line(self) -> None:
         repo_root = self.test_tmp_root / f"client_register_bank_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
+            _prepare_receipt_assets(repo_root)
             module = _load_register_module(self.real_repo_root)
 
             self.assertFalse((repo_root / "lexicon" / "bank_statement" / "lexicon.json").exists())
@@ -117,7 +118,6 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             rc, output = _run_register(
                 module,
                 repo_root,
-                line_id="bank_statement",
                 client_id="C_BANK_LINE_AWARE",
             )
             self.assertEqual(0, rc, msg=output)
@@ -145,13 +145,13 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
+            _prepare_receipt_assets(repo_root)
             (repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement" / "config" / "bank_line_config.json").unlink()
             module = _load_register_module(self.real_repo_root)
 
             rc, output = _run_register(
                 module,
                 repo_root,
-                line_id="bank_statement",
                 client_id="C_BANK_CFG_FALLBACK",
             )
             self.assertEqual(0, rc, msg=output)
@@ -185,7 +185,6 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             rc, output = _run_register(
                 module,
                 repo_root,
-                line_id="receipt",
                 client_id="C_RECEIPT_LINE_AWARE",
             )
             self.assertEqual(0, rc, msg=output)
