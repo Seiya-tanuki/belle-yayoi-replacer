@@ -58,8 +58,6 @@ class CollectOutputsBankNoLegacyTests(unittest.TestCase):
 
             rc = module.main(
                 [
-                    "--line",
-                    "bank_statement",
                     "--date",
                     "2026-02-15",
                     "--client",
@@ -77,33 +75,34 @@ class CollectOutputsBankNoLegacyTests(unittest.TestCase):
             with zipfile.ZipFile(zip_paths[0], mode="r") as zf:
                 names = sorted(zf.namelist())
                 self.assertIn(
-                    "csv/C1__20260215T010203Z_LINE__line_replaced_20260215T010203Z_LINE.csv",
+                    "bank_statement/csv/C1__20260215T010203Z_LINE__line_replaced_20260215T010203Z_LINE.csv",
                     names,
                 )
                 self.assertIn(
-                    "reports/C1__20260215T010203Z_LINE__line_01_20260215T010203Z_LINE_review_report.csv",
+                    "bank_statement/reports/C1__20260215T010203Z_LINE__line_01_20260215T010203Z_LINE_review_report.csv",
                     names,
                 )
                 self.assertIn(
-                    "manifests/C1__20260215T010203Z_LINE__run_manifest.json",
+                    "bank_statement/manifests/C1__20260215T010203Z_LINE__run_manifest.json",
                     names,
                 )
 
                 self.assertNotIn(
-                    "csv/C1__20260215T010500Z_LEGACY__legacy_replaced_20260215T010500Z_LEGACY.csv",
+                    "bank_statement/csv/C1__20260215T010500Z_LEGACY__legacy_replaced_20260215T010500Z_LEGACY.csv",
                     names,
                 )
                 self.assertNotIn(
-                    "reports/C1__20260215T010500Z_LEGACY__legacy_01_20260215T010500Z_LEGACY_review_report.csv",
+                    "bank_statement/reports/C1__20260215T010500Z_LEGACY__legacy_01_20260215T010500Z_LEGACY_review_report.csv",
                     names,
                 )
                 self.assertNotIn(
-                    "manifests/C1__20260215T010500Z_LEGACY__run_manifest.json",
+                    "bank_statement/manifests/C1__20260215T010500Z_LEGACY__run_manifest.json",
                     names,
                 )
 
                 manifest_obj = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
-                source_relpaths = [item["source_relpath"] for item in manifest_obj["items"]]
+                bank_items = [item for item in manifest_obj["items"] if item.get("line_id") == "bank_statement"]
+                source_relpaths = [item["source_relpath"] for item in bank_items]
                 self.assertTrue(
                     any(
                         "clients/C1/lines/bank_statement/outputs/runs/20260215T010203Z_LINE" in rel

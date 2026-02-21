@@ -15,12 +15,15 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from belle.lines import is_line_implemented, validate_line_id
+from belle.lines import validate_line_id
 
 JST = timezone(timedelta(hours=9))
 MANIFEST_SCHEMA = "belle.collect_outputs_manifest.v1"
 RUN_ID_PREFIX_FORMAT = "%Y%m%dT%H%M%SZ"
 PREVIEW_LIMIT = 200
+ALL_LINE_ID = "all"
+ALL_MODE_LINE_ORDER = ["receipt", "bank_statement", "credit_card_statement"]
+LINE_ARG_CHOICES = [*ALL_MODE_LINE_ORDER, ALL_LINE_ID]
 
 
 class RunFiles:
@@ -46,6 +49,23 @@ class RunFiles:
         self.report_files = report_files
         self.manifest_files = manifest_files
         self.layout = layout
+
+
+class LineCollectionResult:
+    def __init__(
+        self,
+        *,
+        line_id: str,
+        matched_runs: List[RunFiles],
+        collected_runs: List[RunFiles],
+        skipped_incomplete_runs: List[RunFiles],
+        skipped_invalid_run_id_count: int,
+    ) -> None:
+        self.line_id = line_id
+        self.matched_runs = matched_runs
+        self.collected_runs = collected_runs
+        self.skipped_incomplete_runs = skipped_incomplete_runs
+        self.skipped_invalid_run_id_count = skipped_invalid_run_id_count
 
 
 def _now_utc() -> datetime:
@@ -91,7 +111,7 @@ def _parse_jst_date(raw: Optional[str], *, default_date: date) -> date:
     try:
         return datetime.strptime(value, "%Y-%m-%d").date()
     except ValueError as exc:
-        raise ValueError(f"日付形式が不正です: {value} (YYYY-MM-DD)") from exc
+        raise ValueError(f"invalid date format: {value} (YYYY-MM-DD)") from exc
 
 
 def _parse_time_range(raw: Optional[str]) -> Optional[Tuple[int, int, str]]:
@@ -101,28 +121,28 @@ def _parse_time_range(raw: Optional[str]) -> Optional[Tuple[int, int, str]]:
 
     parts = value.split("-")
     if len(parts) != 2:
-        raise ValueError(f"時間帯形式が不正です: {value} (HH:MM-HH:MM)")
+        raise ValueError(f"invalid time range format: {value} (HH:MM-HH:MM)")
 
     start_hhmm = parts[0].strip()
     end_hhmm = parts[1].strip()
     start_min = _parse_hhmm(start_hhmm)
     end_min = _parse_hhmm(end_hhmm)
     if start_min > end_min:
-        raise ValueError(f"時間帯は開始<=終了で指定してください: {value}")
+        raise ValueError(f"invalid time range (start must be <= end): {value}")
     return start_min, end_min, f"{start_hhmm}-{end_hhmm}"
 
 
 def _parse_hhmm(value: str) -> int:
     parts = value.split(":")
     if len(parts) != 2:
-        raise ValueError(f"時刻形式が不正です: {value}")
+        raise ValueError(f"invalid time format: {value}")
     try:
         hh = int(parts[0])
         mm = int(parts[1])
     except ValueError as exc:
-        raise ValueError(f"時刻形式が不正です: {value}") from exc
+        raise ValueError(f"invalid time format: {value}") from exc
     if hh < 0 or hh > 23 or mm < 0 or mm > 59:
-        raise ValueError(f"時刻範囲が不正です: {value}")
+        raise ValueError(f"time out of range: {value}")
     return hh * 60 + mm
 
 
@@ -223,6 +243,105 @@ def _discover_runs_for_client(
     return matched, invalid_run_id_count, line_exists, legacy_exists
 
 
+def _collect_runs_for_line(
+    *,
+    repo_root: Path,
+    line_id: str,
+    selected_client_ids: Sequence[str],
+    target_jst_date: date,
+    time_range: Optional[Tuple[int, int, str]],
+) -> LineCollectionResult:
+    matched_runs: List[RunFiles] = []
+    invalid_run_id_count = 0
+    for client_id in selected_client_ids:
+        runs, invalid_count, line_exists, legacy_exists = _discover_runs_for_client(
+            repo_root,
+            client_id,
+            line_id=line_id,
+            target_date_jst=target_jst_date,
+            time_range=time_range,
+        )
+        if line_id == "receipt" and (not line_exists) and legacy_exists:
+            print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
+        matched_runs.extend(runs)
+        invalid_run_id_count += invalid_count
+
+    matched_runs.sort(key=lambda row: (row.client_id, row.run_id, row.layout))
+    skipped_incomplete_runs = [run for run in matched_runs if len(run.replaced_files) == 0]
+    collected_runs = [run for run in matched_runs if len(run.replaced_files) > 0]
+    return LineCollectionResult(
+        line_id=line_id,
+        matched_runs=matched_runs,
+        collected_runs=collected_runs,
+        skipped_incomplete_runs=skipped_incomplete_runs,
+        skipped_invalid_run_id_count=invalid_run_id_count,
+    )
+
+
+def _append_payload_items(
+    *,
+    repo_root: Path,
+    line_id: str,
+    runs: Sequence[RunFiles],
+    payload_by_zip_relpath: Dict[str, bytes],
+    items: List[Dict[str, object]],
+    zip_prefix: str,
+) -> Dict[str, int]:
+    csv_count = 0
+    report_count = 0
+    manifest_count = 0
+    total_bytes = 0
+
+    for run in runs:
+        for kind, rel_dir, src_files in [
+            ("csv", "csv", run.replaced_files),
+            ("report", "reports", run.report_files),
+            ("manifest", "manifests", run.manifest_files),
+        ]:
+            for src_path in src_files:
+                zip_relpath = f"{zip_prefix}{rel_dir}/{run.client_id}__{run.run_id}__{src_path.name}"
+                if zip_relpath in payload_by_zip_relpath:
+                    zip_relpath = f"{zip_prefix}{rel_dir}/{run.client_id}__{run.run_id}__{run.layout}__{src_path.name}"
+                if zip_relpath in payload_by_zip_relpath:
+                    raise RuntimeError(f"ZIP path collision: {zip_relpath}")
+
+                data = src_path.read_bytes()
+                payload_by_zip_relpath[zip_relpath] = data
+                total_bytes += len(data)
+
+                if kind == "csv":
+                    csv_count += 1
+                elif kind == "report":
+                    report_count += 1
+                else:
+                    manifest_count += 1
+
+                items.append(
+                    {
+                        "line_id": line_id,
+                        "client_id": run.client_id,
+                        "run_id": run.run_id,
+                        "layout": run.layout,
+                        "source_relpath": _repo_relpath(repo_root, src_path),
+                        "zip_relpath": zip_relpath,
+                        "sha256": _sha256_bytes(data),
+                        "size_bytes": len(data),
+                    }
+                )
+
+    return {
+        "csv_files": csv_count,
+        "report_files": report_count,
+        "manifest_files": manifest_count,
+        "items": csv_count + report_count + manifest_count,
+        "total_bytes": total_bytes,
+    }
+
+
+def _collect_run_refs(runs: Sequence[RunFiles]) -> List[str]:
+    return [f"{run.client_id}:{run.run_id}" for run in runs]
+
+
 def _build_manifest_and_payload(
     *,
     repo_root: Path,
@@ -234,50 +353,26 @@ def _build_manifest_and_payload(
     filter_time_range: Optional[str],
     skipped_incomplete_runs: Sequence[RunFiles],
     skipped_invalid_run_id_count: int,
-) -> Tuple[bytes, Dict[str, bytes], Dict[str, int]]:
+) -> Tuple[bytes, Dict[str, bytes], Dict[str, object]]:
     payload_by_zip_relpath: Dict[str, bytes] = {}
     items: List[Dict[str, object]] = []
+    line_counts = _append_payload_items(
+        repo_root=repo_root,
+        line_id=line_id,
+        runs=runs,
+        payload_by_zip_relpath=payload_by_zip_relpath,
+        items=items,
+        zip_prefix="",
+    )
 
-    csv_count = 0
-    report_count = 0
-    manifest_count = 0
-
-    for run in runs:
-        for kind, rel_dir, src_files in [
-            ("csv", "csv", run.replaced_files),
-            ("report", "reports", run.report_files),
-            ("manifest", "manifests", run.manifest_files),
-        ]:
-            for src_path in src_files:
-                zip_relpath = f"{rel_dir}/{run.client_id}__{run.run_id}__{src_path.name}"
-                if zip_relpath in payload_by_zip_relpath:
-                    zip_relpath = f"{rel_dir}/{run.client_id}__{run.run_id}__{run.layout}__{src_path.name}"
-                if zip_relpath in payload_by_zip_relpath:
-                    raise RuntimeError(f"ZIPパス重複: {zip_relpath}")
-
-                data = src_path.read_bytes()
-                payload_by_zip_relpath[zip_relpath] = data
-
-                if kind == "csv":
-                    csv_count += 1
-                elif kind == "report":
-                    report_count += 1
-                else:
-                    manifest_count += 1
-
-                items.append(
-                    {
-                        "client_id": run.client_id,
-                        "run_id": run.run_id,
-                        "layout": run.layout,
-                        "source_relpath": _repo_relpath(repo_root, src_path),
-                        "zip_relpath": zip_relpath,
-                        "sha256": _sha256_bytes(data),
-                        "size_bytes": len(data),
-                    }
-                )
-
-    items.sort(key=lambda row: (str(row["client_id"]), str(row["run_id"]), str(row["zip_relpath"])))
+    items.sort(
+        key=lambda row: (
+            str(row.get("line_id", "")),
+            str(row["client_id"]),
+            str(row["run_id"]),
+            str(row["zip_relpath"]),
+        )
+    )
     manifest_obj: Dict[str, object] = {
         "schema": MANIFEST_SCHEMA,
         "exported_at_utc": _utc_iso(exported_at_utc),
@@ -292,11 +387,109 @@ def _build_manifest_and_payload(
             "collected_runs": len(runs),
             "skipped_incomplete_runs": len(skipped_incomplete_runs),
             "skipped_invalid_run_id_count": skipped_invalid_run_id_count,
-            "csv_files": csv_count,
-            "report_files": report_count,
-            "manifest_files": manifest_count,
+            "csv_files": line_counts["csv_files"],
+            "report_files": line_counts["report_files"],
+            "manifest_files": line_counts["manifest_files"],
+            "items": line_counts["items"],
+            "total_bytes": line_counts["total_bytes"],
+            "included_run_ids": _collect_run_refs(runs),
+            "skipped_lines": [],
+        },
+        "items": items,
+    }
+    manifest_bytes = (json.dumps(manifest_obj, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    return manifest_bytes, payload_by_zip_relpath, manifest_obj["summary"]  # type: ignore[return-value]
+
+
+def _build_manifest_and_payload_all(
+    *,
+    repo_root: Path,
+    line_results: Sequence[LineCollectionResult],
+    exported_at_utc: datetime,
+    jst_date: date,
+    filter_client_ids: Sequence[str],
+    filter_time_range: Optional[str],
+) -> Tuple[bytes, Dict[str, bytes], Dict[str, object]]:
+    payload_by_zip_relpath: Dict[str, bytes] = {}
+    items: List[Dict[str, object]] = []
+    lines_summary: Dict[str, Dict[str, object]] = {}
+    skipped_lines: List[str] = []
+
+    matched_total = 0
+    collected_total = 0
+    skipped_incomplete_total = 0
+    invalid_run_total = 0
+    csv_total = 0
+    report_total = 0
+    manifest_total = 0
+    total_bytes = 0
+
+    for result in line_results:
+        line_counts = {"csv_files": 0, "report_files": 0, "manifest_files": 0, "items": 0, "total_bytes": 0}
+        if result.collected_runs:
+            line_counts = _append_payload_items(
+                repo_root=repo_root,
+                line_id=result.line_id,
+                runs=result.collected_runs,
+                payload_by_zip_relpath=payload_by_zip_relpath,
+                items=items,
+                zip_prefix=f"{result.line_id}/",
+            )
+        else:
+            skipped_lines.append(result.line_id)
+
+        matched_total += len(result.matched_runs)
+        collected_total += len(result.collected_runs)
+        skipped_incomplete_total += len(result.skipped_incomplete_runs)
+        invalid_run_total += result.skipped_invalid_run_id_count
+        csv_total += int(line_counts["csv_files"])
+        report_total += int(line_counts["report_files"])
+        manifest_total += int(line_counts["manifest_files"])
+        total_bytes += int(line_counts["total_bytes"])
+
+        lines_summary[result.line_id] = {
+            "matched_runs": len(result.matched_runs),
+            "collected_runs": len(result.collected_runs),
+            "skipped_incomplete_runs": len(result.skipped_incomplete_runs),
+            "skipped_invalid_run_id_count": result.skipped_invalid_run_id_count,
+            "csv_files": line_counts["csv_files"],
+            "report_files": line_counts["report_files"],
+            "manifest_files": line_counts["manifest_files"],
+            "items": line_counts["items"],
+            "total_bytes": line_counts["total_bytes"],
+            "included_run_ids": _collect_run_refs(result.collected_runs),
+        }
+
+    items.sort(
+        key=lambda row: (
+            str(row.get("line_id", "")),
+            str(row["client_id"]),
+            str(row["run_id"]),
+            str(row["zip_relpath"]),
+        )
+    )
+
+    manifest_obj: Dict[str, object] = {
+        "schema": MANIFEST_SCHEMA,
+        "exported_at_utc": _utc_iso(exported_at_utc),
+        "line_id": ALL_LINE_ID,
+        "jst_date": jst_date.isoformat(),
+        "filters": {
+            "client_ids": list(filter_client_ids),
+            "time_range": filter_time_range,
+        },
+        "summary": {
+            "matched_runs": matched_total,
+            "collected_runs": collected_total,
+            "skipped_incomplete_runs": skipped_incomplete_total,
+            "skipped_invalid_run_id_count": invalid_run_total,
+            "csv_files": csv_total,
+            "report_files": report_total,
+            "manifest_files": manifest_total,
             "items": len(items),
-            "total_bytes": sum(int(row["size_bytes"]) for row in items),
+            "total_bytes": total_bytes,
+            "lines": lines_summary,
+            "skipped_lines": skipped_lines,
         },
         "items": items,
     }
@@ -348,20 +541,20 @@ def _print_preview(
     skipped_invalid_run_id_count: int,
 ) -> None:
     client_label = ",".join(filter_client_ids) if filter_client_ids else "ALL"
-    time_label = filter_time_range if filter_time_range else "終日"
+    time_label = filter_time_range if filter_time_range else "full-day"
     print("[INFO] 収集条件")
     print(f"  - line: {line_id}")
-    print(f"  - 日付(JST): {jst_date.isoformat()}")
-    print(f"  - クライアント指定: {client_label}")
-    print(f"  - 時間帯(JST): {time_label}")
-    print(f"  - 対象クライアント数: {len(selected_client_ids)}")
-    print(f"  - フィルタ一致run数: {len(matched_runs)}")
-    print(f"  - 収集対象run数: {len(collected_runs)}")
-    print(f"  - スキップrun数(置換CSVなし): {len(skipped_incomplete_runs)}")
+    print(f"  - date(JST): {jst_date.isoformat()}")
+    print(f"  - clients: {client_label}")
+    print(f"  - time(JST): {time_label}")
+    print(f"  - selected_clients: {len(selected_client_ids)}")
+    print(f"  - matched_runs: {len(matched_runs)}")
+    print(f"  - collected_runs: {len(collected_runs)}")
+    print(f"  - skipped_incomplete_runs: {len(skipped_incomplete_runs)}")
     if skipped_invalid_run_id_count > 0:
-        print(f"  - スキップrun数(RUN_ID形式不正): {skipped_invalid_run_id_count}")
+        print(f"  - skipped_invalid_run_id_count: {skipped_invalid_run_id_count}")
 
-    print("[INFO] プレビュー (client_id | run_id | layout | replaced_count | report_count | manifest_count)")
+    print("[INFO] Preview (client_id | run_id | layout | replaced_count | report_count | manifest_count)")
     for idx, run in enumerate(collected_runs):
         if idx >= PREVIEW_LIMIT:
             break
@@ -371,7 +564,40 @@ def _print_preview(
         )
     omitted = len(collected_runs) - PREVIEW_LIMIT
     if omitted > 0:
-        print(f"[INFO] プレビューは先頭{PREVIEW_LIMIT}件のみ表示（残り: {omitted}件）")
+        print(f"[INFO] preview truncated: +{omitted}")
+
+
+def _print_preview_all(
+    *,
+    jst_date: date,
+    selected_client_ids: Sequence[str],
+    filter_client_ids: Sequence[str],
+    filter_time_range: Optional[str],
+    line_results: Sequence[LineCollectionResult],
+) -> None:
+    client_label = ",".join(filter_client_ids) if filter_client_ids else "ALL"
+    time_label = filter_time_range if filter_time_range else "full-day"
+    print("[INFO] 収集条件")
+    print(f"  - line: {ALL_LINE_ID}")
+    print(f"  - date(JST): {jst_date.isoformat()}")
+    print(f"  - clients: {client_label}")
+    print(f"  - time(JST): {time_label}")
+    print(f"  - selected_clients: {len(selected_client_ids)}")
+    print(f"  - target_lines: {','.join(ALL_MODE_LINE_ORDER)}")
+    print("[INFO] line summary")
+    for result in line_results:
+        run_refs = _collect_run_refs(result.collected_runs)
+        if len(run_refs) > 12:
+            run_ref_text = ", ".join(run_refs[:12]) + f", ... (+{len(run_refs) - 12})"
+        else:
+            run_ref_text = ", ".join(run_refs) if run_refs else "-"
+        status = "included" if result.collected_runs else "skipped(no eligible runs)"
+        print(
+            f"  - {result.line_id}: status={status}, matched={len(result.matched_runs)}, "
+            f"collected={len(result.collected_runs)}, skipped_incomplete={len(result.skipped_incomplete_runs)}, "
+            f"invalid_run_id={result.skipped_invalid_run_id_count}"
+        )
+        print(f"    run_ids: {run_ref_text}")
 
 
 def _confirm() -> bool:
@@ -383,7 +609,12 @@ def _parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(
         description="Collect per-run deliverables across clients and export a single zip under exports/collect/."
     )
-    ap.add_argument("--line", default="receipt", help="Document processing line_id")
+    ap.add_argument(
+        "--line",
+        choices=LINE_ARG_CHOICES,
+        default=ALL_LINE_ID,
+        help="Document processing line_id. Default: all",
+    )
     ap.add_argument("--date", help="JST date filter (YYYY-MM-DD). Default: today JST.", default=None)
     ap.add_argument(
         "--client",
@@ -404,14 +635,15 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
     args = _parse_args(argv)
     repo = repo_root or Path(__file__).resolve().parents[4]
 
-    try:
-        line_id = validate_line_id(args.line)
-    except ValueError as exc:
-        print(f"[ERROR] {exc}", file=sys.stderr)
-        return 2
-    if not is_line_implemented(line_id):
-        print("[ERROR] line is unimplemented in Phase 1", file=sys.stderr)
-        return 2
+    line_arg = str(args.line).strip().lower()
+    if line_arg == ALL_LINE_ID:
+        line_ids = list(ALL_MODE_LINE_ORDER)
+    else:
+        try:
+            line_ids = [validate_line_id(line_arg)]
+        except ValueError as exc:
+            print(f"[ERROR] {exc}", file=sys.stderr)
+            return 2
 
     now_utc = _now_utc()
     default_jst_date = now_utc.astimezone(JST).date()
@@ -422,14 +654,14 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
 
     if not args.yes:
         if not sys.stdin.isatty():
-            print("[ERROR] 非対話入力ができないため確認できません。非対話時は --yes を指定してください。", file=sys.stderr)
+            print("[ERROR] interactive input unavailable. Use --yes.", file=sys.stderr)
             return 2
         if client_raw is None:
             client_raw = input("対象クライアントID (カンマ区切り。空で全件): ").strip()
         if date_raw is None:
-            date_raw = input(f"対象日付 (JST, YYYY-MM-DD。空で{default_jst_date.isoformat()}): ").strip()
+            date_raw = input(f"対象日付(JST, YYYY-MM-DD。空で{default_jst_date.isoformat()}): ").strip()
         if time_raw is None:
-            time_raw = input("対象時間帯 (JST, HH:MM-HH:MM。空で終日): ").strip()
+            time_raw = input("対象時間帯(JST, HH:MM-HH:MM。空で終日): ").strip()
 
     try:
         target_jst_date = _parse_jst_date(date_raw, default_date=default_jst_date)
@@ -444,66 +676,86 @@ def main(argv: Optional[Sequence[str]] = None, *, repo_root: Optional[Path] = No
         selected_client_ids = [cid for cid in requested_client_ids if cid in all_client_ids]
         missing = [cid for cid in requested_client_ids if cid not in all_client_ids]
         if missing:
-            print(f"[WARN] 存在しないクライアントIDを無視しました: {', '.join(missing)}")
+            print(f"[WARN] unknown client IDs were ignored: {', '.join(missing)}")
     else:
         selected_client_ids = all_client_ids
 
     if not selected_client_ids:
-        print("[INFO] 対象クライアントがありません。ZIPは作成しません。")
+        if line_arg == ALL_LINE_ID:
+            print("[ERROR] no runs found", file=sys.stderr)
+            return 1
+        print("[INFO] no clients selected. skip.")
         return 0
 
-    matched_runs: List[RunFiles] = []
-    invalid_run_id_count = 0
-    for client_id in selected_client_ids:
-        runs, invalid_count, line_exists, legacy_exists = _discover_runs_for_client(
-            repo,
-            client_id,
+    line_results = [
+        _collect_runs_for_line(
+            repo_root=repo,
             line_id=line_id,
-            target_date_jst=target_jst_date,
+            selected_client_ids=selected_client_ids,
+            target_jst_date=target_jst_date,
             time_range=parsed_time_range,
         )
-        if line_id == "receipt" and (not line_exists) and legacy_exists:
-            print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
-        matched_runs.extend(runs)
-        invalid_run_id_count += invalid_count
-    matched_runs.sort(key=lambda row: (row.client_id, row.run_id, row.layout))
-
-    skipped_incomplete_runs = [run for run in matched_runs if len(run.replaced_files) == 0]
-    collected_runs = [run for run in matched_runs if len(run.replaced_files) > 0]
+        for line_id in line_ids
+    ]
     filter_time_text = parsed_time_range[2] if parsed_time_range is not None else None
 
-    _print_preview(
-        line_id=line_id,
-        jst_date=target_jst_date,
-        selected_client_ids=selected_client_ids,
-        filter_client_ids=requested_client_ids,
-        filter_time_range=filter_time_text,
-        matched_runs=matched_runs,
-        collected_runs=collected_runs,
-        skipped_incomplete_runs=skipped_incomplete_runs,
-        skipped_invalid_run_id_count=invalid_run_id_count,
-    )
-
-    if not collected_runs:
-        print("[INFO] 収集対象runが0件のため、ZIPは作成しません。")
-        return 0
+    if line_arg == ALL_LINE_ID:
+        _print_preview_all(
+            jst_date=target_jst_date,
+            selected_client_ids=selected_client_ids,
+            filter_client_ids=requested_client_ids,
+            filter_time_range=filter_time_text,
+            line_results=line_results,
+        )
+        total_collected_runs = sum(len(result.collected_runs) for result in line_results)
+        if total_collected_runs == 0:
+            print("[ERROR] no runs found", file=sys.stderr)
+            return 1
+    else:
+        result = line_results[0]
+        _print_preview(
+            line_id=result.line_id,
+            jst_date=target_jst_date,
+            selected_client_ids=selected_client_ids,
+            filter_client_ids=requested_client_ids,
+            filter_time_range=filter_time_text,
+            matched_runs=result.matched_runs,
+            collected_runs=result.collected_runs,
+            skipped_incomplete_runs=result.skipped_incomplete_runs,
+            skipped_invalid_run_id_count=result.skipped_invalid_run_id_count,
+        )
+        if not result.collected_runs:
+            print("[INFO] no eligible runs found. skip.")
+            return 0
 
     if not args.yes and not _confirm():
-        print("[INFO] ユーザー中止のため、ZIPは作成しません。")
+        print("[INFO] user canceled. skip.")
         return 0
 
     exported_at_utc = _now_utc()
-    manifest_bytes, payload_by_zip_relpath, summary = _build_manifest_and_payload(
-        repo_root=repo,
-        line_id=line_id,
-        runs=collected_runs,
-        exported_at_utc=exported_at_utc,
-        jst_date=target_jst_date,
-        filter_client_ids=requested_client_ids,
-        filter_time_range=filter_time_text,
-        skipped_incomplete_runs=skipped_incomplete_runs,
-        skipped_invalid_run_id_count=invalid_run_id_count,
-    )
+    if line_arg == ALL_LINE_ID:
+        manifest_bytes, payload_by_zip_relpath, summary = _build_manifest_and_payload_all(
+            repo_root=repo,
+            line_results=line_results,
+            exported_at_utc=exported_at_utc,
+            jst_date=target_jst_date,
+            filter_client_ids=requested_client_ids,
+            filter_time_range=filter_time_text,
+        )
+    else:
+        result = line_results[0]
+        manifest_bytes, payload_by_zip_relpath, summary = _build_manifest_and_payload(
+            repo_root=repo,
+            line_id=result.line_id,
+            runs=result.collected_runs,
+            exported_at_utc=exported_at_utc,
+            jst_date=target_jst_date,
+            filter_client_ids=requested_client_ids,
+            filter_time_range=filter_time_text,
+            skipped_incomplete_runs=result.skipped_incomplete_runs,
+            skipped_invalid_run_id_count=result.skipped_invalid_run_id_count,
+        )
+
     sha8 = _sha256_bytes(manifest_bytes)[:8]
     zip_name = f"collect_{target_jst_date.isoformat()}_{_utc_compact(exported_at_utc)}_{sha8}.zip"
     zip_path = _write_zip(
