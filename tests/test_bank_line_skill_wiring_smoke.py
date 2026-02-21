@@ -205,6 +205,7 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
                             client_id,
                             "--line",
                             "bank_statement",
+                            "--yes",
                         ],
                     ):
                         rc = module.main()

@@ -307,6 +307,7 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
                     client_id,
                     "--line",
                     "receipt",
+                    "--yes",
                 ],
                 cwd=repo_root,
                 env=env,

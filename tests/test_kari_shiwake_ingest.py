@@ -13,8 +13,10 @@ from types import SimpleNamespace
 from unittest import mock
 from uuid import uuid4
 
+from belle.line_runners import receipt as receipt_runner
 
-def _write_yayoi_row(path: Path, *, summary: str, debit: str = "消耗品費") -> bytes:
+
+def _write_yayoi_row(path: Path, *, summary: str, debit: str = "譌・ｲｻ莠､騾夊ｲｻ") -> bytes:
     path.parent.mkdir(parents=True, exist_ok=True)
     cols = [""] * 25
     cols[4] = debit
@@ -63,7 +65,7 @@ def _prepare_temp_repo_structure_line(repo_root: Path, client_id: str, *, line_i
 
 
 class KariShiwakeIngestTests(unittest.TestCase):
-    def test_no_kari_file_fails_without_run_dir(self) -> None:
+    def test_no_kari_file_skips_without_run_dir(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
         client_id = "C1"
         with tempfile.TemporaryDirectory() as td:
@@ -75,15 +77,19 @@ class KariShiwakeIngestTests(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with mock.patch.object(sys, "argv", ["run_yayoi_replacer.py", "--client", client_id]):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_yayoi_replacer.py", "--client", client_id, "--line", "receipt"],
+            ):
                 with contextlib.redirect_stdout(buf):
                     rc = module.main()
 
-            self.assertEqual(rc, 1)
-            self.assertIn(
-                f"[ERROR] 置換対象の仮仕訳CSVが見つかりません。clients/{client_id}/inputs/kari_shiwake/ に1ファイル配置してください。",
-                buf.getvalue(),
-            )
+            self.assertEqual(rc, 0)
+            out = buf.getvalue()
+            self.assertIn("[PLAN] client=C1 line=receipt", out)
+            self.assertIn("receipt: SKIP (no target input)", out)
+            self.assertIn("[OK] nothing to do", out)
 
             runs_dir = client_dir / "outputs" / "runs"
             run_dirs = [p for p in runs_dir.iterdir() if p.is_dir()] if runs_dir.exists() else []
@@ -106,15 +112,19 @@ class KariShiwakeIngestTests(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with mock.patch.object(sys, "argv", ["run_yayoi_replacer.py", "--client", client_id]):
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_yayoi_replacer.py", "--client", client_id, "--line", "receipt"],
+            ):
                 with contextlib.redirect_stdout(buf):
                     rc = module.main()
 
             self.assertEqual(rc, 1)
             out = buf.getvalue()
-            self.assertIn("[ERROR] 置換対象の仮仕訳CSVが複数あります。1ファイルにしてください:", out)
-            self.assertIn("  - a.csv", out)
-            self.assertIn("  - b.csv", out)
+            self.assertIn("[PLAN] client=C1 line=receipt", out)
+            self.assertIn("receipt: FAIL (multiple target inputs)", out)
+            self.assertIn("target=[a.csv, b.csv]", out)
 
             runs_dir = client_dir / "outputs" / "runs"
             run_dirs = [p for p in runs_dir.iterdir() if p.is_dir()] if runs_dir.exists() else []
@@ -161,6 +171,12 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 run_dir: Path,
                 artifact_prefix: str | None = None,
             ):
+                del lex
+                del client_cache
+                del defaults
+                del config
+                del run_dir
+                del artifact_prefix
                 replaced_inputs.append(in_path)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_bytes(b"")
@@ -171,21 +187,36 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 }
 
             buf = io.StringIO()
-            with mock.patch.object(module, "load_lexicon", return_value=lex):
-                with mock.patch.object(module, "load_category_defaults", return_value={}):
-                    with mock.patch.object(module, "load_category_overrides", return_value={}):
-                        with mock.patch.object(module, "merge_effective_defaults", return_value={}):
-                            with mock.patch.object(module, "ensure_client_cache_updated", return_value=(tm, tm_summary)):
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "load_category_overrides", return_value={}):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "ensure_client_cache_updated",
+                                return_value=(tm, tm_summary),
+                            ):
                                 with mock.patch.object(
-                                    module,
+                                    receipt_runner,
                                     "ensure_lexicon_candidates_updated_from_ledger_ref",
                                     return_value=autogrow_summary,
                                 ):
-                                    with mock.patch.object(module, "replace_yayoi_csv", side_effect=_fake_replace_yayoi_csv):
+                                    with mock.patch.object(
+                                        receipt_runner,
+                                        "replace_yayoi_csv",
+                                        side_effect=_fake_replace_yayoi_csv,
+                                    ):
                                         with mock.patch.object(
                                             sys,
                                             "argv",
-                                            ["run_yayoi_replacer.py", "--client", client_id],
+                                            [
+                                                "run_yayoi_replacer.py",
+                                                "--client",
+                                                client_id,
+                                                "--line",
+                                                "receipt",
+                                                "--yes",
+                                            ],
                                         ):
                                             with contextlib.redirect_stdout(buf):
                                                 rc = module.main()
@@ -265,6 +296,12 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 run_dir: Path,
                 artifact_prefix: str | None = None,
             ):
+                del lex
+                del client_cache
+                del defaults
+                del config
+                del run_dir
+                del artifact_prefix
                 replaced_inputs.append(in_path)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_bytes(b"")
@@ -275,21 +312,36 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 }
 
             buf = io.StringIO()
-            with mock.patch.object(module, "load_lexicon", return_value=lex):
-                with mock.patch.object(module, "load_category_defaults", return_value={}):
-                    with mock.patch.object(module, "load_category_overrides", return_value={}):
-                        with mock.patch.object(module, "merge_effective_defaults", return_value={}):
-                            with mock.patch.object(module, "ensure_client_cache_updated", return_value=(tm, tm_summary)):
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "load_category_overrides", return_value={}):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "ensure_client_cache_updated",
+                                return_value=(tm, tm_summary),
+                            ):
                                 with mock.patch.object(
-                                    module,
+                                    receipt_runner,
                                     "ensure_lexicon_candidates_updated_from_ledger_ref",
                                     return_value=autogrow_summary,
                                 ):
-                                    with mock.patch.object(module, "replace_yayoi_csv", side_effect=_fake_replace_yayoi_csv):
+                                    with mock.patch.object(
+                                        receipt_runner,
+                                        "replace_yayoi_csv",
+                                        side_effect=_fake_replace_yayoi_csv,
+                                    ):
                                         with mock.patch.object(
                                             sys,
                                             "argv",
-                                            ["run_yayoi_replacer.py", "--client", client_id, "--line", "receipt"],
+                                            [
+                                                "run_yayoi_replacer.py",
+                                                "--client",
+                                                client_id,
+                                                "--line",
+                                                "receipt",
+                                                "--yes",
+                                            ],
                                         ):
                                             with contextlib.redirect_stdout(buf):
                                                 rc = module.main()
