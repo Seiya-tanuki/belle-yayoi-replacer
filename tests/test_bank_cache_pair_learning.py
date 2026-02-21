@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ from pathlib import Path
 from belle.bank_cache import make_bank_label_id
 from belle.bank_pairing import normalize_kana_key
 from belle.build_bank_cache import ensure_bank_client_cache_updated
+from belle.ingest import sha256_file
 from belle.yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_AMOUNT,
@@ -342,6 +344,202 @@ class BankCachePairLearningTests(unittest.TestCase):
 
             self.assertIn(ocr_sha, second_summary.get("ingested_duplicate_training_ocr_shas") or [])
             self.assertIn(ref_sha, second_summary.get("ingested_duplicate_training_reference_shas") or [])
+
+    def test_skip_applied_pairset_recovers_from_manifest_asymmetry(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C8"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            ocr_summary = "OCR_RECOVERY"
+            ocr_rows = [
+                _build_row(
+                    date_text="2026/01/21",
+                    summary=ocr_summary,
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=4400,
+                    memo="SIGN=debit",
+                ),
+            ]
+            ref_rows = [
+                _build_row(
+                    date_text="2026/01/21",
+                    summary="TEACHER_RECOVERY",
+                    debit_account="COUNTER_RECOVERY",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                    debit_tax_division="TAX_D10",
+                    amount=4400,
+                ),
+            ]
+
+            _write_training_pair(line_root, ocr_rows=ocr_rows, ref_rows=ref_rows, ocr_name="ocr_seed.csv", ref_name="ref_seed.csv")
+            first_summary = ensure_bank_client_cache_updated(repo_root, client_id)
+            pair_set_id = str(first_summary.get("applied_pair_set_ids")[0])
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+
+            cache_before_obj = _load_json(cache_path)
+            key = f"{normalize_kana_key(ocr_summary)}|debit|4400"
+            stats_before = int(
+                (
+                    ((cache_before_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}
+                ).get("sample_total")
+                or 0
+            )
+            applied_size_before = len(cache_before_obj.get("applied_training_sets") or {})
+
+            ocr_manifest_before = _load_json(ocr_manifest_path)
+            ref_manifest_before = _load_json(ref_manifest_path)
+            ocr_sha = next(iter((ocr_manifest_before.get("ingested") or {}).keys()))
+            ref_sha = next(iter((ref_manifest_before.get("ingested") or {}).keys()))
+
+            # Simulate asymmetric manifests: OCR side has sha, REF side lost sha.
+            ref_ingested = dict(ref_manifest_before.get("ingested") or {})
+            ref_order = list(ref_manifest_before.get("ingested_order") or [])
+            ref_ingested.pop(ref_sha, None)
+            ref_order = [v for v in ref_order if str(v) != ref_sha]
+            ref_manifest_before["ingested"] = ref_ingested
+            ref_manifest_before["ingested_order"] = ref_order
+            ref_manifest_path.write_text(
+                json.dumps(ref_manifest_before, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=ocr_rows,
+                ref_rows=ref_rows,
+                ocr_name="ocr_reingest.csv",
+                ref_name="ref_reingest.csv",
+            )
+
+            second_summary = ensure_bank_client_cache_updated(repo_root, client_id)
+
+            self.assertEqual(0, int(second_summary.get("pairs_unique_used_total") or 0))
+            self.assertIn(pair_set_id, second_summary.get("skipped_pair_set_ids") or [])
+
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
+
+            cache_after_obj = _load_json(cache_path)
+            stats_after = int(
+                (
+                    ((cache_after_obj.get("stats") or {}).get("kana_sign_amount") or {}).get(key) or {}
+                ).get("sample_total")
+                or 0
+            )
+            applied_size_after = len(cache_after_obj.get("applied_training_sets") or {})
+            self.assertEqual(stats_before, stats_after)
+            self.assertEqual(applied_size_before, applied_size_after)
+
+            ocr_manifest_after = _load_json(ocr_manifest_path)
+            ref_manifest_after = _load_json(ref_manifest_path)
+            ocr_ignored = ocr_manifest_after.get("ignored_duplicates") or {}
+            self.assertIn(ocr_sha, ocr_manifest_after.get("ingested") or {})
+            self.assertIn(ocr_sha, ocr_ignored)
+            self.assertGreaterEqual(len(ocr_ignored.get(ocr_sha) or []), 1)
+            self.assertIn(ref_sha, ref_manifest_after.get("ingested") or {})
+
+    def test_fail_when_manifests_known_but_pairset_not_applied(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C9"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            ocr_rows = [
+                _build_row(
+                    date_text="2026/01/22",
+                    summary="OCR_INCONSISTENT",
+                    debit_account=PLACEHOLDER_ACCOUNT,
+                    credit_account=BANK_ACCOUNT,
+                    amount=5100,
+                    memo="SIGN=debit",
+                ),
+            ]
+            ref_rows = [
+                _build_row(
+                    date_text="2026/01/22",
+                    summary="TEACHER_INCONSISTENT",
+                    debit_account="COUNTER_INCONSISTENT",
+                    credit_account=BANK_ACCOUNT,
+                    credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                    debit_tax_division="TAX_D10",
+                    amount=5100,
+                ),
+            ]
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=ocr_rows,
+                ref_rows=ref_rows,
+                ocr_name="ocr_inconsistent.csv",
+                ref_name="ref_inconsistent.csv",
+            )
+
+            ocr_input_path = line_root / "inputs" / "training" / "ocr_kari_shiwake" / "ocr_inconsistent.csv"
+            ref_input_path = line_root / "inputs" / "training" / "reference_yayoi" / "ref_inconsistent.csv"
+            ocr_sha = sha256_file(ocr_input_path)
+            ref_sha = sha256_file(ref_input_path)
+            pair_set_sha256 = hashlib.sha256(f"ocr={ocr_sha}|ref={ref_sha}".encode("utf-8")).hexdigest()
+            self.assertEqual(64, len(pair_set_sha256))
+
+            ocr_manifest_path = line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"
+            ref_manifest_path = line_root / "artifacts" / "ingest" / "training_reference_ingested.json"
+            ocr_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+            ref_manifest_path.parent.mkdir(parents=True, exist_ok=True)
+
+            ocr_manifest_obj = {
+                "version": "1.0",
+                "client_id": client_id,
+                "kind": "training_ocr",
+                "ingested_order": [ocr_sha],
+                "ingested": {
+                    ocr_sha: {
+                        "sha256": ocr_sha,
+                        "stored_name": "INGESTED_FAKE_OCR.csv",
+                        "ingested_at": "2026-01-01T00:00:00+00:00",
+                        "status": "ingested",
+                    }
+                },
+                "ignored_duplicates": {},
+            }
+            ref_manifest_obj = {
+                "version": "1.0",
+                "client_id": client_id,
+                "kind": "training_reference",
+                "ingested_order": [ref_sha],
+                "ingested": {
+                    ref_sha: {
+                        "sha256": ref_sha,
+                        "stored_name": "INGESTED_FAKE_REF.csv",
+                        "ingested_at": "2026-01-01T00:00:00+00:00",
+                        "status": "ingested",
+                    }
+                },
+                "ignored_duplicates": {},
+            }
+            ocr_manifest_path.write_text(json.dumps(ocr_manifest_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+            ref_manifest_path.write_text(json.dumps(ref_manifest_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            self.assertFalse(cache_path.exists())
+
+            ocr_manifest_before = ocr_manifest_path.read_text(encoding="utf-8")
+            ref_manifest_before = ref_manifest_path.read_text(encoding="utf-8")
+
+            with self.assertRaises(SystemExit) as ctx:
+                ensure_bank_client_cache_updated(repo_root, client_id)
+            self.assertIn("inconsistent", str(ctx.exception))
+
+            self.assertEqual(1, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
+            self.assertEqual(1, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.csv"))))
+            self.assertFalse(cache_path.exists())
+            self.assertEqual(ocr_manifest_before, ocr_manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(ref_manifest_before, ref_manifest_path.read_text(encoding="utf-8"))
 
     def test_noop_when_no_training_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as td:
