@@ -1,6 +1,6 @@
 ---
 name: yayoi-replacer
-description: Replace ONLY debit account (col 5) in Yayoi 25-col CSV using lexicon + client_cache + defaults. Explicit invocation only.
+description: Deterministic multi-line replacer for Yayoi 25-col CSV. Always use PLAN/dry-run then explicit user approval.
 ---
 
 # yayoi-replacer
@@ -21,6 +21,52 @@ Deterministic replacement skill for Yayoi import CSVs.
    - if `artifacts/ingest/training_reference_ingested.json` exists, unique ingested SHA count must be exactly 1
    - otherwise count non-placeholder files under `inputs/training/reference_yayoi/` and require exactly 1
 8. `credit_card_statement` is currently unimplemented.
+
+## Operator protocol (mandatory)
+この手順は Codex/operator 実行時の最上位ランブックであり、必ずこの順序で実施すること。
+
+### Step 1: クライアント指定（推測禁止）
+1. ユーザーがクライアントを明示していない場合は、必ず次をそのまま返す:
+   - 「置換を行うクライアントを指定してください。」
+2. `CLIENT_ID` を推測・補完してはならない。
+
+### Step 2: 事前確認（`--dry-run` を常に実行）
+1. 必ず次のコマンドを実行する:
+```bash
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --dry-run
+```
+2. 実行後は line ごとに次のラベルで要約する:
+   - `置換対象なし` : `skip`（kari_shiwakeが0件）
+   - `置換可能` : `ready`（必要ファイルの確認がOK）
+   - `必須ファイル不足` : `fail`（不足内容を明示）
+3. その後、必ず次の文言をそのまま表示する:
+   - 「実行前の確認結果です。この内容で実行しますか？実行する場合は"実行を許可"と入力してください。」
+4. ユーザーがファイル追加・差し替え後に再確認を求めた場合は、必ず Step 2 を再実行する。自動で本実行へ進んではならない。
+5. `--dry-run` に `--yes` を付け足してはならない（dry-run は `--yes` 不要）。
+
+### Step 3: 実行（承認トークン受領後のみ）
+1. ユーザー入力が **完全一致で** 「実行を許可」の場合のみ、本実行へ進んでよい。
+2. 実行コマンドは次を用いる:
+```bash
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --yes
+```
+3. 禁止事項:
+   - ユーザーが「実行を許可」と入力する前に `--yes` を付けて実行してはならない。
+   - Step 2 を省略してはならない。
+
+### 必須ファイルメモ（診断結果優先）
+1. `receipt` line: 対象は `inputs/kari_shiwake/` 配下。実行時アセット不足は PLAN の `fail` 内容をそのまま提示する。
+2. `bank_statement` line: 対象ファイルに加え、Preconditions 記載どおり teacher reference が実行時にちょうど1件必要。
+3. `credit_card_statement` line: 未実装のため `--line all` では skip。
+
+### Examples (dialog)
+1. User: 「yayoi-replacerを実行して」
+   - Operator: 「置換を行うクライアントを指定してください。」
+2. User: 「CLIENT_ID は acme」
+   - Operator: Step 2 の `--dry-run` を実行して結果要約を提示し、次を表示:
+   - 「実行前の確認結果です。この内容で実行しますか？実行する場合は"実行を許可"と入力してください。」
+3. User: 「実行を許可」
+   - Operator: Step 3 の `--yes` コマンドで実行する。
 
 ## PLAN semantics (always printed)
 1. The skill always performs preflight planning and prints:
@@ -73,4 +119,12 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLI
 
 ```bash
 python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client <CLIENT_ID> --line all --dry-run
+```
+
+```bash
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --dry-run
+```
+
+```bash
+python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --yes
 ```
