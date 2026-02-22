@@ -173,7 +173,7 @@ def load_bank_line_config(repo_root: Path, client_id: str) -> Dict[str, Any]:
         raw = obj
 
     thresholds_raw = raw.get("thresholds") if isinstance(raw.get("thresholds"), dict) else {}
-    return {
+    loaded: Dict[str, Any] = {
         "schema": str(raw.get("schema") or "belle.bank_line_config.v0"),
         "version": str(raw.get("version") or "0.1"),
         "placeholder_account_name": str(raw.get("placeholder_account_name") or "仮払金"),
@@ -192,6 +192,10 @@ def load_bank_line_config(repo_root: Path, client_id: str) -> Dict[str, Any]:
             ),
         },
     }
+    bank_side_subaccount = raw.get("bank_side_subaccount")
+    if isinstance(bank_side_subaccount, dict):
+        loaded["bank_side_subaccount"] = bank_side_subaccount
+    return loaded
 
 
 def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[str, Any]:
