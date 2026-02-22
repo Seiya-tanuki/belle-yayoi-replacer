@@ -25,8 +25,8 @@ This contract in this file is for `receipt` line behavior.
 3. Line ending must remain CRLF behavior-compatible with current parser/writer.
 4. Canonical input path:
    1. `clients/<CLIENT_ID>/lines/<line_id>/inputs/kari_shiwake/`
-5. Fail-closed input count:
-   1. 0 files -> error and exit non-zero before creating `outputs/runs/<RUN_ID>/`
+5. Input count handling:
+   1. 0 files -> no-op (SKIP): exit success (zero) and do not create `outputs/runs/<RUN_ID>/`; no ingest is performed
    2. 2+ files -> error and exit non-zero before creating `outputs/runs/<RUN_ID>/`
    3. exactly 1 file -> ingest first, then replacement
 6. Kari-shiwake ingest (pre-run):
