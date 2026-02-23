@@ -1,0 +1,45 @@
+{
+  "schema": "belle.credit_card_line_config.v0",
+  "version": "0.1",
+  "placeholder_account_name": "仮払金",
+  "payable_account_name": "未払金",
+  "merchant_key_normalization": {
+    "nfkc": true,
+    "trim": true,
+    "collapse_spaces": true,
+    "strip_digits": true,
+    "strip_symbols": true,
+    "split_on_slash": true,
+    "uppercase_ascii": true
+  },
+  "training": {
+    "exclude_counter_accounts": [
+      "普通預金",
+      "当座預金"
+    ]
+  },
+  "thresholds": {
+    "merchant_key_account": {
+      "min_count": 3,
+      "min_p_majority": 0.9
+    },
+    "file_level_card_inference": {
+      "min_votes": 3,
+      "min_p_majority": 0.9
+    }
+  },
+  "candidate_extraction": {
+    "min_rows": 5,
+    "min_unique_merchants": 3,
+    "min_merchant_coverage": 0.6
+  },
+  "notes": {
+    "status": "template_only_not_used_yet",
+    "source_specs": [
+      "spec/CREDIT_CARD_LINE_INPUTS_SPEC.md",
+      "spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md",
+      "spec/CREDIT_CARD_REPLACER_SPEC.md"
+    ]
+  }
+}
+
