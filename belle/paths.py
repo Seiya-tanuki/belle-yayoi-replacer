@@ -172,11 +172,12 @@ def ensure_client_system_dirs(repo_root: Path, client_id: str, line_id: Optional
     get_kari_shiwake_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
     get_artifacts_telemetry_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(parents=True, exist_ok=True)
 
-    if resolved_line_id in (None, "receipt"):
+    if resolved_line_id in (None, "receipt", "credit_card_statement"):
         get_ledger_ref_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
             parents=True,
             exist_ok=True,
         )
+    if resolved_line_id in (None, "receipt"):
         return
 
     if resolved_line_id == "bank_statement":

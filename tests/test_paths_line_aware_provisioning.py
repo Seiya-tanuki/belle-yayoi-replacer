@@ -43,6 +43,16 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
             self.assertTrue((client_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
             self.assertTrue((client_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
 
+    def test_credit_card_statement_provisioning_creates_ledger_ref_ingest_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_CC_DIRS"
+            ensure_client_system_dirs(repo_root, client_id, line_id="credit_card_statement")
+
+            line_root = repo_root / "clients" / client_id / "lines" / "credit_card_statement"
+            self.assertTrue((line_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
+            self.assertTrue((line_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
