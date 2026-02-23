@@ -3,13 +3,13 @@
 ## Scope
 
 This spec applies only to `line_id=credit_card_statement`.
-It defines the Phase-0 cache contract for future credit-card learning/replacement flows.
-Runtime implementation is not included in this phase.
+It defines the cache contract for implemented credit-card learning/replacement flows.
+Runtime implementation is included in current line runtime behavior.
 
 Implementation status:
 1. `receipt`: implemented/runnable via explicit skills.
 2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed in current runtime).
+3. `credit_card_statement`: implemented/runnable via explicit skills.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
@@ -95,9 +95,8 @@ Expected value shape:
 Global fallback distribution over payable subaccounts across ingested data.
 This block supports strict-vote diagnostics and future fallback policy design.
 
-## Phase-0 explicit exclusions
+## Explicit exclusions
 
 1. Tax handling is out of scope in this phase.
 2. No tax-specific learning fields are required.
-3. Runtime behavior is unchanged (line remains fail-closed until later phases).
-
+3. Strict-stop runtime behavior is defined by `spec/CREDIT_CARD_REPLACER_SPEC.md` (`SystemExit(2)` after artifacts when `payable_sub_fill_required_failed == true`).

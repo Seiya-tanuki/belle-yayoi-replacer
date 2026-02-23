@@ -19,7 +19,7 @@ Runs hard/soft readiness checks for this repository and environment, then writes
 - Default behavior checks all lines (`receipt`, `bank_statement`, `credit_card_statement`) in one run.
 - `--line` is optional and narrows diagnostics to a single line.
 - For `--line bank_statement`, diagnose focuses on repository integrity and TEMPLATE structure (tracked assets/placeholders).
-- For `--line credit_card_statement`, diagnose currently validates TEMPLATE structure only and reports implementation status as WARN/INFO (non-blocking).
+- For `--line credit_card_statement`, diagnose validates repository/template integrity for the line; runtime replacement contracts (Contract A / strict-stop) are enforced by `$yayoi-replacer`.
 - Presence of client-specific training/target input files is validated by runtime skills (`$client-cache-builder`, `$yayoi-replacer`), not by system-diagnose.
 
 ## Execution

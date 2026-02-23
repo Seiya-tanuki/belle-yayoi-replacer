@@ -29,7 +29,7 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
    - `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
 4. Consumers read ingested files via paths recorded in `ledger_ref_ingested.json`.
 5. `bank_statement` uses training ingest manifests (`training_ocr_ingested.json`, `training_reference_ingested.json`).
-6. `receipt` and `bank_statement` are implemented. `credit_card_statement` is fail-closed.
+6. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable (line-specific contracts apply).
 
 ## Notes
 1. Uses only summary (17th col) and debit account (5th col).

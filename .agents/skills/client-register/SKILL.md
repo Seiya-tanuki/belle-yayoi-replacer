@@ -21,7 +21,7 @@ Creates a new client workspace from the template.
 4. Always runs line initialization hooks:
    1. Initializes receipt `config/category_overrides.json` (same behavior as before).
    2. Ensures bank `config/bank_line_config.json` exists (same behavior as before).
-   3. `credit_card_statement` is provisioned as directory-only (future-ready).
+   3. `credit_card_statement` line is provisioned for runnable flow (Contract A and strict-stop are runtime-enforced).
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.

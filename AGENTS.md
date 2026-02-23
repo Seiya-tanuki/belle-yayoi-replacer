@@ -13,7 +13,7 @@
    3. Only run a skill when the user explicitly requests it.
 3. Available Skills (split by responsibility):
    1. `$client-register`: clone `clients/TEMPLATE/` into `clients/<CLIENT_ID>/` using a safe client name.
-   2. `$yayoi-replacer`: run line-aware replacement (`receipt`: debit account only, `bank_statement`: see BANK_REPLACER_SPEC).
+   2. `$yayoi-replacer`: run line-aware replacement (`receipt`: debit account only, `bank_statement`: see BANK_REPLACER_SPEC, `credit_card_statement`: see CREDIT_CARD_REPLACER_SPEC).
    3. `$client-cache-builder`: ingest line-specific learning inputs and incrementally update `client_cache`.
    4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
    5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
@@ -23,18 +23,18 @@
    9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
    10. `$collect-outputs`: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、`exports/collect/` に単一ZIPを出力。
 4. Current runtime behavior:
-   1. `receipt` and `bank_statement` are implemented/runnable via explicit skill invocation.
-   2. `credit_card_statement` remains unimplemented (fail-closed).
-   3. `receipt` flow is `ledger_ref`-based (`inputs/ledger_ref` + `artifacts/ingest/ledger_ref*`).
-   4. `bank_statement` flow uses training + target only (`inputs/training/*` + `inputs/kari_shiwake`) and bank cache artifacts.
-   5. `bank_statement` must not use `inputs/ledger_ref/**` or `artifacts/ingest/ledger_ref/**`.
+   1. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable via explicit skill invocation.
+   2. `receipt` flow is `ledger_ref`-based (`inputs/ledger_ref` + `artifacts/ingest/ledger_ref*`).
+   3. `bank_statement` flow uses training + target only (`inputs/training/*` + `inputs/kari_shiwake`) and bank cache artifacts.
+   4. `bank_statement` must not use `inputs/ledger_ref/**` or `artifacts/ingest/ledger_ref/**`.
+   5. `credit_card_statement` requires Contract A (one statement per target file) and may strict-stop with exit `2` after writing artifacts when `payable_sub_fill_required_failed == true`.
 
 ## 2) Data Placement (Per Client, No Mix-ups)
 1. Canonical per-client path is `clients/<CLIENT_ID>/lines/<line_id>/`.
 2. Receipt legacy compatibility (deprecated): `clients/<CLIENT_ID>/...` is still accepted when `--line receipt`.
 3. Inputs:
-   1. `inputs/kari_shiwake/`: target draft Yayoi CSV(s) for replacement (receipt/bank_statement).
-   2. `inputs/ledger_ref/`: historical finalized CSV(s) used only by `receipt` cache/statistics flow.
+   1. `inputs/kari_shiwake/`: target draft Yayoi CSV(s) for replacement (receipt/bank_statement/credit_card_statement).
+   2. `inputs/ledger_ref/`: historical finalized CSV(s) used by `receipt` and `credit_card_statement` cache/statistics flow.
    3. `inputs/training/ocr_kari_shiwake/`: bank_statement training OCR inputs.
    4. `inputs/training/reference_yayoi/`: bank_statement training teacher reference inputs.
 4. User-facing outputs:

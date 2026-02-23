@@ -28,53 +28,53 @@ Deterministic replacement skill for Yayoi import CSVs.
    - one-side-new manifest mismatch (`ocr_sha_known != ref_sha_known`)
    - both OCR/reference SHAs are known in manifests but the pair-set is not applied in cache
    - `pairs_unique_used == 0` (no ingest/cache write side effects; inbox files remain)
-10. `credit_card_statement` is currently unimplemented.
+10. `credit_card_statement` is implemented/runnable.
+11. `credit_card_statement` target must satisfy Contract A (one statement per target file).
 
 ## Operator protocol (mandatory)
-この手順は Codex/operator 実行時の最上位ランブックであり、必ずこの順序で実施すること。
+Codex/operator は以下の手順を固定で実施すること。
 
-### Step 1: クライアント指定（推測禁止）
-1. ユーザーがクライアントを明示していない場合は、必ず次をそのまま返す:
-   - 「置換を行うクライアントを指定してください。」
-2. `CLIENT_ID` を推測・補完してはならない。
+### Step 1: クライアント確認（実行前）
+1. ユーザーに `CLIENT_ID` を確認し、なければ次をそのまま提示する:
+   - 「対象を教えるクライアントIDを指定してください。」
+2. `CLIENT_ID` を確認・復唱してから次へ進む。
 
-### Step 2: 事前確認（`--dry-run` を常に実行）
-1. 必ず次のコマンドを実行する:
+### Step 2: 事前確認（`--dry-run` を先に実施）
+1. 必ず次のコマンドを実行する。
 ```bash
 python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --dry-run
 ```
-2. 実行後は line ごとに次のラベルで要約する:
-   - `置換対象なし` : `skip`（kari_shiwakeが0件）
-   - `置換可能` : `ready`（必要ファイルの確認がOK）
-   - `必須ファイル不足` : `fail`（不足内容を明示）
-3. その後、必ず次の文言をそのまま表示する:
-   - 「実行前の確認結果です。この内容で実行しますか？実行する場合は"実行を許可"と入力してください。」
-4. ユーザーがファイル追加・差し替え後に再確認を求めた場合は、必ず Step 2 を再実行する。自動で本実行へ進んではならない。
-5. `--dry-run` に `--yes` を付け足してはならない（dry-run は `--yes` 不要）。
+2. PLAN で line ごとに次を確認する。
+   - `SKIP`: 対象入力 0 件
+   - `RUN`: 実行可能（契約OK）
+   - `FAIL`: 契約違反または必須資材不足
+3. PLAN の結果をユーザーに提示する。
+4. FAIL がある場合は原因を案内し、Step 2 を再実施する（FAIL 解消まで本実行しない）。
+5. `--dry-run` に `--yes` は付けない（dry-run は `--yes` 不要）。
 
-### Step 3: 実行（承認トークン受領後のみ）
-1. ユーザー入力が **完全一致で** 「実行を許可」の場合のみ、本実行へ進んでよい。
-2. 実行コマンドは次を用いる:
+### Step 3: 実行（ユーザー承認後のみ）
+1. ユーザーが「実行して」と明示した場合のみ実行する。
+2. 実行コマンドは次を使う。
 ```bash
 python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CLIENT_ID>" --line all --yes
 ```
-3. 禁止事項:
-   - ユーザーが「実行を許可」と入力する前に `--yes` を付けて実行してはならない。
-   - Step 2 を省略してはならない。
+3. 運用ルール:
+   - ユーザーが「実行して」と言う前に `--yes` 実行しない。
+   - Step 2 を省略しない。
 
 ### 必須ファイルメモ（診断結果優先）
 1. `receipt` line: 対象は `inputs/kari_shiwake/` 配下。実行時アセット不足は PLAN の `fail` 内容をそのまま提示する。
 2. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
-3. `credit_card_statement` line: 未実装のため `--line all` では skip。
+3. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
+4. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
 
 ### Examples (dialog)
 1. User: 「yayoi-replacerを実行して」
-   - Operator: 「置換を行うクライアントを指定してください。」
+   - Operator: 「対象のクライアントIDを指定してください。」
 2. User: 「CLIENT_ID は acme」
-   - Operator: Step 2 の `--dry-run` を実行して結果要約を提示し、次を表示:
-   - 「実行前の確認結果です。この内容で実行しますか？実行する場合は"実行を許可"と入力してください。」
-3. User: 「実行を許可」
-   - Operator: Step 3 の `--yes` コマンドで実行する。
+   - Operator: Step 2 の `--dry-run` を実行して PLAN 結果を提示。
+3. User: 「実行して」
+   - Operator: Step 3 の `--yes` で実行。
 
 ## PLAN semantics (always printed)
 1. The skill always performs preflight planning and prints:
@@ -87,8 +87,9 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - structural invariants are invalid
    - bank training input contract or learning safety gates are violated (`0/0` is allowed, otherwise `1/1` only; one-side-new mismatch / manifests-known-but-not-applied / `pairs_unique_used == 0`)
 4. `credit_card_statement` behavior:
-   - in `--line all`: `SKIP (unimplemented)`
-   - explicit `--line credit_card_statement`: exit 2 with clear unimplemented error
+   - in `--line all`: 他ラインと同様に input 契約で `RUN` / `SKIP` / `FAIL` を判定（未実装扱いの特別SKIPはしない）
+   - PLAN は file-level card inference の確信度不足を事前確定できないため、実行時に strict-stop（exit `2`）が起こりうる
+   - strict-stop 条件: `payable_sub_fill_required_failed == true`（成果物は保持）
 
 ## Confirmation gate
 1. If PLAN has any `FAIL`, execution is blocked and exits 1.
@@ -100,6 +101,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - interactive TTY: prompt `Proceed with RUN lines? [y/N]`
    - non-interactive without `--yes`: exit 2 with guidance
 4. If all selected lines are `SKIP`, exits 0 with `[OK] nothing to do`.
+5. During execution, `credit_card_statement` strict-stop returns exit 2 after writing artifacts.
 
 ## Runtime behavior (line execution)
 1. The skill entrypoint is a dispatcher only.
@@ -107,7 +109,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - `receipt.py`
    - `bank_statement.py`
    - `credit_card_statement.py`
-3. Receipt and bank execution logic remain unchanged in behavior; only orchestration is refactored.
+3. `credit_card_statement` runner enforces Contract A assumptions and strict-stop behavior.
 
 ## Canonical specs
 1. `spec/REPLACER_SPEC.md`
@@ -115,6 +117,9 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 3. `spec/CLIENT_CACHE_SPEC.md`
 4. `spec/LEXICON_PENDING_SPEC.md`
 5. `spec/BANK_REPLACER_SPEC.md`
+6. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
+7. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
+8. `spec/CREDIT_CARD_REPLACER_SPEC.md`
 
 ## Execution examples
 ```bash

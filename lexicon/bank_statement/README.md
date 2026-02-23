@@ -1,3 +1,4 @@
-# UNIMPLEMENTED in Phase 1
+# bank_statement lexicon
 
-This line is reserved for future implementation.
+This line is implemented.
+Store shared lexicon assets for the bank line here.

@@ -4,6 +4,7 @@
 
 This spec applies to receipt line only (`line_id=receipt`).
 For bank-statement replacement behavior, see `spec/BANK_REPLACER_SPEC.md`.
+For credit-card replacement behavior, see `spec/CREDIT_CARD_REPLACER_SPEC.md`.
 
 ## Goal
 
@@ -14,7 +15,7 @@ Never change any other field. Preserve formatting behavior and CSV contract.
 
 1. `receipt`: implemented
 2. `bank_statement`: implemented (see bank-specific specs)
-3. `credit_card_statement`: unimplemented (must fail-closed)
+3. `credit_card_statement`: implemented (see credit-card-specific specs)
 
 ## Input/Output contract
 

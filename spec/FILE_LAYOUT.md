@@ -7,7 +7,7 @@ All runtime data must be isolated by client and line.
 
 1. `receipt` (implemented)
 2. `bank_statement` (implemented)
-3. `credit_card_statement` (UNIMPLEMENTED; fail-closed)
+3. `credit_card_statement` (implemented)
 
 ## Client directory layout (canonical)
 
@@ -82,7 +82,11 @@ Related specs:
    3. `inputs/kari_shiwake/`
    4. `artifacts/ingest/training_ocr/` + `training_ocr_ingested.json`
    5. `artifacts/ingest/training_reference/` + `training_reference_ingested.json`
-3. `credit_card_statement` remains unimplemented and fail-closed.
+3. `credit_card_statement` uses line-scoped inputs:
+   1. `inputs/kari_shiwake/` (target; `0 => SKIP`, `1 => RUN`, `2+ => FAIL`)
+   2. `inputs/ledger_ref/` (append-only historical teacher input)
+   3. Contract A is required (one statement per target file).
+   4. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
 
 ## bank_statement forbidden paths (explicit)
 

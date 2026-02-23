@@ -1,3 +1,4 @@
-# UNIMPLEMENTED in Phase 1
+# bank_statement rulesets
 
-This line is reserved for future implementation.
+This line is implemented.
+Store line-specific replacement ruleset assets for bank processing here.

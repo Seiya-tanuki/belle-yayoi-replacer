@@ -8,7 +8,7 @@ It defines the v0 client cache contract used by implemented bank runtime flows.
 Implementation status:
 1. `receipt`: implemented/runnable via explicit skills.
 2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed).
+3. `credit_card_statement`: implemented/runnable via explicit skills (see credit-card specs).
 
 Related specs:
 1. `spec/BANK_LINE_INPUTS_SPEC.md`

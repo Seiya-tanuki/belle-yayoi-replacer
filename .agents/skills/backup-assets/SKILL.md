@@ -9,7 +9,7 @@ Creates a fixed-scope asset backup zip from runtime field assets.
 
 ## Scope (fixed)
 - `receipt`: `clients/**` + `lexicon/receipt/pending/**`
-- `bank_statement` (and future `credit_card_statement` safety path): `clients/**` only
+- `bank_statement` and `credit_card_statement`: `clients/**` only
 - `MANIFEST.json` at zip root
 
 ## Output

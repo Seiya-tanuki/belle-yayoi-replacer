@@ -8,7 +8,7 @@ This contract is implemented in current line-split runtime behavior.
 Implementation status:
 1. `receipt`: implemented/runnable via explicit skills.
 2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed).
+3. `credit_card_statement`: implemented/runnable via explicit skills (see credit-card specs).
 
 Related specs:
 1. `spec/BANK_CLIENT_CACHE_SPEC.md`
@@ -106,7 +106,7 @@ Normalization steps:
 
 1. Ambiguous pairing keys are skipped, never guessed.
 2. Missing sign/date/amount needed for pairing causes skip.
-3. Unsupported lines (e.g. `credit_card_statement`) remain unimplemented and fail-closed.
+3. Cross-line behavior is out of scope here; `credit_card_statement` input contracts are defined in credit-card specs.
 
 ## Teacher-side bank subaccount learning note
 

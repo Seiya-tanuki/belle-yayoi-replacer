@@ -9,7 +9,7 @@ Restores fixed-scope runtime field assets from a backup zip.
 
 ## Scope (fixed)
 - `receipt`: restores `clients/**` and `lexicon/receipt/pending/**`
-- `bank_statement` (and future `credit_card_statement` safety path): restores `clients/**` only
+- `bank_statement` and `credit_card_statement`: restores `clients/**` only
 - Never restores tracked code directories/files
 
 ## Arguments
