@@ -1,34 +1,33 @@
-# CREDIT_CARD_REPLACER_SPEC (credit_card_statement line v0)
+# CREDIT_CARD_REPLACER_SPEC (credit_card_statement line)
 
 ## Scope and status
 
 This spec applies only to `line_id=credit_card_statement`.
-It defines the Phase-0 behavior contract for a future replacer implementation.
-No runtime implementation is added in this phase.
+It defines replacer + runner operational contracts for the credit-card line.
 
 Implementation status:
 1. `receipt`: implemented/runnable via explicit skills.
 2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed in current runtime).
+3. `credit_card_statement`: implemented/runnable via explicit skills.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
 2. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
 3. `spec/FILE_LAYOUT.md`
 
-## Replacement goals (future implementation target)
+## Replacement goals
 
-1. Replace placeholder account `仮払金` with predicted account name.
+1. Replace placeholder account `仮払金` with a predicted account.
 2. Fill payable-side subaccount when account name is `未払金` and subaccount is empty.
 
-All other non-target fields must remain unchanged.
+All non-target fields must remain unchanged.
 
 ## Placeholder targeting rule
 
 Target side must be detected by account-name matching:
 1. locate side (debit or credit) whose account name equals `仮払金`
 2. do not rely on fixed column positions
-3. if side is ambiguous or absent, fail-closed for that row
+3. if side is ambiguous or absent, no account replacement is applied for that row
 
 ## Required replacements and threshold gate
 
@@ -36,35 +35,55 @@ Target side must be detected by account-name matching:
 
 1. predict account from learned `merchant_key_account_stats`
 2. apply only when configured thresholds pass
-3. if thresholds fail or top label is non-unique, do not replace (fail-closed)
+3. if thresholds fail or top label is non-unique, do not replace that row
 
 ### B) Payable-side subaccount fill (`未払金`)
 
-1. find side where account name equals `未払金`
+1. detect side where account name equals `未払金`
 2. apply only when that side subaccount is empty
-3. fill with learned card subaccount inferred at file level
-4. if confidence is insufficient, treat file as invalid for required fill policy
+3. fill from file-level inferred payable subaccount when file inference status is `OK`
+4. if inference is not `OK`, rows that require fill remain unresolved and are marked for strict-stop evaluation
 
-## File-level card inference policy
+## File-level card inference policy (strict)
 
-The run must infer one payable subaccount identity for the whole target file:
+For each target file, infer one payable subaccount identity for the whole file:
 1. voting unit: `merchant_key` evidence from target rows
-2. select single top payable subaccount only when confidence gates pass
+2. select a single top payable subaccount only when confidence gates pass
 3. confidence gates use configured `min_votes` and `min_p_majority`
-4. ties or low-confidence outcomes are invalid for required fill policy
+4. ties or low-confidence outcomes are treated as non-`OK` file inference
 
-Strict Phase-0 contract intent:
-1. insufficient confidence is a strict invalid condition (fail-closed intent)
-2. later phases may refine warn/stop runtime handling, but this spec is strict by default
+This policy assumes Contract A input (one statement, one card per target file).
+
+## Runner strict-stop contract
+
+Strict stop is enforced at runner layer.
+
+Condition:
+1. replacer reports `payable_sub_fill_required_failed=true`
+2. this means payable-side subaccount fill was required for at least one row but file-level card inference was not `OK`
+
+Runner behavior:
+1. write run outputs and manifests first
+2. mark run manifest with `strict_stop_applied=true` and `exit_status=FAIL`
+3. terminate with `SystemExit(2)` (exit code `2`)
+
+## Audit artifact retention on failure
+
+Strict-stop failure must remain auditable. Generated artifacts are kept under the run directory:
+1. replaced CSV output
+2. replacer manifest JSON (`reports.manifest_json`)
+3. per-row review report CSV (`reports.review_report_csv`)
+4. runner manifest (`run_manifest.json`)
 
 ## Candidate extraction knobs (config contract)
 
 File-level card candidate extraction is controlled by config knobs such as:
-1. `min_rows`
+1. `min_total_count`
 2. `min_unique_merchants`
-3. `min_merchant_coverage`
+3. `min_unique_counter_accounts`
+4. `manual_allow`
 
-These knobs gate whether a file has enough evidence for card-level inference.
+These knobs gate whether a payable subaccount becomes an eligible candidate.
 
 ## Training pollution exclusion rule
 
@@ -79,4 +98,3 @@ Rationale:
 Inference uses summary only:
 1. summary column is 17th column (1-based)
 2. memo column must not be used as inference signal
-

@@ -1,14 +1,13 @@
-# CREDIT_CARD_LINE_INPUTS_SPEC (credit_card_statement line v0)
+# CREDIT_CARD_LINE_INPUTS_SPEC (credit_card_statement line)
 
 ## Scope and status
 
-This spec defines v0 input contracts for `line_id=credit_card_statement` only.
-This line remains unimplemented in Phase 0 and must stay fail-closed at runtime.
+This spec defines input contracts for `line_id=credit_card_statement`.
 
 Implementation status:
 1. `receipt`: implemented/runnable via explicit skills.
 2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: UNIMPLEMENTED (must remain fail-closed in current runtime).
+3. `credit_card_statement`: implemented/runnable via explicit skills.
 
 Related specs:
 1. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
@@ -23,45 +22,42 @@ Canonical base path:
 Allowed input directories:
 1. target draft:
    1. `inputs/kari_shiwake/`
-2. training reference:
+2. learning teacher:
    1. `inputs/ledger_ref/`
 
-## `kari_shiwake` cardinality (single target file)
+## Contract A (required): single statement per target file
 
-`inputs/kari_shiwake/` accepts CSV targets with strict file-count behavior:
+The accepted `kari_shiwake` target file must represent exactly one card statement (one card).
+
+Current scope:
+1. mixed multi-card target CSV in one file is unsupported
+2. when this contract is violated, required payable-subaccount fill may become invalid and strict stop can occur
+
+## `kari_shiwake` cardinality policy (0/1/2+)
+
+`inputs/kari_shiwake/` is validated by strict file-count behavior:
 1. `0` files:
-   1. no-op SKIP (normal)
+   1. SKIP (normal no-op)
 2. `1` file:
    1. accepted as one run target
 3. `2+` files:
-   1. fail-closed error (`SystemExit`)
+   1. fail-closed before replacement (`multiple target inputs`)
 
-Non-target files/extensions are ignored for counting.
-
-## `ledger_ref` cardinality and learning source
+## `ledger_ref` cardinality and learning model
 
 `inputs/ledger_ref/` accepts `0+` files.
 
-Rules:
-1. ingestion is append-only
-2. dedupe is by per-file SHA256
-3. already-applied SHA256 entries must not update learned stats again
-4. multiple historical files are allowed and may be accumulated over time
-
-## Operational contract A (single statement per run)
-
-The accepted target `kari_shiwake` file must represent exactly one credit-card statement.
-
-Strict policy for Phase 0 spec:
-1. mixed-card target CSV (multiple card identities in one target file) is out of scope
-2. such mixed input is invalid for required payable-subaccount fill policy
-3. later phases may extend behavior, but v0 contract defines this as invalid
+Learning rules:
+1. `ledger_ref` is the only teacher input (Yayoi finalized exports)
+2. learning updates are append-only
+3. ingestion dedupe is by per-file SHA256
+4. applied SHA256 tracking prevents double-learning on re-run with the same teacher file
+5. multiple historical files can be accumulated over time
 
 ## Inference field constraint
 
-Inference must use only summary text:
-1. summary column is the 17th column (1-based index)
+Inference must use summary text only:
+1. summary column is the 17th column (1-based)
 
 Non-summary fields are not inference signals for this line contract.
 Memo (22nd column) is not an inference source.
-

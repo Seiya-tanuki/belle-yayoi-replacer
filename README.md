@@ -52,3 +52,8 @@ python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --clien
 ## Specs
 
 See `spec/` for canonical contracts.
+
+credit-card line references:
+1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
+2. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
+3. `spec/CREDIT_CARD_REPLACER_SPEC.md`
