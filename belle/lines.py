@@ -16,7 +16,7 @@ def validate_line_id(line_id: str) -> str:
 
 
 def is_line_implemented(line_id: str) -> bool:
-    return validate_line_id(line_id) in {"receipt", "bank_statement"}
+    return validate_line_id(line_id) in {"receipt", "bank_statement", "credit_card_statement"}
 
 
 def line_asset_paths(repo_root: Path, line_id: str) -> dict[str, Path]:

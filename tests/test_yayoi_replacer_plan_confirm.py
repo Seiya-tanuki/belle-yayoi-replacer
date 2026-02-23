@@ -32,12 +32,14 @@ def _write_yayoi_row(path: Path, *, summary: str) -> None:
     path.write_bytes((",".join(cols) + "\n").encode("cp932"))
 
 
-def _prepare_line_dirs(repo_root: Path, client_id: str) -> tuple[Path, Path]:
+def _prepare_line_dirs(repo_root: Path, client_id: str) -> tuple[Path, Path, Path]:
     receipt_root = repo_root / "clients" / client_id / "lines" / "receipt"
     bank_root = repo_root / "clients" / client_id / "lines" / "bank_statement"
+    card_root = repo_root / "clients" / client_id / "lines" / "credit_card_statement"
     (receipt_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (bank_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
-    return receipt_root, bank_root
+    (card_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
+    return receipt_root, bank_root, card_root
 
 
 def _prepare_receipt_config(repo_root: Path) -> None:
@@ -72,14 +74,14 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
             self.assertIn("[PLAN] client=C1 line=all", out)
             self.assertIn("receipt: SKIP (no target input)", out)
             self.assertIn("bank_statement: SKIP (no target input)", out)
-            self.assertIn("credit_card_statement: SKIP (unimplemented)", out)
+            self.assertIn("credit_card_statement: SKIP (no target input)", out)
 
     def test_yayoi_replacer_non_interactive_requires_yes(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
         client_id = "C1"
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
-            receipt_root, _ = _prepare_line_dirs(temp_repo_root, client_id)
+            receipt_root, _, _ = _prepare_line_dirs(temp_repo_root, client_id)
             _prepare_receipt_config(temp_repo_root)
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "target.csv", summary="NON TTY TEST")
 
@@ -145,7 +147,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         client_id = "C1"
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
-            receipt_root, _ = _prepare_line_dirs(temp_repo_root, client_id)
+            receipt_root, _, _ = _prepare_line_dirs(temp_repo_root, client_id)
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "a.csv", summary="A")
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "b.csv", summary="B")
             module = _load_replacer_script_module(real_repo_root)
