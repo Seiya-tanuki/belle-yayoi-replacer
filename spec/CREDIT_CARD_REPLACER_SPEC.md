@@ -85,6 +85,33 @@ File-level card candidate extraction is controlled by config knobs such as:
 
 These knobs gate whether a payable subaccount becomes an eligible candidate.
 
+## Candidate extraction alias policy
+
+1. Canonical key is `candidate_extraction.min_total_count`.
+2. Backward-compatible alias `candidate_extraction.min_rows` is accepted by loader normalization.
+3. TEMPLATE config uses canonical keys going forward.
+
+## Partial match safe fallback contract
+
+1. Partial match is attempted only when exact `merchant_key` lookup misses.
+2. Allowed direction is `cache_key_in_input` only (`cache_key` must be a substring of input key).
+3. Resolver is fail-closed:
+   1. choose only the unique longest matched key
+   2. if longest tie exists, reject partial match
+4. Minimum match length is `4` (`min_match_len` baseline).
+5. Partial-match candidate keys must satisfy strong stats gates before use:
+   1. `sample_total >= 10`
+   2. `p_majority >= 0.95`
+   3. top label must exist (`top_account` for account replacement, `top_value` for payable-sub inference)
+6. Even after partial key resolution, normal row/file thresholds are still enforced.
+
+## Partial match observability (run manifest)
+
+Replacer manifest includes additive partial-match diagnostics:
+1. `partial_match.account_partial_rows_used`
+2. `partial_match.votes_partial_used`
+3. `partial_match.examples` (input key and matched cache key pairs)
+
 ## Training pollution exclusion rule
 
 At training time, rows whose counter account is a known transfer/bank account

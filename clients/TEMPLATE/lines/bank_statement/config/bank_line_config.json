@@ -9,14 +9,6 @@
     "weak_enabled": true,
     "weak_min_count": 3
   },
-  "pairing": {
-    "join_key": [
-      "date",
-      "sign",
-      "amount"
-    ],
-    "require_unique_on_both_sides": true
-  },
   "thresholds": {
     "kana_sign_amount": {
       "min_count": 1,
@@ -26,13 +18,5 @@
       "min_count": 2,
       "min_p_majority": 0.8
     }
-  },
-  "notes": {
-    "status": "template_only_not_used_yet",
-    "source_specs": [
-      "spec/BANK_LINE_INPUTS_SPEC.md",
-      "spec/BANK_CLIENT_CACHE_SPEC.md",
-      "spec/BANK_REPLACER_SPEC.md"
-    ]
   }
 }

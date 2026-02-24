@@ -29,7 +29,7 @@
     }
   },
   "candidate_extraction": {
-    "min_rows": 5,
+    "min_total_count": 5,
     "min_unique_merchants": 3
   }
 }
