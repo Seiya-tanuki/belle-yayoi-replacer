@@ -49,6 +49,20 @@ def _as_float(value: Any, default: float) -> float:
         return float(default)
 
 
+def _as_bool(value: Any, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+    return bool(default)
+
+
 def _normalize_str_list(value: Any, default: List[str]) -> List[str]:
     if not isinstance(value, list):
         return list(default)
@@ -70,6 +84,34 @@ def _normalize_candidate_config(obj: Any) -> Dict[str, Any]:
         "min_unique_merchants": _as_int(src.get("min_unique_merchants", 5), 5),
         "min_unique_counter_accounts": _as_int(src.get("min_unique_counter_accounts", 3), 3),
         "manual_allow": manual_allow,
+    }
+
+
+def _normalize_partial_match_config(obj: Any) -> Dict[str, Any]:
+    src = obj if isinstance(obj, dict) else {}
+    direction = str(src.get("direction") or "cache_key_in_input").strip()
+    if direction != "cache_key_in_input":
+        direction = "cache_key_in_input"
+
+    min_match_len = _as_int(src.get("min_match_len", 4), 4)
+    if min_match_len < 1:
+        min_match_len = 4
+
+    min_stats_sample_total = _as_int(src.get("min_stats_sample_total", 10), 10)
+    if min_stats_sample_total < 1:
+        min_stats_sample_total = 10
+
+    min_stats_p_majority = _as_float(src.get("min_stats_p_majority", 0.95), 0.95)
+    if min_stats_p_majority < 0.0 or min_stats_p_majority > 1.0:
+        min_stats_p_majority = 0.95
+
+    return {
+        "enabled": _as_bool(src.get("enabled"), True),
+        "direction": direction,
+        "require_unique_longest": _as_bool(src.get("require_unique_longest"), True),
+        "min_match_len": int(min_match_len),
+        "min_stats_sample_total": int(min_stats_sample_total),
+        "min_stats_p_majority": float(min_stats_p_majority),
     }
 
 
@@ -110,6 +152,7 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
         if isinstance(raw.get("candidate_extraction"), dict)
         else {}
     )
+    partial_match_raw = raw.get("partial_match") if isinstance(raw.get("partial_match"), dict) else {}
 
     loaded: Dict[str, Any] = {
         "schema": str(raw.get("schema") or "belle.credit_card_line_config.v0"),
@@ -142,6 +185,7 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
             },
         },
         "candidate_extraction": _normalize_candidate_config(candidate_raw),
+        "partial_match": _normalize_partial_match_config(partial_match_raw),
     }
     return loaded
 
@@ -203,11 +247,15 @@ def _thresholds_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
         else {}
     )
     training = config.get("training") if isinstance(config.get("training"), dict) else {}
+    partial_match = (
+        config.get("partial_match") if isinstance(config.get("partial_match"), dict) else {}
+    )
     return {
         "merchant_key_account": thresholds.get("merchant_key_account") or {},
         "file_level_card_inference": thresholds.get("file_level_card_inference") or {},
         "candidate_extraction": candidate_extraction,
         "exclude_counter_accounts": training.get("exclude_counter_accounts") or [],
+        "partial_match": _normalize_partial_match_config(partial_match),
     }
 
 
@@ -322,6 +370,7 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
         d.mkdir(parents=True, exist_ok=True)
 
     config = load_credit_card_line_config(repo_root, client_id)
+    thresholds_snapshot = _thresholds_snapshot(config)
     payable_account_name = str(config.get("payable_account_name") or "").strip()
     exclude_counter_accounts = set(
         _normalize_str_list(
@@ -370,7 +419,10 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
     if not isinstance(cache.card_subaccount_candidates, dict):
         cache.card_subaccount_candidates = {}
     if not cache.decision_thresholds:
-        cache.decision_thresholds = _thresholds_snapshot(config)
+        cache.decision_thresholds = thresholds_snapshot
+    elif not isinstance(cache.decision_thresholds.get("partial_match"), dict):
+        cache.decision_thresholds = dict(cache.decision_thresholds)
+        cache.decision_thresholds["partial_match"] = thresholds_snapshot.get("partial_match") or {}
 
     warnings: List[str] = []
     applied_new_shas: List[str] = []
@@ -480,7 +532,10 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
     cache.append_only = True
     cache.updated_at = _now_utc_iso()
     if not cache.decision_thresholds:
-        cache.decision_thresholds = _thresholds_snapshot(config)
+        cache.decision_thresholds = thresholds_snapshot
+    elif not isinstance(cache.decision_thresholds.get("partial_match"), dict):
+        cache.decision_thresholds = dict(cache.decision_thresholds)
+        cache.decision_thresholds["partial_match"] = thresholds_snapshot.get("partial_match") or {}
 
     cache.save(cache_path)
 
