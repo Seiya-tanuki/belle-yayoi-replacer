@@ -89,7 +89,7 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                         "    raise ValueError(f\"invalid line_id: {line_id!r}\")",
                         "",
                         "def is_line_implemented(line_id: str) -> bool:",
-                        "    return validate_line_id(line_id) in {'receipt', 'bank_statement'}",
+                        "    return validate_line_id(line_id) in {'receipt', 'bank_statement', 'credit_card_statement'}",
                         "",
                     ]
                 ),

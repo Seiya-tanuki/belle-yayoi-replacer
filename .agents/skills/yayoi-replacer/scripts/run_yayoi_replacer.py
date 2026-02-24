@@ -18,7 +18,6 @@ from belle.line_runners import (
     run_card,
     run_receipt,
 )
-from belle.lines import is_line_implemented
 
 LINE_ORDER = ["receipt", "bank_statement", "credit_card_statement"]
 
@@ -108,10 +107,6 @@ def main() -> int:
 
     _print_plan(client_id, args.line, plans)
 
-    if args.line == "credit_card_statement" and not is_line_implemented("credit_card_statement"):
-        print("[ERROR] line is unimplemented: credit_card_statement")
-        return 2
-
     fail_plans = [p for p in plans if p.status == "FAIL"]
     if fail_plans:
         print("[ERROR] PLAN contains FAIL. Fix inputs/config and rerun (use --dry-run to only inspect).")
@@ -162,9 +157,6 @@ def main() -> int:
                 )
             else:
                 outcomes[line_id] = run_card(repo_root, client_id)
-        except NotImplementedError as exc:
-            print(f"[ERROR] {exc}")
-            return 2
         except Exception as exc:
             print(f"[ERROR] {line_id} run failed: {exc}")
             return 1

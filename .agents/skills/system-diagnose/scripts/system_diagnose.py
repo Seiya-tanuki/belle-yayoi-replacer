@@ -417,8 +417,7 @@ def _run_all_lines_mode(repo_root: Path) -> int:
     summary_lines.append("|---|---|---|")
     for line_id, return_code, _, _ in line_results:
         result = "GO" if return_code == 0 else "NO-GO"
-        notes = "template-only check; unimplemented is warn-only" if line_id == "credit_card_statement" else ""
-        summary_lines.append(f"| {line_id} | {result} | {notes} |")
+        summary_lines.append(f"| {line_id} | {result} |  |")
 
     summary_lines.append("")
     summary_lines.append("## 3) Per-line diagnostic reports")
@@ -458,8 +457,7 @@ def _run_all_lines_mode(repo_root: Path) -> int:
     print("Line summary:")
     for line_id, return_code, _, _ in line_results:
         result = "GO" if return_code == 0 else "NO-GO"
-        suffix = " (template-only; unimplemented=warn-only)" if line_id == "credit_card_statement" else ""
-        print(f"- {line_id}: {result}{suffix}")
+        print(f"- {line_id}: {result}")
     print(f"Overall: {go_text}")
     print(f"Report: {summary_path}")
 
@@ -490,7 +488,7 @@ def main() -> int:
     except ValueError as exc:
         print(f"[ERROR] {exc}")
         return 2
-    if line_id != "credit_card_statement" and not is_line_implemented(line_id):
+    if not is_line_implemented(line_id):
         print(f"[ERROR] line is unimplemented: {line_id}")
         return 2
 
@@ -1081,15 +1079,6 @@ def main() -> int:
             s7_evidence,
             "Run $client-cache-builder --line bank_statement --client <CLIENT_ID> for clients with missing cache.",
         )
-    if line_id == "credit_card_statement":
-        add_soft(
-            "S10",
-            "credit_card_statement implementation status (warn-only)",
-            False,
-            "WARN credit_card_statement is currently unimplemented. diagnose validates template structure only.",
-            "Keep using this line for structural/bootstrap diagnostics until implementation is released.",
-        )
-
     # D) BOM / compilation / tests
     d1 = run_and_store("D1", "python tools/bom_guard.py --check")
     bom_ok = d1.returncode == 0 and bool(re.search(r"UTF-8 BOM files:\s*0\b", d1.stdout + d1.stderr))

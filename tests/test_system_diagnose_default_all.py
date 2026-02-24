@@ -115,7 +115,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                         "    raise ValueError(f\"invalid line_id: {line_id!r}\")",
                         "",
                         "def is_line_implemented(line_id: str) -> bool:",
-                        "    return validate_line_id(line_id) in {'receipt', 'bank_statement'}",
+                        "    return validate_line_id(line_id) in {'receipt', 'bank_statement', 'credit_card_statement'}",
                         "",
                     ]
                 ),
@@ -213,7 +213,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             self.assertIn("| receipt | GO |", report_text)
             self.assertIn("| bank_statement | GO |", report_text)
             self.assertIn("| credit_card_statement | GO |", report_text)
-            self.assertIn("template-only check; unimplemented is warn-only", report_text)
+            self.assertNotIn("template-only check; unimplemented is warn-only", report_text)
             self.assertIn("## receipt", report_text)
             self.assertIn("## bank_statement", report_text)
             self.assertIn("## credit_card_statement", report_text)
