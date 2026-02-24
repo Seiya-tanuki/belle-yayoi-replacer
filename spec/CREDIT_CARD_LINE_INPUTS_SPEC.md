@@ -24,6 +24,8 @@ Allowed input directories:
    1. `inputs/kari_shiwake/`
 2. learning teacher:
    1. `inputs/ledger_ref/`
+3. required line config:
+   1. `config/credit_card_line_config.json` must exist; if missing, PLAN must fail-closed (`FAIL`).
 
 ## Contract A (required): single statement per target file
 

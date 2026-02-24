@@ -119,15 +119,16 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
     line_root = repo_root / "clients" / client_id / "lines" / LINE_ID_CC
     cfg_path = line_root / "config" / "credit_card_line_config.json"
 
-    raw: Dict[str, Any] = {}
-    if cfg_path.exists():
-        try:
-            obj = json.loads(cfg_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            raise SystemExit(f"failed to parse credit_card_line_config.json (fail-closed): {cfg_path}: {exc}") from exc
-        if not isinstance(obj, dict):
-            raise SystemExit(f"credit_card_line_config.json must be a JSON object (fail-closed): {cfg_path}")
-        raw = obj
+    if not cfg_path.exists():
+        raise FileNotFoundError(f"missing_cc_config: expected={cfg_path}")
+
+    try:
+        obj = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse credit_card_line_config.json (fail-closed): {cfg_path}: {exc}") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"credit_card_line_config.json must be a JSON object (fail-closed): {cfg_path}")
+    raw: Dict[str, Any] = obj
 
     thresholds_raw = raw.get("thresholds") if isinstance(raw.get("thresholds"), dict) else {}
     merchant_key_account_raw = (

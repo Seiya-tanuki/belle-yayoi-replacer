@@ -19,7 +19,8 @@ from belle.line_runners import (
     run_receipt,
 )
 
-LINE_ORDER = ["receipt", "bank_statement", "credit_card_statement"]
+LINE_ID_CARD = "credit_card_statement"
+LINE_ORDER = ["receipt", "bank_statement", LINE_ID_CARD]
 
 
 def _resolve_config_path(repo_root: Path, config_arg: str) -> Path:
@@ -51,6 +52,27 @@ def _find_plan(plans: list[LinePlan], line_id: str) -> LinePlan | None:
     return None
 
 
+def _expected_cc_config_path(repo_root: Path, client_id: str) -> Path:
+    return repo_root / "clients" / client_id / "lines" / LINE_ID_CARD / "config" / "credit_card_line_config.json"
+
+
+def _enforce_cc_config_required(repo_root: Path, client_id: str, plan: LinePlan) -> LinePlan:
+    if plan.line_id != LINE_ID_CARD or plan.status == "FAIL":
+        return plan
+    expected_path = _expected_cc_config_path(repo_root, client_id)
+    if expected_path.exists():
+        return plan
+    details = dict(plan.details or {})
+    details["expected_cc_config_path"] = str(expected_path)
+    return LinePlan(
+        line_id=plan.line_id,
+        status="FAIL",
+        reason=f"missing_cc_config: expected={expected_path}",
+        target_files=list(plan.target_files),
+        details=details,
+    )
+
+
 def _confirm_or_exit(*, force_yes: bool) -> int:
     if force_yes:
         return 0
@@ -73,7 +95,7 @@ def main() -> int:
     ap.add_argument(
         "--line",
         default="all",
-        choices=["receipt", "bank_statement", "credit_card_statement", "all"],
+        choices=["receipt", "bank_statement", LINE_ID_CARD, "all"],
         help="Document processing line_id",
     )
     ap.add_argument(
@@ -103,7 +125,8 @@ def main() -> int:
         if line_id == "bank_statement":
             plans.append(plan_bank(repo_root, client_id))
             continue
-        plans.append(plan_card(repo_root, client_id))
+        card_plan = plan_card(repo_root, client_id)
+        plans.append(_enforce_cc_config_required(repo_root, client_id, card_plan))
 
     _print_plan(client_id, args.line, plans)
 

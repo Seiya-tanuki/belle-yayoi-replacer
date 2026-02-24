@@ -25,6 +25,14 @@ from .common import LinePlan, compute_target_file_status, list_input_files, reso
 LINE_ID_CARD = "credit_card_statement"
 
 
+def _credit_card_line_config_path(client_dir: Path) -> Path:
+    return client_dir / "config" / "credit_card_line_config.json"
+
+
+def _missing_cc_config_reason(client_dir: Path) -> str:
+    return f"missing_cc_config: expected={_credit_card_line_config_path(client_dir)}"
+
+
 def plan_card(repo_root: Path, client_id: str) -> LinePlan:
     details: dict[str, object] = {}
     try:
@@ -122,6 +130,10 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         }
     if status == "FAIL":
         raise RuntimeError(reason)
+
+    cc_config_path = _credit_card_line_config_path(client_dir)
+    if not cc_config_path.exists():
+        raise RuntimeError(_missing_cc_config_reason(client_dir))
 
     ensure_client_system_dirs(repo_root, client_id, line_id=LINE_ID_CARD)
     try:

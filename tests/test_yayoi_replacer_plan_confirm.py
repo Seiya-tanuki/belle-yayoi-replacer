@@ -13,6 +13,8 @@ from pathlib import Path
 from unittest import mock
 from uuid import uuid4
 
+from belle.line_runners.credit_card_statement import run_card
+
 
 def _load_replacer_script_module(repo_root: Path):
     script_path = repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
@@ -48,6 +50,20 @@ def _prepare_receipt_config(repo_root: Path) -> None:
     (ruleset_dir / "replacer_config_v1_15.json").write_text("{\"version\":\"1.15\"}\n", encoding="utf-8")
 
 
+def _prepare_credit_card_config(repo_root: Path, client_id: str) -> None:
+    cfg_path = (
+        repo_root
+        / "clients"
+        / client_id
+        / "lines"
+        / "credit_card_statement"
+        / "config"
+        / "credit_card_line_config.json"
+    )
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text("{\"schema\":\"belle.credit_card_line_config.v0\"}\n", encoding="utf-8")
+
+
 class YayoiReplacerPlanConfirmTests(unittest.TestCase):
     def test_yayoi_replacer_dry_run_plan_all_ok(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
@@ -55,6 +71,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
             _prepare_line_dirs(temp_repo_root, client_id)
+            _prepare_credit_card_config(temp_repo_root, client_id)
             module = _load_replacer_script_module(real_repo_root)
             module.__file__ = str(
                 temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
@@ -124,6 +141,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
             _prepare_line_dirs(temp_repo_root, client_id)
+            _prepare_credit_card_config(temp_repo_root, client_id)
             module = _load_replacer_script_module(real_repo_root)
             module.__file__ = str(
                 temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
@@ -148,6 +166,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
             receipt_root, _, _ = _prepare_line_dirs(temp_repo_root, client_id)
+            _prepare_credit_card_config(temp_repo_root, client_id)
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "a.csv", summary="A")
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "b.csv", summary="B")
             module = _load_replacer_script_module(real_repo_root)
@@ -168,6 +187,62 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
             self.assertEqual(1, rc, msg=out)
             self.assertIn("receipt: FAIL (multiple target inputs)", out)
             self.assertIn("[ERROR] PLAN contains FAIL.", out)
+
+    def test_yayoi_replacer_plan_fails_when_cc_config_missing(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C1"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            _prepare_line_dirs(temp_repo_root, client_id)
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            expected_cfg = (
+                temp_repo_root
+                / "clients"
+                / client_id
+                / "lines"
+                / "credit_card_statement"
+                / "config"
+                / "credit_card_line_config.json"
+            )
+            buf = io.StringIO()
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_yayoi_replacer.py", "--client", client_id, "--line", "credit_card_statement", "--dry-run"],
+            ):
+                with contextlib.redirect_stdout(buf):
+                    rc = module.main()
+
+            out = buf.getvalue()
+            self.assertEqual(1, rc, msg=out)
+            self.assertIn("credit_card_statement: FAIL", out)
+            self.assertIn(f"missing_cc_config: expected={expected_cfg}", out)
+            self.assertIn("[ERROR] PLAN contains FAIL.", out)
+
+    def test_run_card_fails_fast_when_cc_config_missing(self) -> None:
+        client_id = "C1"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            _, _, card_root = _prepare_line_dirs(repo_root, client_id)
+            _write_yayoi_row(card_root / "inputs" / "kari_shiwake" / "target.csv", summary="CARD TARGET")
+
+            expected_cfg = (
+                repo_root
+                / "clients"
+                / client_id
+                / "lines"
+                / "credit_card_statement"
+                / "config"
+                / "credit_card_line_config.json"
+            )
+            with self.assertRaises(RuntimeError) as ctx:
+                run_card(repo_root, client_id)
+            self.assertIn(f"missing_cc_config: expected={expected_cfg}", str(ctx.exception))
+            self.assertFalse((card_root / "outputs" / "runs").exists())
 
 
 if __name__ == "__main__":
