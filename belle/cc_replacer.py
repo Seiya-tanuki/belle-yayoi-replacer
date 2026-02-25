@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv as csv_lib
-import hashlib
 import json
 import re
 import unicodedata
@@ -14,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 from .build_cc_cache import merchant_key_from_summary
 from .cc_cache import CCClientCache, ValueStatsEntry
 from .client_cache import StatsEntry
+from belle.fs_utils import sha256_file_chunked
 from .paths import get_input_manifest_path, get_review_report_path
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
@@ -74,14 +74,7 @@ class CCRowDecision:
 
 
 def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as fh:
-        while True:
-            chunk = fh.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
+    return sha256_file_chunked(path)
 
 
 def normalize_name(text: str) -> str:

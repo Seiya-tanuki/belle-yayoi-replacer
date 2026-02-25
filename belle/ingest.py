@@ -19,8 +19,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Any, List, Tuple, Optional
 import json
-import hashlib
 import shutil
+
+from belle.fs_utils import sha256_file_chunked
 
 from .io_atomic import atomic_write_text
 
@@ -30,11 +31,7 @@ def now_utc_compact() -> str:
 
 
 def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        for chunk in iter(lambda: f.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+    return sha256_file_chunked(path)
 
 
 def _atomic_write_json(path: Path, obj: Dict[str, Any]) -> None:

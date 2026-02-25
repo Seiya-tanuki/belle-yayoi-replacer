@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import csv as csv_lib
-import hashlib
 import json
 import math
 import re
@@ -28,6 +27,7 @@ from .bank_pairing import (
     normalize_kana_key,
     parse_amount,
 )
+from belle.fs_utils import sha256_file_chunked
 from .paths import get_input_manifest_path, get_review_report_path
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
@@ -122,14 +122,7 @@ class _BankSubEval:
 
 
 def sha256_file(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as f:
-        while True:
-            chunk = f.read(1024 * 1024)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
+    return sha256_file_chunked(path)
 
 
 def confidence(strength: float, p_majority: float, sample_total: int) -> float:

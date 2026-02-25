@@ -4,11 +4,12 @@ from __future__ import annotations
 import csv as csv_lib
 import json
 import math
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+from belle.fs_utils import sha256_file_chunked
 
 from .yayoi_csv import read_yayoi_csv, write_yayoi_csv, token_to_text, text_to_token, YayoiCSV
 from .text import extract_t_number, vendor_key_from_summary
@@ -39,7 +40,7 @@ class RowDecision:
 
 
 def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return sha256_file_chunked(path)
 
 
 def _confidence(strength: float, p_majority: float, sample_total: int) -> float:
