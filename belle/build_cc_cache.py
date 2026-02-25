@@ -10,7 +10,7 @@ import unicodedata
 
 from .cc_cache import CCClientCache, LINE_ID_CC, SCHEMA_CC_CLIENT_CACHE_V0, ValueStatsEntry
 from .client_cache import StatsEntry
-from .stats_utils import ensure_stats_entry
+from .stats_utils import ensure_stats_entry, ensure_value_stats_entry
 from .ingest import ingest_csv_dir
 from .paths import (
     ensure_client_system_dirs,
@@ -266,9 +266,7 @@ def _ensure_stats_entry(stats_map: Dict[str, StatsEntry], key: str) -> StatsEntr
 
 
 def _ensure_value_stats_entry(stats_map: Dict[str, ValueStatsEntry], key: str) -> ValueStatsEntry:
-    if key not in stats_map:
-        stats_map[key] = ValueStatsEntry.empty()
-    return stats_map[key]
+    return ensure_value_stats_entry(stats_map, key)
 
 
 def _canonical_counter_set(value: Any) -> List[str]:
