@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from belle.io_atomic import atomic_write_text
 from belle.paths import (
     build_input_artifact_prefix,
     ensure_client_system_dirs,
@@ -16,6 +15,7 @@ from belle.paths import (
     get_latest_path,
     make_run_dir,
 )
+from belle.runner_io import update_latest_run_id, write_json_atomic, write_text_atomic
 
 try:
     from belle.build_bank_cache import ensure_bank_client_cache_updated, load_bank_line_config
@@ -284,13 +284,10 @@ def run_bank(
         "outputs": [bank_output_manifest],
     }
     run_manifest_path = run_dir / "run_manifest.json"
-    atomic_write_text(
-        run_manifest_path,
-        json.dumps(run_manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    latest_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(latest_path, f"{run_id}\n", encoding="utf-8")
+    # Preserve historical formatting parity: run_manifest.json has no trailing newline.
+    run_manifest_text = json.dumps(run_manifest, ensure_ascii=False, indent=2)
+    write_text_atomic(run_manifest_path, run_manifest_text, encoding="utf-8")
+    update_latest_run_id(latest_path, run_id)
 
     print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs=1")
     print(f"[OK] run_dir={run_dir}")
