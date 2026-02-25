@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, TypeVar
 import re
 import unicodedata
 
+from .yayoi_text import safe_cell_text
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_AMOUNT,
@@ -20,7 +21,7 @@ from .yayoi_columns import (
     COL_MEMO,
     COL_SUMMARY,
 )
-from .yayoi_csv import read_yayoi_csv, token_to_text
+from .yayoi_csv import read_yayoi_csv
 
 JoinKey = Tuple[str, str, int]
 _SEPARATOR_RE = re.compile(
@@ -33,12 +34,7 @@ _YMD_COMPACT_RE = re.compile(r"^(\d{8})$")
 
 
 def _safe_text(tokens: Sequence[bytes], idx: int, encoding: str) -> str:
-    if idx < 0 or idx >= len(tokens):
-        return ""
-    tok = tokens[idx]
-    if isinstance(tok, bytes):
-        return token_to_text(tok, encoding)
-    return str(tok)
+    return safe_cell_text(tokens, idx, encoding)
 
 
 def _normalize_name_for_match(text: str) -> str:

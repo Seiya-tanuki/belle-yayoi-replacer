@@ -15,6 +15,7 @@ from .cc_cache import CCClientCache, ValueStatsEntry
 from .client_cache import StatsEntry
 from belle.fs_utils import sha256_file_chunked
 from .paths import get_input_manifest_path, get_review_report_path
+from .yayoi_text import safe_cell_text, set_cell_text
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_SUBACCOUNT,
@@ -22,7 +23,7 @@ from .yayoi_columns import (
     COL_DEBIT_SUBACCOUNT,
     COL_SUMMARY,
 )
-from .yayoi_csv import read_yayoi_csv, text_to_token, token_to_text, write_yayoi_csv
+from .yayoi_csv import read_yayoi_csv, write_yayoi_csv
 
 _NONE_EVIDENCE = "none"
 _FILE_INFERRED_EVIDENCE = "file_inferred"
@@ -83,18 +84,13 @@ def normalize_name(text: str) -> str:
 
 
 def _safe_text(tokens: Sequence[bytes], idx: int, encoding: str) -> str:
-    if idx < 0 or idx >= len(tokens):
-        return ""
-    tok = tokens[idx]
-    if isinstance(tok, bytes):
-        return token_to_text(tok, encoding)
-    return str(tok)
+    return safe_cell_text(tokens, idx, encoding)
 
 
 def _set_text(tokens: List[bytes], idx: int, encoding: str, new_text: str) -> None:
     if idx < 0 or idx >= len(tokens):
         return
-    tokens[idx] = text_to_token(new_text, encoding, template_token=tokens[idx])
+    set_cell_text(tokens, idx, encoding, new_text)
 
 
 def _as_int(value: Any, default: int) -> int:

@@ -29,6 +29,7 @@ from .bank_pairing import (
 )
 from belle.fs_utils import sha256_file_chunked
 from .paths import get_input_manifest_path, get_review_report_path
+from .yayoi_text import safe_cell_text
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_AMOUNT,
@@ -40,7 +41,7 @@ from .yayoi_columns import (
     COL_DEBIT_TAX_DIVISION,
     COL_SUMMARY,
 )
-from .yayoi_csv import read_yayoi_csv, text_to_token, token_to_text, write_yayoi_csv
+from .yayoi_csv import read_yayoi_csv, text_to_token, write_yayoi_csv
 
 _NONE_EVIDENCE = "none"
 _BANK_SUB_STRONG_EVIDENCE = "bank_sub_kana_sign_amount"
@@ -132,12 +133,7 @@ def confidence(strength: float, p_majority: float, sample_total: int) -> float:
 
 
 def _safe_text(tokens: Sequence[bytes], idx: int, encoding: str) -> str:
-    if idx < 0 or idx >= len(tokens):
-        return ""
-    tok = tokens[idx]
-    if isinstance(tok, bytes):
-        return token_to_text(tok, encoding)
-    return str(tok)
+    return safe_cell_text(tokens, idx, encoding)
 
 
 def _normalize_name_for_match(text: str) -> str:
