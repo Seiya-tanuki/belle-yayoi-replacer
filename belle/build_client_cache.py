@@ -23,6 +23,7 @@ from .yayoi_csv import read_yayoi_csv, token_to_text
 from .text import extract_t_number, vendor_key_from_summary
 from .lexicon import Lexicon, match_summary
 from .client_cache import ClientCache, StatsEntry
+from .stats_utils import ensure_stats_entry
 from .ingest import ingest_csv_dir
 from .paths import (
     ensure_client_system_dirs,
@@ -80,9 +81,7 @@ def _thresholds_from_config(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _ensure_stats_entry(d: Dict[str, StatsEntry], key: str) -> StatsEntry:
-    if key not in d:
-        d[key] = StatsEntry.empty()
-    return d[key]
+    return ensure_stats_entry(d, key)
 
 
 def _ensure_nested_stats(d: Dict[str, Dict[str, StatsEntry]], k1: str, k2: str) -> StatsEntry:

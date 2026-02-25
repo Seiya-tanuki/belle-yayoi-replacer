@@ -10,6 +10,7 @@ import unicodedata
 
 from .cc_cache import CCClientCache, LINE_ID_CC, SCHEMA_CC_CLIENT_CACHE_V0, ValueStatsEntry
 from .client_cache import StatsEntry
+from .stats_utils import ensure_stats_entry
 from .ingest import ingest_csv_dir
 from .paths import (
     ensure_client_system_dirs,
@@ -261,9 +262,7 @@ def _thresholds_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _ensure_stats_entry(stats_map: Dict[str, StatsEntry], key: str) -> StatsEntry:
-    if key not in stats_map:
-        stats_map[key] = StatsEntry.empty()
-    return stats_map[key]
+    return ensure_stats_entry(stats_map, key)
 
 
 def _ensure_value_stats_entry(stats_map: Dict[str, ValueStatsEntry], key: str) -> ValueStatsEntry:
