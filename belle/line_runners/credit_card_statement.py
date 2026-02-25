@@ -9,7 +9,6 @@ from typing import Any
 from belle.build_cc_cache import ensure_cc_client_cache_updated, load_credit_card_line_config
 from belle.cc_replacer import replace_credit_card_yayoi_csv
 from belle.ingest import ingest_single_file
-from belle.io_atomic import atomic_write_text
 from belle.paths import (
     build_input_artifact_prefix,
     ensure_client_system_dirs,
@@ -19,6 +18,7 @@ from belle.paths import (
     get_latest_path,
     make_run_dir,
 )
+from belle.runner_io import update_latest_run_id, write_text_atomic
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
 
@@ -104,11 +104,8 @@ def _ingest_single_kari_input(*, repo_root: Path, client_id: str, client_dir: Pa
 
 
 def _write_run_manifest(run_manifest_path: Path, run_manifest: dict[str, Any]) -> None:
-    atomic_write_text(
-        run_manifest_path,
-        json.dumps(run_manifest, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    run_manifest_text = json.dumps(run_manifest, ensure_ascii=False, indent=2)
+    write_text_atomic(run_manifest_path, run_manifest_text, encoding="utf-8")
 
 
 def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
@@ -205,7 +202,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     run_manifest_path = run_dir / "run_manifest.json"
     _write_run_manifest(run_manifest_path, run_manifest)
     latest_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(latest_path, f"{run_id}\n", encoding="utf-8")
+    update_latest_run_id(latest_path, run_id)
 
     print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs=1")
     print(f"[OK] run_dir={run_dir}")
