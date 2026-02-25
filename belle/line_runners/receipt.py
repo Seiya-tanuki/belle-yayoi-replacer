@@ -15,7 +15,6 @@ from belle.defaults import (
     merge_effective_defaults,
 )
 from belle.ingest import ingest_single_file
-from belle.io_atomic import atomic_write_text
 from belle.lexicon import load_lexicon
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.lines import line_asset_paths
@@ -29,6 +28,7 @@ from belle.paths import (
     make_run_dir,
 )
 from belle.replacer import replace_yayoi_csv
+from belle.runner_io import update_latest_run_id, write_text_atomic
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
 
@@ -255,13 +255,13 @@ def run_receipt(
         run_manifest["warnings"] = warnings
 
     run_manifest_path = run_dir / "run_manifest.json"
-    atomic_write_text(
+    write_text_atomic(
         run_manifest_path,
         json.dumps(run_manifest, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
     latest_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_text(latest_path, f"{run_id}\n", encoding="utf-8")
+    update_latest_run_id(latest_path, run_id)
 
     print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs={len(run_manifest['outputs'])}")
     print(f"[OK] run_dir={run_dir}")
