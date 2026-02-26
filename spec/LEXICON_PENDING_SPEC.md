@@ -2,14 +2,15 @@
 
 ## Purpose
 
-`lexicon/<line_id>/pending/label_queue.csv` is the per-line queue of unknown terms that were observed in client ledgers but are not yet covered by `lexicon/lexicon.json`.
+`lexicon/receipt/pending/label_queue.csv` is the receipt-only queue of unknown terms
+that were observed in client ledgers but are not yet covered by `lexicon/lexicon.json`.
 
 This queue supports:
 1. Cumulative unknown-term collection (append-only counts)
 2. Human labeling (`action=ADD`)
 3. Deterministic application into `lexicon/lexicon.json`
 
-## Files (receipt in Phase 1)
+## Files (receipt-only in Phase D)
 
 1. `lexicon/receipt/pending/label_queue.csv`
 2. `lexicon/receipt/pending/label_queue_state.json`
@@ -20,6 +21,10 @@ This queue supports:
 1. integrated autogrow in `$yayoi-replacer`
 2. manual `$lexicon-extract`
 3. `$lexicon-apply`
+
+Out of scope for this queue:
+1. `credit_card_statement` does not use label queue/autogrow.
+2. `bank_statement` does not use lexicon category routing/autogrow.
 
 ## Queue CSV schema (stable)
 

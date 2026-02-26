@@ -76,17 +76,22 @@ Related specs:
 ## Line-specific source policy
 
 1. `receipt` uses `inputs/ledger_ref/` and `artifacts/ingest/ledger_ref*/` for incremental ingest/cache updates.
+   1. Lexicon category routing is enabled (primary).
+   2. Pending queue/autogrow path is `lexicon/receipt/pending/`.
 2. `bank_statement` MUST NOT use any `ledger_ref` path; it uses only:
    1. `inputs/training/ocr_kari_shiwake/`
    2. `inputs/training/reference_yayoi/`
    3. `inputs/kari_shiwake/`
    4. `artifacts/ingest/training_ocr/` + `training_ocr_ingested.json`
    5. `artifacts/ingest/training_reference/` + `training_reference_ingested.json`
+   6. Lexicon category routing is not wired.
 3. `credit_card_statement` uses line-scoped inputs:
    1. `inputs/kari_shiwake/` (target; `0 => SKIP`, `1 => RUN`, `2+ => FAIL`)
    2. `inputs/ledger_ref/` (append-only historical teacher input)
    3. Contract A is required (one statement per target file).
    4. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
+   5. Lexicon category routing is fallback-only (secondary to merchant-key routing).
+   6. Per-client overrides path is `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`.
 
 ## bank_statement forbidden paths (explicit)
 
@@ -97,10 +102,12 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 ## Shared assets (tracked)
 
 1. `lexicon/lexicon.json`
-2. `defaults/<line_id>/category_defaults.json`
-3. `rulesets/<line_id>/replacer_config_v1_15.json`
-4. `lexicon/<line_id>/pending/.gitkeep`
-5. `lexicon/<line_id>/pending/locks/.gitkeep`
+2. `defaults/receipt/category_defaults.json`
+3. `defaults/credit_card_statement/category_defaults.json`
+4. `defaults/bank_statement/category_defaults.json` (tracked, but bank lexicon routing is not wired)
+5. `rulesets/<line_id>/replacer_config_v1_15.json`
+6. `lexicon/<line_id>/pending/.gitkeep`
+7. `lexicon/<line_id>/pending/locks/.gitkeep`
 
 ## Runtime-managed assets (ignored)
 

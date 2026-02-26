@@ -65,10 +65,15 @@
 2. Decisions must be deterministic from local data (`lexicon/lexicon.json`, `clients/<CLIENT_ID>/.../artifacts/*`, and local inputs).
 
 ## 5) Source Files and Cache
-1. Shared lexicon source of truth (receipt in Phase 1): `lexicon/lexicon.json` (core + learned).
-2. Pending queue (occasionally edited by users): `lexicon/<line_id>/pending/label_queue.csv`.
-3. Default account mappings: `defaults/<line_id>/category_defaults.json`.
-4. Client delta cache: `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`.
+1. Shared lexicon source of truth: `lexicon/lexicon.json` (core + learned).
+2. Lexicon line usage:
+   1. `receipt`: primary category inference source.
+   2. `credit_card_statement`: category fallback only (secondary to merchant-key routing).
+   3. `bank_statement`: lexicon category routing is not wired.
+3. Pending queue (receipt-only, occasionally edited by users): `lexicon/receipt/pending/label_queue.csv`.
+4. Default account mappings: `defaults/<line_id>/category_defaults.json`.
+5. category_overrides (best-effort): `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` for `receipt` and `credit_card_statement`.
+6. Client delta cache: `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`.
    1. `client_cache` is append-only incremental state (no destructive rebuild by default).
    2. receipt ledger_ref ingest/application state is tracked by `artifacts/ingest/ledger_ref_ingested.json` and `client_cache.applied_ledger_ref_sha256`.
    3. bank_statement ingest/application state is tracked by `artifacts/ingest/training_ocr_ingested.json`, `artifacts/ingest/training_reference_ingested.json`, and bank cache metadata.

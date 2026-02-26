@@ -14,7 +14,7 @@ from pathlib import Path
 FORBIDDEN_CHARS = set('\\/:*?"<>|')
 RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
 REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
-ALWAYS_INITIALIZED_LINES = ("receipt", "bank_statement")
+CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
 
 BANK_LINE_CONFIG_MINIMAL = {
     "schema": "belle.bank_line_config.v0",
@@ -163,7 +163,7 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
-def _initialize_receipt_category_overrides(repo_root: Path, client_id: str, line_id: str) -> None:
+def _initialize_category_overrides(repo_root: Path, client_id: str, line_id: str) -> None:
     from belle.defaults import generate_full_category_overrides, load_category_defaults
     from belle.lexicon import load_lexicon
     from belle.lines import line_asset_paths
@@ -197,10 +197,10 @@ def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Pa
     )
 
 
-def _verify_template_contract(template_dir: Path) -> tuple[list[Path], list[Path]]:
+def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> tuple[list[Path], list[Path]]:
     missing_line_roots: list[Path] = []
     missing_required_dirs: list[Path] = []
-    for line_id in REGISTER_LINES:
+    for line_id in line_ids:
         line_root = template_dir / "lines" / line_id
         if not line_root.exists() or not line_root.is_dir():
             missing_line_roots.append(line_root)
@@ -210,20 +210,51 @@ def _verify_template_contract(template_dir: Path) -> tuple[list[Path], list[Path
     return missing_line_roots, missing_required_dirs
 
 
-def _print_created_paths() -> None:
-    print("- 置換入力: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
-    print("- 参照入力: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")
-    print("- 上書き設定: clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json")
-    print("- 学習入力(ocr): clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/")
-    print("- 学習入力(弥生): clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/")
-    print("- 置換入力: clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/")
-    print("- ライン設定: clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json")
-    print("- ライン: clients/<CLIENT_ID>/lines/credit_card_statement/")
+def _selected_lines(line_arg: str) -> tuple[str, ...]:
+    normalized = str(line_arg or "all").strip().lower()
+    if normalized == "all":
+        return REGISTER_LINES
+    if normalized in REGISTER_LINES:
+        return (normalized,)
+    raise ValueError(f"unsupported --line value: {line_arg!r}")
+
+
+def _prune_unselected_lines(destination: Path, selected_lines: tuple[str, ...]) -> None:
+    lines_root = destination / "lines"
+    selected = set(selected_lines)
+    for line_id in REGISTER_LINES:
+        if line_id in selected:
+            continue
+        stale_root = lines_root / line_id
+        if stale_root.exists():
+            shutil.rmtree(stale_root)
+
+
+def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
+    if "receipt" in selected_lines:
+        print("- receipt: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
+        print("- receipt: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")
+        print("- receipt: clients/<CLIENT_ID>/lines/receipt/config/category_overrides.json")
+    if "bank_statement" in selected_lines:
+        print("- bank_statement: clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/")
+        print("- bank_statement: clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/")
+        print("- bank_statement: clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/")
+        print("- bank_statement: clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json")
+    if "credit_card_statement" in selected_lines:
+        print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/")
+        print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json")
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.parse_args()
+    parser.add_argument(
+        "--line",
+        default="all",
+        choices=("all",) + REGISTER_LINES,
+        help="Provision target line. Default: all lines.",
+    )
+    args = parser.parse_args()
+    selected_lines = _selected_lines(args.line)
 
     repo_root = Path(__file__).resolve().parents[3]
     clients_dir = repo_root / "clients"
@@ -234,9 +265,9 @@ def main() -> int:
         sys.path.insert(0, str(repo_root))
     from belle.lines import is_line_implemented
 
-    for line_id in ALWAYS_INITIALIZED_LINES:
+    for line_id in selected_lines:
         if not is_line_implemented(line_id):
-            print(f"[ERROR] line is unimplemented in Phase 1: {line_id}")
+            print(f"[ERROR] line is unimplemented: {line_id}")
             return 2
 
     if legacy_tenants_dir.exists():
@@ -246,7 +277,7 @@ def main() -> int:
         print("[ERROR] `clients/TEMPLATE/` is missing.")
         return 2
 
-    missing_line_roots, missing_required_dirs = _verify_template_contract(template_dir)
+    missing_line_roots, missing_required_dirs = _verify_template_contract(template_dir, selected_lines)
     if missing_line_roots:
         print("[ERROR] Required line roots are missing under `clients/TEMPLATE/lines/`.")
         for p in missing_line_roots:
@@ -258,10 +289,10 @@ def main() -> int:
             print(f"  - {_display_path(p, repo_root)}")
         return 2
 
-    print("新しいクライアントディレクトリを作成します。")
-    print("`clients/TEMPLATE/` を `clients/<CLIENT_ID>/` にコピーします。")
-    print("スペースは `_` に正規化されます。")
-    user_input = input("登録する名前(CLIENT_ID): ")
+    print("Create a new client directory.")
+    print("Copy `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.")
+    print("Spaces in CLIENT_ID are canonicalized to `_`.")
+    user_input = input("Enter CLIENT_ID: ")
     result = validate_and_canonicalize(user_input)
 
     if not result.ok:
@@ -269,12 +300,12 @@ def main() -> int:
         return 1
 
     if result.trimmed != result.canonical:
-        print(f"入力値: {result.trimmed}")
-        print(f"正規化: {result.canonical}")
+        print(f"Input: {result.trimmed}")
+        print(f"Canonical: {result.canonical}")
         if result.substantial_change:
-            answer = input("この正規化結果で登録しますか? [y/N]: ").strip().lower()
+            answer = input("Proceed with canonicalized CLIENT_ID? [y/N]: ").strip().lower()
             if answer not in {"y", "yes"}:
-                print("登録を中止しました。")
+                print("Cancelled.")
                 return 1
     else:
         print(f"CLIENT_ID: {result.canonical}")
@@ -286,33 +317,40 @@ def main() -> int:
 
     shutil.copytree(template_dir, destination)
     (destination / "config").mkdir(parents=True, exist_ok=True)
+    _prune_unselected_lines(destination, selected_lines)
 
-    try:
-        _initialize_receipt_category_overrides(repo_root, result.canonical, "receipt")
-    except Exception as exc:
-        print("[ERROR] Failed to initialize category_overrides.json.")
-        print(f"[ERROR] {exc}")
-        return 2
+    for line_id in selected_lines:
+        if line_id not in CATEGORY_OVERRIDES_LINES:
+            continue
+        try:
+            _initialize_category_overrides(repo_root, result.canonical, line_id)
+        except Exception as exc:
+            print(f"[ERROR] Failed to initialize category_overrides.json for line={line_id}.")
+            print(f"[ERROR] {exc}")
+            return 2
 
-    bank_template_line_root = template_dir / "lines" / "bank_statement"
-    bank_destination_line_root = destination / "lines" / "bank_statement"
-    try:
-        _ensure_bank_line_config(bank_template_line_root, bank_destination_line_root)
-    except Exception as exc:
-        print("[ERROR] Failed to initialize bank_line_config.json.")
-        print(f"[ERROR] {exc}")
-        return 2
+    if "bank_statement" in selected_lines:
+        bank_template_line_root = template_dir / "lines" / "bank_statement"
+        bank_destination_line_root = destination / "lines" / "bank_statement"
+        try:
+            _ensure_bank_line_config(bank_template_line_root, bank_destination_line_root)
+        except Exception as exc:
+            print("[ERROR] Failed to initialize bank_line_config.json.")
+            print(f"[ERROR] {exc}")
+            return 2
 
-    credit_card_line_root = destination / "lines" / "credit_card_statement"
-    if not credit_card_line_root.exists() or not credit_card_line_root.is_dir():
-        print("[ERROR] credit_card_statement line directory is missing after registration.")
-        return 2
+    for line_id in selected_lines:
+        line_root = destination / "lines" / line_id
+        if not line_root.exists() or not line_root.is_dir():
+            print(f"[ERROR] {line_id} line directory is missing after registration.")
+            return 2
 
     created_path = _display_path(destination, repo_root)
-    print(f"[OK] 作成完了: {created_path}")
-    _print_created_paths()
+    print(f"[OK] Created: {created_path}")
+    _print_created_paths(selected_lines)
     return 0
 
 
 if __name__ == "__main__":
     sys.exit(main())
+

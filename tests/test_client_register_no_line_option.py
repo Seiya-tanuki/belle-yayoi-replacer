@@ -34,7 +34,7 @@ def _prepare_template(real_repo_root: Path, repo_root: Path) -> None:
     shutil.copytree(src, dst)
 
 
-def _prepare_receipt_assets(repo_root: Path) -> None:
+def _prepare_shared_assets(repo_root: Path) -> None:
     _write_json(
         repo_root / "defaults" / "receipt" / "category_defaults.json",
         {
@@ -50,6 +50,27 @@ def _prepare_receipt_assets(repo_root: Path) -> None:
             },
             "global_fallback": {
                 "debit_account": "莉ｮ謇暮≡",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
+    )
+    _write_json(
+        repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+        {
+            "schema": "belle.category_defaults.v1",
+            "version": "0.1",
+            "defaults": {
+                "misc": {
+                    "debit_account": "鬮ｮ鬘鯉ｽｲ・ｻ",
+                    "confidence": 0.7,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
+            },
+            "global_fallback": {
+                "debit_account": "闔会ｽｮ隰・坩竕｡",
                 "confidence": 0.35,
                 "priority": "HIGH",
                 "reason_code": "global_fallback",
@@ -106,7 +127,7 @@ class ClientRegisterNoLineOptionTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
-            _prepare_receipt_assets(repo_root)
+            _prepare_shared_assets(repo_root)
             module = _load_register_module(self.real_repo_root)
 
             rc, output = _run_register(module, repo_root, client_id="C_ALL_LINES")
@@ -121,6 +142,11 @@ class ClientRegisterNoLineOptionTests(unittest.TestCase):
             self.assertFalse((bank_root / "inputs" / "ledger_ref").exists())
             self.assertFalse((bank_root / "artifacts" / "ingest" / "ledger_ref").exists())
             self.assertTrue((bank_root / "config" / "bank_line_config.json").exists())
+            self.assertTrue((client_root / "lines" / "receipt" / "config" / "category_overrides.json").exists())
+            self.assertTrue(
+                (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
+            )
+            self.assertFalse((client_root / "lines" / "bank_statement" / "config" / "category_overrides.json").exists())
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

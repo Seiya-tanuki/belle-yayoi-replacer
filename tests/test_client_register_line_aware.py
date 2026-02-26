@@ -34,7 +34,7 @@ def _prepare_template(real_repo_root: Path, repo_root: Path) -> None:
     shutil.copytree(src, dst)
 
 
-def _prepare_receipt_assets(repo_root: Path) -> None:
+def _prepare_shared_assets(repo_root: Path) -> None:
     _write_json(
         repo_root / "defaults" / "receipt" / "category_defaults.json",
         {
@@ -50,6 +50,27 @@ def _prepare_receipt_assets(repo_root: Path) -> None:
             },
             "global_fallback": {
                 "debit_account": "仮払金",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
+    )
+    _write_json(
+        repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+        {
+            "schema": "belle.category_defaults.v1",
+            "version": "0.1",
+            "defaults": {
+                "misc": {
+                    "debit_account": "髮題ｲｻ",
+                    "confidence": 0.7,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
+            },
+            "global_fallback": {
+                "debit_account": "莉ｮ謇暮≡",
                 "confidence": 0.35,
                 "priority": "HIGH",
                 "reason_code": "global_fallback",
@@ -78,7 +99,7 @@ def _prepare_receipt_assets(repo_root: Path) -> None:
     )
 
 
-def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]:
+def _run_register(module, repo_root: Path, *, client_id: str, line: str | None = None) -> tuple[int, str]:
     fake_script_path = repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
     fake_script_path.parent.mkdir(parents=True, exist_ok=True)
     module.__file__ = str(fake_script_path)
@@ -86,7 +107,10 @@ def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]
     output_buffer = io.StringIO()
     original_sys_path = list(sys.path)
     try:
-        with mock.patch.object(sys, "argv", ["register_client.py"]):
+        argv = ["register_client.py"]
+        if line is not None:
+            argv.extend(["--line", line])
+        with mock.patch.object(sys, "argv", argv):
             with mock.patch("builtins.input", side_effect=[client_id]):
                 with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
                     rc = module.main()
@@ -106,7 +130,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
-            _prepare_receipt_assets(repo_root)
+            _prepare_shared_assets(repo_root)
             module = _load_register_module(self.real_repo_root)
 
             self.assertFalse((repo_root / "lexicon" / "bank_statement" / "lexicon.json").exists())
@@ -137,6 +161,10 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertFalse((bank_root / "config" / "category_overrides.json").exists())
 
             self.assertTrue((client_root / "lines" / "receipt" / "inputs" / "kari_shiwake").is_dir())
+            self.assertTrue((client_root / "lines" / "receipt" / "config" / "category_overrides.json").exists())
+            self.assertTrue(
+                (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -145,7 +173,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
-            _prepare_receipt_assets(repo_root)
+            _prepare_shared_assets(repo_root)
             (repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement" / "config" / "bank_line_config.json").unlink()
             module = _load_register_module(self.real_repo_root)
 
@@ -187,7 +215,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
-            _prepare_receipt_assets(repo_root)
+            _prepare_shared_assets(repo_root)
             module = _load_register_module(self.real_repo_root)
 
             rc, output = _run_register(
@@ -209,6 +237,32 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertTrue(overrides_path.exists())
             overrides_obj = json.loads(overrides_path.read_text(encoding="utf-8"))
             self.assertIn("misc", (overrides_obj.get("overrides") or {}))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_line_option_creates_only_cc_line_with_overrides(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_cc_only_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_CC_ONLY",
+                line="credit_card_statement",
+            )
+            self.assertEqual(0, rc, msg=output)
+
+            client_root = repo_root / "clients" / "C_CC_ONLY"
+            self.assertFalse((client_root / "lines" / "receipt").exists())
+            self.assertFalse((client_root / "lines" / "bank_statement").exists())
+            self.assertTrue((client_root / "lines" / "credit_card_statement").is_dir())
+            self.assertTrue(
+                (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

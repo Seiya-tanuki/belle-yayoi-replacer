@@ -4,6 +4,10 @@
 
 `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` is a per-client, per-line editable overlay for debit account defaults.
 The generated file is full-expanded (all `category_key`s), but runtime loading is best-effort and may apply only valid rows.
+Phase D line scope:
+1. `receipt`: used.
+2. `credit_card_statement`: used.
+3. `bank_statement`: not used.
 
 ## Schema
 
@@ -37,7 +41,7 @@ Top-level keys:
 ## Runtime validation semantics (best-effort)
 
 1. Missing file:
-   1. Receipt runtime auto-generates a full-expanded file, then loads best-effort.
+   1. `receipt` and `credit_card_statement` runtimes auto-generate a full-expanded file, then load best-effort.
    2. If still unavailable, continue with empty overrides.
 2. UTF-8 BOM at file head:
    1. BOM is removed in-place and loading continues.
@@ -59,6 +63,7 @@ Top-level keys:
 3. Build `effective_defaults` by replacing only `debit_account` for validated override keys.
 4. Keep global `confidence`, `priority`, `reason_code`, and `global_fallback` unchanged.
 5. For keys without a valid override, use global defaults/global fallback.
+6. This merge contract applies to both `receipt` and `credit_card_statement`.
 
 ## Warnings and manifest
 

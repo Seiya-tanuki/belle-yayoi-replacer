@@ -1,12 +1,18 @@
 # LEXICON_SPEC (belle.lexicon.v1)
 
 ## Purpose
-`lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text (Yayoi summary / 摘要)
-to a **category**. Categories are later mapped to debit accounts via:
+`lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text
+(Yayoi summary text) to a **category**. Categories are later mapped to debit accounts via:
 1) per-client+line `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` (learned from historical journals), and
 2) global `defaults/<line_id>/category_defaults.json` (fallback).
 
 This lexicon must be usable **offline** (no network).
+
+## Line usage contract (Phase D)
+1. `receipt` uses lexicon category inference as primary routing.
+2. `credit_card_statement` uses lexicon for category fallback only (secondary to merchant-key routing).
+3. `bank_statement` does not use lexicon category routing.
+4. `label_queue.csv` workflow is receipt-only and is specified in `spec/LEXICON_PENDING_SPEC.md`.
 
 ## Core design choice
 The category label (e.g. `CONVENIENCE_STORE`) is **not** used to "generate" vendor names.
@@ -85,4 +91,3 @@ User labeling is required for many learned terms.
 ## External references
 Any URLs / external reference sources MUST NOT be required for runtime.
 They are stored separately in `spec/LEXICON_SOURCES.md` (documentation only).
-
