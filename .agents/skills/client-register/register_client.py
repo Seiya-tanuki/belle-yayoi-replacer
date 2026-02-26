@@ -29,6 +29,7 @@ BANK_LINE_CONFIG_MINIMAL = {
     "thresholds": {
         "kana_sign_amount": {"min_count": 2, "min_p_majority": 0.85},
         "kana_sign": {"min_count": 3, "min_p_majority": 0.80},
+        "file_level_bank_sub_inference": {"min_votes": 3, "min_p_majority": 0.9},
     },
     "notes": {
         "status": "template_only_not_used_yet",

@@ -411,9 +411,11 @@ def _resolve_file_bank_sub_inference_thresholds(config: Dict[str, Any]) -> Dict[
                 if isinstance(nested, dict):
                     raw = nested
 
-    min_votes = max(1, _as_int(raw.get("min_votes"), _FILE_BANK_SUB_MIN_VOTES_DEFAULT))
+    min_votes = _as_int(raw.get("min_votes"), _FILE_BANK_SUB_MIN_VOTES_DEFAULT)
+    if min_votes < 1:
+        min_votes = _FILE_BANK_SUB_MIN_VOTES_DEFAULT
     min_p_majority = _as_float(raw.get("min_p_majority"), _FILE_BANK_SUB_MIN_P_MAJORITY_DEFAULT)
-    if min_p_majority < 0.0 or min_p_majority > 1.0:
+    if min_p_majority <= 0.0 or min_p_majority > 1.0:
         min_p_majority = _FILE_BANK_SUB_MIN_P_MAJORITY_DEFAULT
     return {
         "min_votes": float(min_votes),

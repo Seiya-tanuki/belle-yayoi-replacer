@@ -162,6 +162,36 @@ def _normalize_threshold_route(route_obj: Any, *, min_count: int, min_p_majority
     }
 
 
+_FILE_LEVEL_BANK_SUB_INFERENCE_KEY = "file_level_bank_sub_inference"
+_FILE_LEVEL_BANK_SUB_MIN_VOTES_DEFAULT = 3
+_FILE_LEVEL_BANK_SUB_MIN_P_MAJORITY_DEFAULT = 0.9
+
+
+def _normalize_file_level_bank_sub_inference(threshold_obj: Any) -> Dict[str, Any]:
+    src = threshold_obj if isinstance(threshold_obj, dict) else {}
+
+    try:
+        min_votes = int(src.get("min_votes", _FILE_LEVEL_BANK_SUB_MIN_VOTES_DEFAULT))
+    except Exception:
+        min_votes = _FILE_LEVEL_BANK_SUB_MIN_VOTES_DEFAULT
+    if min_votes < 1:
+        min_votes = _FILE_LEVEL_BANK_SUB_MIN_VOTES_DEFAULT
+
+    try:
+        min_p_majority = float(
+            src.get("min_p_majority", _FILE_LEVEL_BANK_SUB_MIN_P_MAJORITY_DEFAULT)
+        )
+    except Exception:
+        min_p_majority = _FILE_LEVEL_BANK_SUB_MIN_P_MAJORITY_DEFAULT
+    if min_p_majority <= 0.0 or min_p_majority > 1.0:
+        min_p_majority = _FILE_LEVEL_BANK_SUB_MIN_P_MAJORITY_DEFAULT
+
+    return {
+        "min_votes": int(min_votes),
+        "min_p_majority": float(min_p_majority),
+    }
+
+
 def load_bank_line_config(repo_root: Path, client_id: str) -> Dict[str, Any]:
     line_root = repo_root / "clients" / client_id / "lines" / LINE_ID_BANK_STATEMENT
     cfg_path = line_root / "config" / "bank_line_config.json"
@@ -189,6 +219,9 @@ def load_bank_line_config(repo_root: Path, client_id: str) -> Dict[str, Any]:
                 thresholds_raw.get(ROUTE_KANA_SIGN),
                 min_count=3,
                 min_p_majority=0.80,
+            ),
+            _FILE_LEVEL_BANK_SUB_INFERENCE_KEY: _normalize_file_level_bank_sub_inference(
+                thresholds_raw.get(_FILE_LEVEL_BANK_SUB_INFERENCE_KEY)
             ),
         },
     }

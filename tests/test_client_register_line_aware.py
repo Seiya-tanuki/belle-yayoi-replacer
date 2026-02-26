@@ -171,6 +171,14 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertEqual("0.1", config_obj.get("version"))
             self.assertEqual("仮払金", config_obj.get("placeholder_account_name"))
             self.assertEqual("普通預金", config_obj.get("bank_account_name"))
+            thresholds = config_obj.get("thresholds") if isinstance(config_obj.get("thresholds"), dict) else {}
+            file_level = (
+                thresholds.get("file_level_bank_sub_inference")
+                if isinstance(thresholds.get("file_level_bank_sub_inference"), dict)
+                else {}
+            )
+            self.assertEqual(3, int(file_level.get("min_votes") or 0))
+            self.assertEqual(0.9, float(file_level.get("min_p_majority") or 0.0))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

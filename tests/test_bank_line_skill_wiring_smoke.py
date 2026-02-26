@@ -505,6 +505,103 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             self.assertEqual("OK", file_inf.get("status"))
             self.assertFalse(bool(replacer_manifest.get("bank_sub_fill_required_failed")))
 
+    def test_bank_line_file_level_subaccount_min_votes_override_succeeds_with_two_rows(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C_BANK_FILE_LEVEL_MIN2_SMOKE"
+        inferred_bank_subaccount = "BANK_SUB_FILE_MIN2"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(temp_repo_root, client_id)
+            cfg_path = line_root / "config" / "bank_line_config.json"
+            cfg_obj = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg_obj["bank_account_subaccount"] = ""
+            thresholds = cfg_obj.get("thresholds")
+            if not isinstance(thresholds, dict):
+                thresholds = {}
+            thresholds["file_level_bank_sub_inference"] = {
+                "min_votes": 2,
+                "min_p_majority": 0.9,
+            }
+            cfg_obj["thresholds"] = thresholds
+            cfg_path.write_text(json.dumps(cfg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+            _write_file_level_training_pair(
+                line_root,
+                bank_subaccount=inferred_bank_subaccount,
+                amounts=[6100, 6200, 6300],
+            )
+
+            _write_yayoi_rows(
+                line_root / "inputs" / "kari_shiwake" / "target.csv",
+                [
+                    _build_row(
+                        date_text="2026/02/16",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                    _build_row(
+                        date_text="2026/02/17",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                ],
+            )
+
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "run_yayoi_replacer.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "bank_statement",
+                            "--yes",
+                        ],
+                    ):
+                        rc = module.main()
+            self.assertEqual(0, rc, msg=buf.getvalue())
+
+            run_id = (line_root / "outputs" / "LATEST.txt").read_text(encoding="utf-8").strip()
+            run_dir = line_root / "outputs" / "runs" / run_id
+            self.assertTrue(run_dir.is_dir(), msg=buf.getvalue())
+
+            replaced_csv_files = sorted(run_dir.glob("*_replaced_*.csv"))
+            self.assertTrue(replaced_csv_files, msg=buf.getvalue())
+            rows = _read_yayoi_rows(replaced_csv_files[0])
+            self.assertEqual(2, len(rows))
+            self.assertTrue(
+                all(row[COL_CREDIT_SUBACCOUNT] == inferred_bank_subaccount for row in rows),
+                msg=buf.getvalue(),
+            )
+
+            run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("OK", run_manifest.get("exit_status"))
+            self.assertFalse(bool(run_manifest.get("strict_stop_applied")))
+
+            replacer_manifest_path = Path(str(run_manifest.get("replacer_manifest_path") or ""))
+            self.assertTrue(replacer_manifest_path.exists(), msg=buf.getvalue())
+            replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
+            file_inf = replacer_manifest.get("file_bank_sub_inference") or {}
+            self.assertEqual("OK", file_inf.get("status"))
+            self.assertEqual(2, int(file_inf.get("votes_total") or 0))
+            self.assertFalse(bool(replacer_manifest.get("bank_sub_fill_required_failed")))
+
     def test_bank_line_file_level_subaccount_failure_triggers_runner_strict_stop(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
         client_id = "C_BANK_FILE_LEVEL_FAIL_SMOKE"
@@ -514,6 +611,9 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             cfg_path = line_root / "config" / "bank_line_config.json"
             cfg_obj = json.loads(cfg_path.read_text(encoding="utf-8"))
             cfg_obj["bank_account_subaccount"] = ""
+            thresholds = cfg_obj.get("thresholds")
+            if isinstance(thresholds, dict):
+                thresholds.pop("file_level_bank_sub_inference", None)
             cfg_path.write_text(json.dumps(cfg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
             _write_file_level_training_pair(
                 line_root,
@@ -585,6 +685,15 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             replacer_manifest_path = Path(str(run_manifest.get("replacer_manifest_path") or ""))
             self.assertTrue(replacer_manifest_path.exists(), msg=buf.getvalue())
             replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
+            file_inf = replacer_manifest.get("file_bank_sub_inference") or {}
+            self.assertEqual("FAIL", file_inf.get("status"))
+            self.assertTrue(
+                any(
+                    "below_min_votes" in str(reason) and "min_votes=3" in str(reason)
+                    for reason in (file_inf.get("reasons") or [])
+                ),
+                msg=buf.getvalue(),
+            )
             self.assertTrue(bool(replacer_manifest.get("bank_sub_fill_required_failed")))
 
             replaced_csv_files = sorted(run_dir.glob("*_replaced_*.csv"))
