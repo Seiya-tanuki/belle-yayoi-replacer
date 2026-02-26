@@ -108,9 +108,9 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             client_id = "C1"
             ledger_ref_file = repo_root / "clients" / client_id / "inputs" / "ledger_ref" / "batch1.csv"
             _write_yayoi_row(ledger_ref_file, summary="ACME SHOP / test")
-            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
 
-            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
 
             first = ensure_lexicon_candidates_updated_from_ledger_ref(
@@ -154,7 +154,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
             _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="FAILURE SHOP / test")
 
             queue_csv = repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv"
@@ -174,7 +174,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
             queue_before = queue_csv.read_bytes()
             state_before = queue_state.read_bytes()
 
-            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
             real_replace = os.replace
 
@@ -205,10 +205,10 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            _write_minimal_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
             manifest_path = _ingest_one_ledger_ref(repo_root, client_id=client_id, summary="MARKER SHOP / test")
 
-            lex = load_lexicon(repo_root / "lexicon" / "receipt" / "lexicon.json")
+            lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
 
             with mock.patch(

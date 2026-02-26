@@ -95,7 +95,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             ]:
                 (card_template_root / rel).mkdir(parents=True, exist_ok=True)
 
-            _write_text(temp_root / "lexicon" / "receipt" / "lexicon.json", "{}\n")
+            _write_text(temp_root / "lexicon" / "lexicon.json", "{}\n")
             _write_text(temp_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
             _write_text(temp_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", "{}\n")
 

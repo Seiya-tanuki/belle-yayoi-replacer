@@ -90,7 +90,7 @@ def _prepare_receipt_assets(repo_root: Path, *, with_lexicon: bool) -> None:
     _write_text(repo_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
     _write_text(repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", "{}\n")
     if with_lexicon:
-        _write_text(repo_root / "lexicon" / "receipt" / "lexicon.json", "{}\n")
+        _write_text(repo_root / "lexicon" / "lexicon.json", "{}\n")
 
 
 def _prepare_bank_client(
@@ -271,8 +271,8 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
 
             self.assertNotEqual(0, rc, msg=output)
             report = _read_latest_report(repo_root)
-            self.assertIn("C1 lexicon/receipt/lexicon.json exists", report)
-            self.assertIn("| C1 lexicon/receipt/lexicon.json exists | FAIL |", report)
+            self.assertIn("C1 lexicon/lexicon.json exists", report)
+            self.assertIn("| C1 lexicon/lexicon.json exists | FAIL |", report)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

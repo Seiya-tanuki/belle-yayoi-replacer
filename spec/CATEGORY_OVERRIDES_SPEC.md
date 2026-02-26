@@ -3,7 +3,7 @@
 ## Purpose
 
 `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` is a per-client, per-line editable overlay for debit account defaults.
-The file is full-expanded: it always contains every `category_key` from `lexicon/<line_id>/lexicon.json`.
+The file is full-expanded: it always contains every `category_key` from `lexicon/lexicon.json`.
 
 ## Schema
 

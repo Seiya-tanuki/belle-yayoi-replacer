@@ -62,10 +62,10 @@
 
 ## 4) Network Access
 1. This project is intended to run without external web access.
-2. Decisions must be deterministic from local data (`lexicon/<line_id>/lexicon.json`, `clients/<CLIENT_ID>/.../artifacts/*`, and local inputs).
+2. Decisions must be deterministic from local data (`lexicon/lexicon.json`, `clients/<CLIENT_ID>/.../artifacts/*`, and local inputs).
 
 ## 5) Source Files and Cache
-1. Shared lexicon source of truth (receipt in Phase 1): `lexicon/<line_id>/lexicon.json` (core + learned).
+1. Shared lexicon source of truth (receipt in Phase 1): `lexicon/lexicon.json` (core + learned).
 2. Pending queue (occasionally edited by users): `lexicon/<line_id>/pending/label_queue.csv`.
 3. Default account mappings: `defaults/<line_id>/category_defaults.json`.
 4. Client delta cache: `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`.

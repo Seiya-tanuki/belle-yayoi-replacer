@@ -94,9 +94,9 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 1. `clients/<CLIENT_ID>/lines/bank_statement/inputs/ledger_ref/**`
 2. `clients/<CLIENT_ID>/lines/bank_statement/artifacts/ingest/ledger_ref/**`
 
-## Shared assets (line-scoped, tracked)
+## Shared assets (tracked)
 
-1. `lexicon/<line_id>/lexicon.json`
+1. `lexicon/lexicon.json`
 2. `defaults/<line_id>/category_defaults.json`
 3. `rulesets/<line_id>/replacer_config_v1_15.json`
 4. `lexicon/<line_id>/pending/.gitkeep`

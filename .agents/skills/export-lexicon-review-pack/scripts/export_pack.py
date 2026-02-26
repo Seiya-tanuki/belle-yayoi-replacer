@@ -25,7 +25,7 @@ from belle.paths import get_label_queue_lock_path
 
 def _fixed_paths(line_id: str) -> List[Tuple[str, bool]]:
     return [
-        (f"lexicon/{line_id}/lexicon.json", True),
+        ("lexicon/lexicon.json", True),
         (f"lexicon/{line_id}/pending/label_queue.csv", True),
         (f"lexicon/{line_id}/pending/label_queue_state.json", False),
         (f"defaults/{line_id}/category_defaults.json", True),

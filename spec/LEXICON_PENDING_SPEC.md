@@ -2,12 +2,12 @@
 
 ## Purpose
 
-`lexicon/<line_id>/pending/label_queue.csv` is the per-line queue of unknown terms that were observed in client ledgers but are not yet covered by `lexicon/<line_id>/lexicon.json`.
+`lexicon/<line_id>/pending/label_queue.csv` is the per-line queue of unknown terms that were observed in client ledgers but are not yet covered by `lexicon/lexicon.json`.
 
 This queue supports:
 1. Cumulative unknown-term collection (append-only counts)
 2. Human labeling (`action=ADD`)
-3. Deterministic application into `lexicon/<line_id>/lexicon.json`
+3. Deterministic application into `lexicon/lexicon.json`
 
 ## Files (receipt in Phase 1)
 
@@ -49,7 +49,7 @@ Columns:
 2. `$lexicon-extract` (manual)
    1. Runs the same `ledger_ref`-based autogrow logic on demand
 3. `$lexicon-apply`
-   1. Applies only `action=ADD` rows into `lexicon/receipt/lexicon.json`
+   1. Applies only `action=ADD` rows into `lexicon/lexicon.json`
    2. Removes applied rows from queue/state
 
 ## Strict autogrow filter contract

@@ -691,8 +691,8 @@ def main() -> int:
         required_paths = [
             (
                 "C1",
-                f"lexicon/{line_id}/lexicon.json exists",
-                repo_root / "lexicon" / line_id / "lexicon.json",
+                "lexicon/lexicon.json exists",
+                repo_root / "lexicon" / "lexicon.json",
                 False,
             ),
             (

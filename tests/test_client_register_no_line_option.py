@@ -57,7 +57,7 @@ def _prepare_receipt_assets(repo_root: Path) -> None:
         },
     )
     _write_json(
-        repo_root / "lexicon" / "receipt" / "lexicon.json",
+        repo_root / "lexicon" / "lexicon.json",
         {
             "schema": "belle.lexicon.v1",
             "version": "0.1",
