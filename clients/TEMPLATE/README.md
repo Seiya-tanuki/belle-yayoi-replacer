@@ -29,6 +29,10 @@ For bank_statement line:
   - 0/0 no-op: both inboxes empty (`lines/bank_statement/inputs/training/ocr_kari_shiwake/` and `lines/bank_statement/inputs/training/reference_yayoi/`)
   - If training is used, provide exactly one pair per run: OCR CSV 1 + reference CSV/TXT 1
   - One-side-only or multiple files on either side fail-closed
+- Bank-side subaccount fill is file-level (per target CSV):
+  - If file-level inference is `OK`, the same inferred subaccount is applied to all required-fill bank-side rows (no partial fill)
+  - If inference is not `OK` and required fill exists, runner strict-stops with exit `2` after writing artifacts (`bank_sub_fill_required_failed == true`)
+  - Threshold config keys: `thresholds.file_level_bank_sub_inference.min_votes` (default `3`) and `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
 
 For credit_card_statement line:
 

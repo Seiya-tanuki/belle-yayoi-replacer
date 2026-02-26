@@ -28,8 +28,14 @@ Deterministic replacement skill for Yayoi import CSVs.
    - one-side-new manifest mismatch (`ocr_sha_known != ref_sha_known`)
    - both OCR/reference SHAs are known in manifests but the pair-set is not applied in cache
    - `pairs_unique_used == 0` (no ingest/cache write side effects; inbox files remain)
-10. `credit_card_statement` is implemented/runnable.
-11. `credit_card_statement` target must satisfy Contract A (one statement per target file).
+10. `bank_statement` target should satisfy Contract A assumptions (one target CSV should represent one passbook/account context).
+11. `bank_statement` bank-side subaccount fill is file-level:
+   - inference source: row votes from `cache.bank_account_subaccount_stats`
+   - when inference is `OK`, the SAME inferred bank-side subaccount is applied to all required-fill rows in the file (no partial fill)
+   - thresholds: `thresholds.file_level_bank_sub_inference.min_votes` (default `3`) and `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
+   - if required fill exists and inference is not `OK`, runner strict-stops with exit `2` after writing artifacts (`bank_sub_fill_required_failed == true`)
+12. `credit_card_statement` is implemented/runnable.
+13. `credit_card_statement` target must satisfy Contract A (one statement per target file).
 
 ## Operator protocol (mandatory)
 Codex/operator は以下の手順を固定で実施すること。
@@ -101,7 +107,9 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - interactive TTY: prompt `Proceed with RUN lines? [y/N]`
    - non-interactive without `--yes`: exit 2 with guidance
 4. If all selected lines are `SKIP`, exits 0 with `[OK] nothing to do`.
-5. During execution, `credit_card_statement` strict-stop returns exit 2 after writing artifacts.
+5. During execution, strict-stop returns exit 2 after writing artifacts for:
+   - `bank_statement` when `bank_sub_fill_required_failed == true`
+   - `credit_card_statement` when `payable_sub_fill_required_failed == true`
 
 ## Runtime behavior (line execution)
 1. The skill entrypoint is a dispatcher only.
@@ -109,7 +117,11 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - `receipt.py`
    - `bank_statement.py`
    - `credit_card_statement.py`
-3. `credit_card_statement` runner enforces Contract A assumptions and strict-stop behavior.
+3. `bank_statement` runner enforces file-level bank-side subaccount inference behavior:
+   - one inferred value per target CSV (no hybrid/partial bank-side fill)
+   - strict-stop via `SystemExit(2)` when `bank_sub_fill_required_failed == true` after artifact write
+   - thresholds path: `thresholds.file_level_bank_sub_inference.min_votes` / `min_p_majority`
+4. `credit_card_statement` runner enforces Contract A assumptions and strict-stop behavior.
 
 ## Canonical specs
 1. `spec/REPLACER_SPEC.md`

@@ -22,7 +22,7 @@ Transform target OCR draft rows into teacher-like fields, with replacements limi
 2. counter-side account
 3. counter-side subaccount
 4. counter-side tax division
-5. bank-account-side subaccount (ordinary-deposit side subaccount), when deterministically inferred
+5. bank-account-side subaccount (ordinary-deposit side subaccount), when file-level inference is `OK`
 
 Counter-side means the side currently containing placeholder account `仮払金`.
 Side selection must be done by account-name detection, not fixed column positions.
@@ -72,24 +72,23 @@ Threshold gates and `p_majority` semantics follow `spec/BANK_CLIENT_CACHE_SPEC.m
 This replacement is independent from counter-label replacement.
 It may apply even when counter-label replacement applies; it must not reduce counter replacement coverage.
 
-Learning source:
+Learning sources for vote candidates:
 1. `cache.bank_account_subaccount_stats["kana_sign_amount"]` (strong)
 2. `cache.bank_account_subaccount_stats["kana_sign"]` (weak fallback)
 
-Runtime config (`bank_line_config.json`):
+File-level decision gates (`clients/<CLIENT_ID>/lines/bank_statement/config/bank_line_config.json`):
 1. `bank_side_subaccount.enabled` (default `true`)
-2. `bank_side_subaccount.weak_enabled` (default `true`)
-3. `bank_side_subaccount.weak_min_count` (default `3`, enforced minimum `3`)
+2. `thresholds.file_level_bank_sub_inference.min_votes` (default `3`)
+3. `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
 
-Apply order and policy:
-1. evaluate strong key first: `kana_key + sign + amount` (`kana_sign_amount`)
-2. if strong is not applied and weak fallback is enabled, evaluate weak key: `kana_key + sign` (`kana_sign`)
-3. deterministic-only (both strong and weak):
-   1. stats entry must exist
-   2. `top_value` must be non-empty
-   3. `top_count == sample_total` (equivalent to `p_majority == 1.0`)
-4. weak-only additional safety gate: `sample_total >= weak_min_count`
-5. ambiguous/non-deterministic keys fail-closed (no bank-side subaccount overwrite)
+File-level apply policy:
+1. infer one bank-side subaccount identity per target CSV from row vote evidence
+2. if inference status is `OK`, apply the SAME inferred subaccount to ALL rows that require bank-side subaccount fill
+3. partial fill is forbidden; hybrid per-row bank-side subaccount outcomes are not allowed
+4. if inference status is not `OK` and required-fill rows exist:
+   1. do not fill any required bank-side subaccount row
+   2. set `bank_sub_fill_required_failed = true` in replacer manifest
+5. if no rows require bank-side subaccount fill, keep rows unchanged and do not raise this failure flag
 
 Apply target and non-target guarantees:
 1. only the bank-account-side subaccount column is writable
@@ -103,9 +102,9 @@ When a route returns a label:
 2. replace counter-side account/subaccount/tax-division with label values
 3. keep all non-target fields unchanged
 
-Bank-account-side subaccount replacement is evaluated independently using the rule above.
+Bank-account-side subaccount replacement is evaluated independently using the file-level rule above.
 
-When no route returns a valid label and bank-side subaccount is not deterministically inferred:
+When no route returns a valid label:
 1. keep the row unchanged
 2. emit review evidence explaining why no replacement occurred
 
@@ -130,11 +129,19 @@ Review report must include at least:
 
 Manifest must include run metadata and input artifact references, including:
 1. `bank_side_subaccount_changed_count`
-2. optional bank-side subaccount evidence counts, e.g. `{"strong": N, "weak": M}`
+2. `file_bank_sub_inference` object (`status`, `value`, `votes_total`, `top_count`, `p_majority`, `reasons`)
+3. `bank_sub_fill_required_failed`
+
+## Runner strict-stop contract
+
+1. `bank_statement` runner reads `bank_sub_fill_required_failed` from replacer manifest.
+2. When `bank_sub_fill_required_failed == true`, artifacts are kept (run directory and manifests are preserved) and the runner terminates with `SystemExit(2)` (exit code `2`).
+3. This strict-stop means required bank-side subaccount fill existed but file-level bank inference was not `OK`.
 
 ## Fail-closed invariants
 
 1. If required features are missing/ambiguous, do not replace.
 2. If thresholds fail, do not replace.
 3. If tie in top label counts, do not replace.
-4. Cross-line behavior is out of scope here; `credit_card_statement` rules are defined in credit-card specs.
+4. If required bank-side subaccount fill exists and file-level inference is not `OK`, set `bank_sub_fill_required_failed = true` (runner strict-stop is handled separately).
+5. Cross-line behavior is out of scope here; `credit_card_statement` rules are defined in credit-card specs.
