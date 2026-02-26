@@ -189,7 +189,11 @@ class KariShiwakeIngestTests(unittest.TestCase):
             buf = io.StringIO()
             with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
                 with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
-                    with mock.patch.object(receipt_runner, "load_category_overrides", return_value={}):
+                    with mock.patch.object(
+                        receipt_runner,
+                        "try_load_category_overrides",
+                        return_value=({}, []),
+                    ):
                         with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
                             with mock.patch.object(
                                 receipt_runner,
@@ -314,7 +318,11 @@ class KariShiwakeIngestTests(unittest.TestCase):
             buf = io.StringIO()
             with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
                 with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
-                    with mock.patch.object(receipt_runner, "load_category_overrides", return_value={}):
+                    with mock.patch.object(
+                        receipt_runner,
+                        "try_load_category_overrides",
+                        return_value=({}, []),
+                    ):
                         with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
                             with mock.patch.object(
                                 receipt_runner,

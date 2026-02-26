@@ -11,8 +11,8 @@ from belle.build_client_cache import ensure_client_cache_updated
 from belle.defaults import (
     generate_full_category_overrides,
     load_category_defaults,
-    load_category_overrides,
     merge_effective_defaults,
+    try_load_category_overrides,
 )
 from belle.ingest import ingest_single_file
 from belle.lexicon import load_lexicon
@@ -149,13 +149,10 @@ def run_receipt(
             lexicon_category_keys=lexicon_category_keys,
         )
 
-    try:
-        override_debit_accounts = load_category_overrides(
-            path=overrides_path,
-            lexicon_category_keys=lexicon_category_keys,
-        )
-    except ValueError as exc:
-        raise RuntimeError(f"category_overrides.json が不正です: {overrides_path}: {exc}") from exc
+    override_debit_accounts, category_overrides_warnings = try_load_category_overrides(
+        path=overrides_path,
+        lexicon_category_keys=lexicon_category_keys,
+    )
 
     defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
     config = json.loads(config_path.read_text(encoding="utf-8"))
@@ -221,10 +218,16 @@ def run_receipt(
                 "sha256": kari_ingest.sha256,
             }
         },
+        "category_overrides": {
+            "path": str(overrides_path),
+            "applied_count": len(override_debit_accounts),
+            "expected_count": len(lexicon_category_keys),
+            "warnings": category_overrides_warnings,
+        },
         "outputs": [],
     }
 
-    warnings: list[str] = []
+    warnings: list[str] = list(category_overrides_warnings)
 
     input_stem = Path(kari_ingest.original_name).stem or kari_ingest.stored_path.stem
     in_path = kari_ingest.stored_path

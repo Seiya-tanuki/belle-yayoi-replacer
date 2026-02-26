@@ -28,6 +28,12 @@ class CategoryDefaults:
     global_fallback: DefaultRule
 
 
+def _format_key_summary(keys: Iterable[str], *, limit: int = 20) -> str:
+    normalized = sorted({str(k) for k in keys})
+    sample = normalized[:limit]
+    return f"count={len(normalized)} sample={json.dumps(sample, ensure_ascii=False)}"
+
+
 def load_category_defaults(path: Path) -> CategoryDefaults:
     obj = json.loads(path.read_text(encoding="utf-8"))
     defs: Dict[str, DefaultRule] = {}
@@ -108,6 +114,104 @@ def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) ->
     return resolved
 
 
+def try_load_category_overrides(
+    path: Path,
+    lexicon_category_keys: Iterable[str],
+) -> tuple[dict[str, str], list[str]]:
+    warnings: list[str] = []
+    if not path.exists():
+        return {}, [f"category_overrides_missing_file: path={path}"]
+
+    raw_bytes = path.read_bytes()
+    has_utf8_bom = raw_bytes.startswith(UTF8_BOM)
+    parse_bytes = raw_bytes[len(UTF8_BOM):] if has_utf8_bom else raw_bytes
+
+    if has_utf8_bom:
+        path.write_bytes(parse_bytes)
+        warnings.append(f"category_overrides_bom_removed: path={path}")
+
+    try:
+        decoded = parse_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        warnings.append(
+            f"category_overrides_invalid_utf8: path={path} start={exc.start} end={exc.end}"
+        )
+        return {}, warnings
+
+    try:
+        obj = json.loads(decoded)
+    except json.JSONDecodeError as exc:
+        warnings.append(
+            f"category_overrides_invalid_json: path={path} line={exc.lineno} col={exc.colno}"
+        )
+        return {}, warnings
+
+    if not isinstance(obj, dict):
+        warnings.append(
+            f"category_overrides_top_level_invalid: path={path} type={type(obj).__name__}"
+        )
+        return {}, warnings
+
+    schema = str(obj.get("schema") or "")
+    if schema != CATEGORY_OVERRIDES_SCHEMA_V1:
+        warnings.append(
+            "category_overrides_schema_invalid: "
+            f"path={path} expected={CATEGORY_OVERRIDES_SCHEMA_V1} actual={schema or '(empty)'}"
+        )
+        return {}, warnings
+
+    overrides = obj.get("overrides")
+    if not isinstance(overrides, dict):
+        warnings.append(
+            f"category_overrides_overrides_invalid: path={path} type={type(overrides).__name__}"
+        )
+        return {}, warnings
+
+    expected_keys = {str(k) for k in lexicon_category_keys}
+    actual_keys = {str(k) for k in overrides.keys()}
+
+    missing_keys = sorted(expected_keys - actual_keys)
+    extra_keys = sorted(actual_keys - expected_keys)
+    if extra_keys:
+        warnings.append(
+            "category_overrides_extra_keys: "
+            f"path={path} {_format_key_summary(extra_keys)}"
+        )
+    if missing_keys:
+        warnings.append(
+            "category_overrides_missing_keys: "
+            f"path={path} {_format_key_summary(missing_keys)}"
+        )
+
+    resolved: dict[str, str] = {}
+    invalid_rows: list[str] = []
+    invalid_values: list[str] = []
+
+    for key in sorted(expected_keys):
+        row = overrides.get(key)
+        if not isinstance(row, dict):
+            invalid_rows.append(key)
+            continue
+        debit = row.get("debit_account")
+        if not isinstance(debit, str) or not debit.strip():
+            invalid_values.append(key)
+            continue
+        resolved[key] = debit
+
+    if invalid_rows:
+        warnings.append(
+            "category_overrides_row_invalid: "
+            f"path={path} {_format_key_summary(invalid_rows)}"
+        )
+    if invalid_values:
+        warnings.append(
+            "category_overrides_value_invalid: "
+            f"path={path} {_format_key_summary(invalid_values)}"
+        )
+
+    return resolved, warnings
+
+
 def generate_full_category_overrides(
     path: Path,
     client_id: str,
@@ -117,14 +221,22 @@ def generate_full_category_overrides(
     keys = sorted({str(k) for k in lexicon_category_keys})
     missing_defaults = [k for k in keys if k not in global_defaults.defaults]
     if missing_defaults:
-        raise ValueError(
-            "category_defaults missing category_key(s): " + ", ".join(missing_defaults)
+        print(
+            "[WARN] category_overrides_generate_missing_defaults: "
+            f"{_format_key_summary(missing_defaults)} "
+            f"fallback={global_defaults.global_fallback.debit_account}"
         )
 
-    overrides = {
-        key: {"debit_account": global_defaults.defaults[key].debit_account}
-        for key in keys
-    }
+    overrides = {}
+    for key in keys:
+        rule = global_defaults.defaults.get(key)
+        debit_account = (
+            rule.debit_account
+            if rule is not None
+            else global_defaults.global_fallback.debit_account
+        )
+        overrides[key] = {"debit_account": debit_account}
+
     payload = {
         "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
         "client_id": str(client_id),
