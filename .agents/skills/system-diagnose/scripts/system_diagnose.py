@@ -776,6 +776,18 @@ def main() -> int:
         card_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement"
         required_paths = required_paths + [
             (
+                "C39",
+                "lexicon/lexicon.json exists",
+                repo_root / "lexicon" / "lexicon.json",
+                False,
+            ),
+            (
+                "C40",
+                "defaults/credit_card_statement/category_defaults.json exists",
+                repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+                False,
+            ),
+            (
                 "C32",
                 "clients/TEMPLATE/lines/credit_card_statement directory exists",
                 card_template_root,

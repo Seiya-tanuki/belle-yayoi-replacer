@@ -10,10 +10,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
+from belle.defaults import CategoryDefaults
 from .build_cc_cache import merchant_key_from_summary
 from .cc_cache import CCClientCache, ValueStatsEntry
 from .client_cache import StatsEntry
 from belle.fs_utils import sha256_file_chunked
+from belle.lexicon import Lexicon, match_summary
 from .paths import get_input_manifest_path, get_review_report_path
 from .yayoi_text import safe_cell_text, set_cell_text
 from .yayoi_columns import (
@@ -72,6 +74,11 @@ class CCRowDecision:
     debit_sub_after: str
     credit_sub_before: str
     credit_sub_after: str
+    category_key: str
+    category_label: str
+    lexicon_quality: str
+    matched_needle: str
+    is_learned_signal: bool
 
 
 def sha256_file(path: Path) -> str:
@@ -552,6 +559,8 @@ def decide_cc_row(
     cache: CCClientCache,
     config: Dict[str, Any],
     inferred_payable_subaccount_opt: Optional[str],
+    lex_opt: Optional[Lexicon] = None,
+    defaults_opt: Optional[CategoryDefaults] = None,
     *,
     partial_match_settings: Optional[Dict[str, Any]] = None,
     eligible_account_partial_keys: Optional[Iterable[str]] = None,
@@ -617,6 +626,11 @@ def decide_cc_row(
         debit_sub_after=debit_sub_before,
         credit_sub_before=credit_sub_before,
         credit_sub_after=credit_sub_before,
+        category_key="",
+        category_label="",
+        lexicon_quality="",
+        matched_needle="",
+        is_learned_signal=False,
     )
 
     if placeholder_side == "none":
@@ -667,6 +681,34 @@ def decide_cc_row(
                     else:
                         decision.reasons.append("account_same_as_current")
 
+        if decision.evidence_type == _NONE_EVIDENCE and lex_opt is not None and defaults_opt is not None:
+            match = match_summary(lex_opt, summary)
+            decision.category_key = str(match.category_key or "")
+            decision.category_label = str(match.category_label or "")
+            decision.lexicon_quality = str(match.quality or "")
+            decision.matched_needle = str(match.matched_needle or "")
+            decision.is_learned_signal = bool(match.is_learned_signal)
+
+            matched_key = decision.category_key
+            if matched_key and matched_key in defaults_opt.defaults:
+                rule = defaults_opt.defaults[matched_key]
+                target_col = COL_DEBIT_ACCOUNT if placeholder_side == "debit" else COL_CREDIT_ACCOUNT
+                _set_text(new_tokens, target_col, encoding, rule.debit_account)
+                decision.evidence_type = "category_default"
+                decision.predicted_account = rule.debit_account
+                if match.quality == "ambiguous":
+                    decision.reasons.append("category_match_ambiguous")
+                decision.reasons.append("category_default_applied")
+                if new_tokens[target_col] != tokens[target_col]:
+                    decision.account_changed = 1
+                    decision.reasons.append("account_replaced")
+                else:
+                    decision.reasons.append("account_same_as_current")
+            elif match.quality == "none":
+                decision.reasons.append("category_match_none")
+            else:
+                decision.reasons.append("category_no_rule")
+
     payable_sub_col: Optional[int] = None
     payable_sub_before = ""
     if payable_side == "debit":
@@ -716,6 +758,8 @@ def replace_credit_card_yayoi_csv(
     config: Dict[str, Any],
     run_dir: Path,
     artifact_prefix: Optional[str] = None,
+    lex: Optional[Lexicon] = None,
+    defaults: Optional[CategoryDefaults] = None,
 ) -> Dict[str, Any]:
     csv_obj = read_yayoi_csv(in_path)
     cache = CCClientCache.load(cache_path)
@@ -776,6 +820,8 @@ def replace_credit_card_yayoi_csv(
             cache=cache,
             config=config,
             inferred_payable_subaccount_opt=inferred_subaccount,
+            lex_opt=lex,
+            defaults_opt=defaults,
             partial_match_settings=partial_match_settings,
             eligible_account_partial_keys=eligible_account_partial_keys,
         )
@@ -831,6 +877,11 @@ def replace_credit_card_yayoi_csv(
         "credit_sub_before",
         "credit_sub_after",
         "reasons",
+        "category_key",
+        "category_label",
+        "lexicon_quality",
+        "matched_needle",
+        "is_learned_signal",
     ]
     with report_path.open("w", encoding="utf-8-sig", newline="") as fh:
         writer = csv_lib.writer(fh, dialect="excel", lineterminator="\r\n", quoting=csv_lib.QUOTE_MINIMAL)
@@ -863,6 +914,11 @@ def replace_credit_card_yayoi_csv(
                     decision.credit_sub_before,
                     decision.credit_sub_after,
                     " | ".join(decision.reasons),
+                    decision.category_key,
+                    decision.category_label,
+                    decision.lexicon_quality,
+                    decision.matched_needle,
+                    "1" if decision.is_learned_signal else "0",
                 ]
             )
 

@@ -97,6 +97,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
 
             _write_text(temp_root / "lexicon" / "lexicon.json", "{}\n")
             _write_text(temp_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
+            _write_text(temp_root / "defaults" / "credit_card_statement" / "category_defaults.json", "{}\n")
             _write_text(temp_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", "{}\n")
 
             _write_text(temp_root / "belle" / "__init__.py", "")

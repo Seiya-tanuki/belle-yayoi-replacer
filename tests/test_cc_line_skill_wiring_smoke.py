@@ -43,7 +43,47 @@ def _line_root(repo_root: Path, client_id: str) -> Path:
     return repo_root / "clients" / client_id / "lines" / "credit_card_statement"
 
 
+def _write_min_shared_assets(repo_root: Path) -> None:
+    lexicon_path = repo_root / "lexicon" / "lexicon.json"
+    lexicon_path.parent.mkdir(parents=True, exist_ok=True)
+    lexicon_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.lexicon.v1",
+                "version": "test",
+                "categories": [],
+                "term_rows": [],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    defaults_path = repo_root / "defaults" / "credit_card_statement" / "category_defaults.json"
+    defaults_path.parent.mkdir(parents=True, exist_ok=True)
+    defaults_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.category_defaults.v1",
+                "version": "test",
+                "defaults": {},
+                "global_fallback": {
+                    "debit_account": PLACEHOLDER_ACCOUNT,
+                    "confidence": 0.35,
+                    "priority": "HIGH",
+                    "reason_code": "global_fallback",
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_majority: float) -> Path:
+    _write_min_shared_assets(repo_root)
     line_root = _line_root(repo_root, client_id)
     (line_root / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
     (line_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)

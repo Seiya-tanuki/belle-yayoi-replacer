@@ -8,10 +8,19 @@ from typing import Any
 
 from belle.build_cc_cache import ensure_cc_client_cache_updated, load_credit_card_line_config
 from belle.cc_replacer import replace_credit_card_yayoi_csv
+from belle.defaults import (
+    generate_full_category_overrides,
+    load_category_defaults,
+    merge_effective_defaults,
+    try_load_category_overrides,
+)
 from belle.ingest import ingest_single_file
+from belle.lexicon import load_lexicon
+from belle.lines import line_asset_paths
 from belle.paths import (
     build_input_artifact_prefix,
     ensure_client_system_dirs,
+    get_category_overrides_path,
     get_client_cache_path,
     get_kari_shiwake_ingest_dir,
     get_kari_shiwake_ingested_path,
@@ -146,6 +155,25 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     cache_path = Path(
         str(cache_update_summary.get("cache_path") or get_client_cache_path(repo_root, client_id, line_id=LINE_ID_CARD))
     )
+    asset_paths = line_asset_paths(repo_root, LINE_ID_CARD)
+    lexicon_path = asset_paths["lexicon_path"]
+    defaults_path = asset_paths["defaults_path"]
+    lex = load_lexicon(lexicon_path)
+    global_defaults = load_category_defaults(defaults_path)
+    lexicon_category_keys = set(lex.categories_by_key.keys())
+    overrides_path = get_category_overrides_path(repo_root, client_id, line_id=LINE_ID_CARD)
+    if not overrides_path.exists():
+        generate_full_category_overrides(
+            path=overrides_path,
+            client_id=client_id,
+            global_defaults=global_defaults,
+            lexicon_category_keys=lexicon_category_keys,
+        )
+    override_debit_accounts, category_overrides_warnings = try_load_category_overrides(
+        path=overrides_path,
+        lexicon_category_keys=lexicon_category_keys,
+    )
+    effective_defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
 
     input_stem = Path(kari_ingest.original_name).stem or kari_ingest.stored_path.stem
     out_path = run_dir / f"{input_stem}_replaced_{run_id}.csv"
@@ -161,6 +189,8 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         config=config,
         run_dir=run_dir,
         artifact_prefix=artifact_prefix,
+        lex=lex,
+        defaults=effective_defaults,
     )
 
     reports_obj = replacer_manifest.get("reports") if isinstance(replacer_manifest, dict) else {}
@@ -169,6 +199,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     replacer_manifest_path = str(reports_obj.get("manifest_json") or "")
     strict_stop = bool(replacer_manifest.get("payable_sub_fill_required_failed"))
     reasons: list[str] = []
+    warnings: list[str] = list(category_overrides_warnings)
     exit_status = "OK"
     if strict_stop:
         exit_status = "FAIL"
@@ -194,11 +225,19 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
             "sha256": kari_ingest.sha256,
             "status": kari_ingest.status,
         },
+        "category_overrides": {
+            "path": str(overrides_path),
+            "applied_count": len(override_debit_accounts),
+            "expected_count": len(lexicon_category_keys),
+            "warnings": category_overrides_warnings,
+        },
         "replacer_manifest_path": replacer_manifest_path,
         "strict_stop_applied": strict_stop,
         "exit_status": exit_status,
         "reasons": reasons,
     }
+    if warnings:
+        run_manifest["warnings"] = warnings
     run_manifest_path = run_dir / "run_manifest.json"
     _write_run_manifest(run_manifest_path, run_manifest)
     latest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -211,6 +250,8 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         f" - changed_ratio={float(replacer_manifest.get('changed_ratio') or 0.0):.3f}"
         f" output={replacer_manifest.get('output_file', '')}"
     )
+    if warnings:
+        print("[WARN] " + " | ".join(warnings))
 
     if strict_stop:
         print(
@@ -226,5 +267,5 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         "run_manifest_path": str(run_manifest_path),
         "changed_ratio": float(replacer_manifest.get("changed_ratio") or 0.0),
         "output_file": str(replacer_manifest.get("output_file") or ""),
-        "warnings": reasons,
+        "warnings": warnings,
     }
