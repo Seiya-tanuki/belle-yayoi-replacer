@@ -90,6 +90,53 @@ def _write_yayoi_rows(path: Path, rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
+def _read_yayoi_rows(path: Path) -> list[list[str]]:
+    with path.open("r", encoding="cp932", newline="") as f:
+        return list(csv.reader(f))
+
+
+def _write_file_level_training_pair(
+    line_root: Path,
+    *,
+    bank_subaccount: str,
+    amounts: list[int],
+) -> None:
+    training_ocr_rows: list[list[str]] = []
+    teacher_rows: list[list[str]] = []
+    for idx, amount in enumerate(amounts, start=1):
+        training_ocr_rows.append(
+            _build_row(
+                date_text=f"2026/01/{10 + idx:02d}",
+                summary=OCR_SUMMARY,
+                debit_account=PLACEHOLDER_ACCOUNT,
+                credit_account=BANK_ACCOUNT,
+                amount=int(amount),
+                memo="SIGN=debit",
+                credit_subaccount=BANK_SUBACCOUNT,
+            )
+        )
+        teacher_rows.append(
+            _build_row(
+                date_text=f"2026/01/{10 + idx:02d}",
+                summary=TEACHER_SUMMARY,
+                debit_account=COUNTER_ACCOUNT,
+                credit_account=BANK_ACCOUNT,
+                amount=int(amount),
+                memo="",
+                credit_subaccount=bank_subaccount,
+            )
+        )
+
+    _write_yayoi_rows(
+        line_root / "inputs" / "training" / "ocr_kari_shiwake" / "training_ocr.csv",
+        training_ocr_rows,
+    )
+    _write_yayoi_rows(
+        line_root / "inputs" / "training" / "reference_yayoi" / "teacher.csv",
+        teacher_rows,
+    )
+
+
 def _prepare_bank_client_layout(repo_root: Path, client_id: str) -> Path:
     line_root = _line_root(repo_root, client_id)
     (line_root / "inputs" / "training" / "ocr_kari_shiwake").mkdir(parents=True, exist_ok=True)
@@ -313,7 +360,7 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
                     credit_account=BANK_ACCOUNT,
                     amount=TARGET_AMOUNT,
                     memo="SIGN=debit",
-                    credit_subaccount="",
+                    credit_subaccount="KEEP_SUB",
                 )
             ]
             _write_yayoi_rows(line_root / "inputs" / "kari_shiwake" / "target.csv", target_rows)
@@ -359,7 +406,192 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             self.assertTrue(replaced_rows, msg=buf.getvalue())
 
             replaced_row = replaced_rows[0]
-            self.assertEqual("", replaced_row[COL_CREDIT_SUBACCOUNT], msg=buf.getvalue())
+            self.assertEqual("KEEP_SUB", replaced_row[COL_CREDIT_SUBACCOUNT], msg=buf.getvalue())
+
+    def test_bank_line_file_level_subaccount_success_fills_all_rows(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C_BANK_FILE_LEVEL_OK_SMOKE"
+        inferred_bank_subaccount = "BANK_SUB_FILE_OK"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(temp_repo_root, client_id)
+            cfg_path = line_root / "config" / "bank_line_config.json"
+            cfg_obj = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg_obj["bank_account_subaccount"] = ""
+            cfg_path.write_text(json.dumps(cfg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+            _write_file_level_training_pair(
+                line_root,
+                bank_subaccount=inferred_bank_subaccount,
+                amounts=[5100, 5200, 5300],
+            )
+
+            _write_yayoi_rows(
+                line_root / "inputs" / "kari_shiwake" / "target.csv",
+                [
+                    _build_row(
+                        date_text="2026/02/11",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                    _build_row(
+                        date_text="2026/02/12",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                    _build_row(
+                        date_text="2026/02/13",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                ],
+            )
+
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "run_yayoi_replacer.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "bank_statement",
+                            "--yes",
+                        ],
+                    ):
+                        rc = module.main()
+            self.assertEqual(0, rc, msg=buf.getvalue())
+
+            run_id = (line_root / "outputs" / "LATEST.txt").read_text(encoding="utf-8").strip()
+            run_dir = line_root / "outputs" / "runs" / run_id
+            self.assertTrue(run_dir.is_dir(), msg=buf.getvalue())
+
+            replaced_csv_files = sorted(run_dir.glob("*_replaced_*.csv"))
+            self.assertTrue(replaced_csv_files, msg=buf.getvalue())
+            rows = _read_yayoi_rows(replaced_csv_files[0])
+            self.assertTrue(rows, msg=buf.getvalue())
+            self.assertTrue(
+                all(row[COL_CREDIT_SUBACCOUNT] == inferred_bank_subaccount for row in rows),
+                msg=buf.getvalue(),
+            )
+
+            run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("OK", run_manifest.get("exit_status"))
+            self.assertFalse(bool(run_manifest.get("strict_stop_applied")))
+            replacer_manifest_path = Path(str(run_manifest.get("replacer_manifest_path") or ""))
+            self.assertTrue(replacer_manifest_path.exists(), msg=buf.getvalue())
+
+            replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
+            file_inf = replacer_manifest.get("file_bank_sub_inference") or {}
+            self.assertEqual("OK", file_inf.get("status"))
+            self.assertFalse(bool(replacer_manifest.get("bank_sub_fill_required_failed")))
+
+    def test_bank_line_file_level_subaccount_failure_triggers_runner_strict_stop(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C_BANK_FILE_LEVEL_FAIL_SMOKE"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(temp_repo_root, client_id)
+            cfg_path = line_root / "config" / "bank_line_config.json"
+            cfg_obj = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg_obj["bank_account_subaccount"] = ""
+            cfg_path.write_text(json.dumps(cfg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+            _write_file_level_training_pair(
+                line_root,
+                bank_subaccount="BANK_SUB_FILE_FAIL",
+                amounts=[5100, 5200, 5300],
+            )
+
+            _write_yayoi_rows(
+                line_root / "inputs" / "kari_shiwake" / "target.csv",
+                [
+                    _build_row(
+                        date_text="2026/02/21",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                    _build_row(
+                        date_text="2026/02/22",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                ],
+            )
+
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            buf = io.StringIO()
+            with self.assertRaises(SystemExit) as ctx:
+                with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stderr(buf):
+                        with mock.patch.object(
+                            sys,
+                            "argv",
+                            [
+                                "run_yayoi_replacer.py",
+                                "--client",
+                                client_id,
+                                "--line",
+                                "bank_statement",
+                                "--yes",
+                            ],
+                        ):
+                            module.main()
+            self.assertEqual(2, int(ctx.exception.code), msg=buf.getvalue())
+
+            latest_path = line_root / "outputs" / "LATEST.txt"
+            self.assertTrue(latest_path.exists(), msg=buf.getvalue())
+            run_id = latest_path.read_text(encoding="utf-8").strip()
+            self.assertTrue(run_id)
+
+            run_dir = line_root / "outputs" / "runs" / run_id
+            self.assertTrue(run_dir.is_dir(), msg=buf.getvalue())
+
+            run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("FAIL", run_manifest.get("exit_status"))
+            self.assertTrue(bool(run_manifest.get("strict_stop_applied")))
+            self.assertIn("bank_sub_fill_required_failed", run_manifest.get("reasons") or [])
+
+            replacer_manifest_path = Path(str(run_manifest.get("replacer_manifest_path") or ""))
+            self.assertTrue(replacer_manifest_path.exists(), msg=buf.getvalue())
+            replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
+            self.assertTrue(bool(replacer_manifest.get("bank_sub_fill_required_failed")))
+
+            replaced_csv_files = sorted(run_dir.glob("*_replaced_*.csv"))
+            self.assertTrue(replaced_csv_files, msg=buf.getvalue())
+            rows = _read_yayoi_rows(replaced_csv_files[0])
+            self.assertTrue(rows, msg=buf.getvalue())
+            self.assertTrue(all(row[COL_CREDIT_SUBACCOUNT] == "" for row in rows), msg=buf.getvalue())
 
     def test_bank_line_client_cache_builder_does_not_create_ledger_ref_ingest_dir(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]

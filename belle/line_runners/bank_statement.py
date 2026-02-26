@@ -255,6 +255,21 @@ def run_bank(
         run_dir=run_dir,
         artifact_prefix=artifact_prefix,
     )
+    reports_obj = bank_output_manifest.get("reports") if isinstance(bank_output_manifest, dict) else {}
+    if not isinstance(reports_obj, dict):
+        reports_obj = {}
+    replacer_manifest_path = str(reports_obj.get("manifest_json") or "")
+    strict_stop = bool(bank_output_manifest.get("bank_sub_fill_required_failed"))
+    reasons: list[str] = []
+    exit_status = "OK"
+    if strict_stop:
+        exit_status = "FAIL"
+        reasons.append("bank_sub_fill_required_failed")
+        file_inference = bank_output_manifest.get("file_bank_sub_inference")
+        if isinstance(file_inference, dict):
+            infer_status = str(file_inference.get("status") or "").strip()
+            if infer_status:
+                reasons.append(f"file_bank_sub_inference_status={infer_status}")
 
     run_manifest = {
         "schema": "belle.bank_replacer_skill_run.v1",
@@ -281,6 +296,10 @@ def run_bank(
                 "sha256": kari_ingest.sha256,
             }
         },
+        "replacer_manifest_path": replacer_manifest_path,
+        "strict_stop_applied": strict_stop,
+        "exit_status": exit_status,
+        "reasons": reasons,
         "outputs": [bank_output_manifest],
     }
     run_manifest_path = run_dir / "run_manifest.json"
@@ -304,6 +323,12 @@ def run_bank(
     warnings = run_manifest["bank_cache_update"]["warnings"]
     if warnings:
         print("[WARN] " + " | ".join(str(v) for v in warnings))
+    if strict_stop:
+        print(
+            "[ERROR] strict-stop: Contract A failed "
+            "(bank_sub_fill_required_failed=True)."
+        )
+        raise SystemExit(2)
 
     return {
         "line_id": LINE_ID_BANK,
