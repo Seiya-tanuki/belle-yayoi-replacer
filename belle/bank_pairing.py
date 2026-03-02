@@ -31,6 +31,7 @@ _SIGN_RE = re.compile(r"SIGN\s*=\s*(debit|credit)", flags=re.IGNORECASE)
 _YMD_SLASH_RE = re.compile(r"^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$")
 _YMD_JP_RE = re.compile(r"^(\d{4})年(\d{1,2})月(\d{1,2})日$")
 _YMD_COMPACT_RE = re.compile(r"^(\d{8})$")
+_WAREKI_RE = re.compile(r"^([Rr])\.?\s*(\d{1,2})[/-](\d{1,2})[/-](\d{1,2})$")
 
 
 def _safe_text(tokens: Sequence[bytes], idx: int, encoding: str) -> str:
@@ -69,6 +70,19 @@ def _normalize_date_key(text: str) -> Optional[str]:
         y, mo, d = int(raw[0:4]), int(raw[4:6]), int(raw[6:8])
         try:
             return date(y, mo, d).isoformat()
+        except ValueError:
+            return None
+
+    m = _WAREKI_RE.match(s)
+    if m:
+        era = m.group(1).upper()
+        era_year = int(m.group(2))
+        mo, d = int(m.group(3)), int(m.group(4))
+        if era != "R" or era_year < 1:
+            return None
+        gregorian_year = 2018 + era_year
+        try:
+            return date(gregorian_year, mo, d).isoformat()
         except ValueError:
             return None
 

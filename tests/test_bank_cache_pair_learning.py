@@ -199,6 +199,78 @@ class BankCachePairLearningTests(unittest.TestCase):
             self.assertIn("kana_sign_amount", bank_sub_stats)
             self.assertIn("kana_sign", bank_sub_stats)
 
+    def test_unique_pair_updates_cache_with_wareki_teacher_dates(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C1W"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            ocr_summary_withdraw = "OCR_WITHDRAW"
+            ocr_summary_deposit = "OCR_DEPOSIT"
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/01/05",
+                        summary=ocr_summary_withdraw,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1200,
+                        memo="SIGN=debit",
+                    ),
+                    _build_row(
+                        date_text="2026/01/06",
+                        summary=ocr_summary_deposit,
+                        debit_account=BANK_ACCOUNT,
+                        credit_account=PLACEHOLDER_ACCOUNT,
+                        amount=2500,
+                        memo="SIGN=credit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="R.08/01/05",
+                        summary="TEACHER_WITHDRAW",
+                        debit_account="COUNTER_WITHDRAW",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1200,
+                    ),
+                    _build_row(
+                        date_text="R.08/01/06",
+                        summary="TEACHER_DEPOSIT",
+                        debit_account=BANK_ACCOUNT,
+                        debit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        credit_account="COUNTER_DEPOSIT",
+                        credit_tax_division="TAX_C_EX",
+                        amount=2500,
+                    ),
+                ],
+                ref_name="teacher_wareki.txt",
+            )
+
+            summary = ensure_bank_client_cache_updated(repo_root, client_id)
+            self.assertEqual(summary["pairs_unique_used_total"], 2)
+            self.assertEqual(len(summary.get("applied_pair_set_ids") or []), 1)
+
+            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+            self.assertTrue(cache_path.exists())
+            cache_obj = _load_json(cache_path)
+            self.assertEqual(cache_obj.get("schema"), "belle.bank_client_cache.v0")
+
+            label_withdraw = make_bank_label_id("TEACHER_WITHDRAW", "COUNTER_WITHDRAW", "", "TAX_D10")
+            label_deposit = make_bank_label_id("TEACHER_DEPOSIT", "COUNTER_DEPOSIT", "", "TAX_C_EX")
+            labels = cache_obj.get("labels") or {}
+            self.assertIn(label_withdraw, labels)
+            self.assertIn(label_deposit, labels)
+
+            key_withdraw = f"{normalize_kana_key(ocr_summary_withdraw)}|debit|1200"
+            key_deposit = f"{normalize_kana_key(ocr_summary_deposit)}|credit|2500"
+            stats = ((cache_obj.get("stats") or {}).get("kana_sign_amount") or {})
+            self.assertEqual(int((stats.get(key_withdraw) or {}).get("sample_total") or -1), 1)
+            self.assertEqual(int((stats.get(key_deposit) or {}).get("sample_total") or -1), 1)
+
     def test_ambiguous_join_skipped(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
