@@ -17,10 +17,15 @@ clients/<CLIENT_ID>/
   lines/
     <line_id>/
       config/
-        category_overrides.json        # per-client+line editable full-expanded overrides
+        category_overrides.json        # receipt + credit_card_statement only
+        bank_line_config.json          # bank_statement only
+        credit_card_line_config.json   # credit_card_statement only
       inputs/
         kari_shiwake/                  # target draft CSV for the selected line (all implemented lines)
-        ledger_ref/                    # receipt only; forbidden for bank_statement
+        ledger_ref/                    # receipt + credit_card_statement only
+        training/                      # bank_statement only
+          ocr_kari_shiwake/
+          reference_yayoi/
       outputs/
         runs/
           <RUN_ID>/
@@ -33,12 +38,16 @@ clients/<CLIENT_ID>/
         cache/
           client_cache.json
         ingest/
-          ledger_ref/                  # receipt only; forbidden for bank_statement
-          kari_shiwake/                # receipt flow ingest storage
-          ledger_ref_ingested.json     # receipt flow ingest marker
-          kari_shiwake_ingested.json   # receipt flow ingest marker
+          ledger_ref/                  # receipt + credit_card_statement only
+          kari_shiwake/                # all implemented lines
+          training_ocr/                # bank_statement only
+          training_reference/          # bank_statement only
+          ledger_ref_ingested.json     # receipt + credit_card_statement only
+          kari_shiwake_ingested.json   # all implemented lines
+          training_ocr_ingested.json   # bank_statement only
+          training_reference_ingested.json
         telemetry/                     # optional runtime logs; non-blocking if absent
-          lexicon_autogrow_latest.json
+          lexicon_autogrow_latest.json # receipt only
           *.json
 ```
 
@@ -104,17 +113,16 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 1. `lexicon/lexicon.json`
 2. `defaults/receipt/category_defaults.json`
 3. `defaults/credit_card_statement/category_defaults.json`
-4. `defaults/bank_statement/category_defaults.json` (tracked, but bank lexicon routing is not wired)
-5. `rulesets/<line_id>/replacer_config_v1_15.json`
-6. `lexicon/<line_id>/pending/.gitkeep`
-7. `lexicon/<line_id>/pending/locks/.gitkeep`
+4. `rulesets/receipt/replacer_config_v1_15.json`
+5. `lexicon/receipt/pending/.gitkeep`
+6. `lexicon/receipt/pending/locks/.gitkeep`
 
 ## Runtime-managed assets (ignored)
 
 1. `clients/**` except `clients/TEMPLATE/**`
-2. `lexicon/*/pending/**` except placeholders:
-   1. `lexicon/*/pending/.gitkeep`
-   2. `lexicon/*/pending/locks/.gitkeep`
+2. `lexicon/receipt/pending/**` except placeholders:
+   1. `lexicon/receipt/pending/.gitkeep`
+   2. `lexicon/receipt/pending/locks/.gitkeep`
 3. `exports/**`
 
 ## Legacy compatibility (receipt only, deprecated)

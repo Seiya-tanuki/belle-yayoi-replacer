@@ -51,7 +51,11 @@ This contract in this file is for `receipt` line behavior.
    1. Override only `debit_account` per `category_key`.
    2. Keep global `confidence`, `priority`, and `reason_code` unchanged.
 4. If overrides file is missing, generate a full-expanded file and continue.
-5. If overrides file exists but is invalid, fail-closed and exit non-zero before creating `outputs/runs/<RUN_ID>/`.
+5. If overrides file exists, load it best-effort:
+   1. file-level invalid states are treated as empty overrides with warnings
+   2. extra keys, missing keys, and per-key invalid rows are ignored with warnings
+   3. the run continues using validated overrides plus global defaults/global fallback
+6. Warning semantics follow `spec/CATEGORY_OVERRIDES_SPEC.md`.
 
 ## Deterministic decision order (strong -> weak)
 

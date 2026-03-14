@@ -3,7 +3,7 @@
 ## Purpose
 
 `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` is a per-client, per-line editable overlay for debit account defaults.
-The generated file is full-expanded (all `category_key`s), but runtime loading is best-effort and may apply only valid rows.
+The generated file is full-expanded (all `category_key`s), but runtime loading is best-effort and applies only validated rows.
 Phase D line scope:
 1. `receipt`: used.
 2. `credit_card_statement`: used.
@@ -35,7 +35,7 @@ Top-level keys:
 ## Editing rules
 
 1. Users may edit only `overrides.<category_key>.debit_account` string values.
-2. Adding/removing/renaming category keys is discouraged (runtime will ignore invalid parts with warnings).
+2. Adding/removing/renaming category keys is discouraged (missing keys fall back, extra keys are ignored, and invalid rows are warned/ignored).
 3. Do not change schema/version fields.
 
 ## Runtime validation semantics (best-effort)

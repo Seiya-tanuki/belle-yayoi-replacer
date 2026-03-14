@@ -1,12 +1,18 @@
 # Belle Yayoi Skillpack (Codex)
 
-Deterministic toolchain for Yayoi 25-column import CSV replacement.
+Deterministic toolchain for line-aware Yayoi 25-column import CSV replacement.
+
+## Implemented lines
+
+1. `receipt`
+2. `bank_statement`
+3. `credit_card_statement`
 
 ## Core behavior
 
-1. Replace only debit account column (column 5).
-2. Use only summary column (column 17) for inference.
-3. Never use memo column (column 22).
+1. `receipt`: replace only debit account column (column 5); inference uses summary column (column 17) only; memo column (column 22) is not used.
+2. `bank_statement`: replace only the fields defined by `spec/BANK_REPLACER_SPEC.md`; summary may be rewritten and memo `SIGN` may be used as a fallback signal.
+3. `credit_card_statement`: replace placeholder account and payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; inference uses summary and does not use memo.
 4. Keep everything offline (no network dependency).
 
 ## Active skills
@@ -16,16 +22,21 @@ Deterministic toolchain for Yayoi 25-column import CSV replacement.
 3. `$client-cache-builder`
 4. `$lexicon-extract`
 5. `$lexicon-apply`
-6. `$migrate-line-layout`
+6. `$export-lexicon-review-pack`
+7. `$backup-assets`
+8. `$restore-assets`
+9. `$system-diagnose`
+10. `$collect-outputs`
+11. `$migrate-line-layout`
 
-## Active inputs
+## Canonical line inputs (current)
 
-Canonical line layout (Phase 1):
-1. `clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/`
-2. `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
-3. Legacy receipt fallback (deprecated): `clients/<CLIENT_ID>/inputs/*`
+1. `receipt`: `clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/` and `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+2. `bank_statement`: `clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/`, `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/`, and `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/`
+3. `credit_card_statement`: `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/` and `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/ledger_ref/`
+4. Legacy receipt fallback (deprecated): `clients/<CLIENT_ID>/inputs/*`
 
-## Lexicon pending workflow
+## Receipt lexicon pending workflow
 
 1. `$yayoi-replacer` updates `client_cache` from `ledger_ref`.
 2. `$yayoi-replacer` then auto-grows `lexicon/receipt/pending/label_queue.csv` from `ledger_ref`.
