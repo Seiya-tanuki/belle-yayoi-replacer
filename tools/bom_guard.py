@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable, List, Set
 
 UTF8_BOM = b"\xEF\xBB\xBF"
-ALLOWED_SUFFIXES = {".md", ".json", ".yaml", ".yml"}
+ALLOWED_SUFFIXES = {".md", ".json", ".py", ".yaml", ".yml"}
 
 
 def _repo_root() -> Path:

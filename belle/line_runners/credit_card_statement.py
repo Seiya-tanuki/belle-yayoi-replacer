@@ -108,7 +108,7 @@ def _ingest_single_kari_input(*, repo_root: Path, client_id: str, client_dir: Pa
             manifest_schema="belle.kari_shiwake_ingest.v1",
         )
     except Exception as exc:
-        raise RuntimeError(f"莉ｮ莉戊ｨｳCSV縺ｮ蜿悶ｊ霎ｼ縺ｿ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: {exc}") from exc
+        raise RuntimeError(f"仮仕訳CSVの取り込みに失敗しました: {exc}") from exc
     return kari_ingest
 
 
@@ -145,7 +145,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     try:
         _cache, cache_update_summary = ensure_cc_client_cache_updated(repo_root, client_id)
     except Exception as exc:
-        raise RuntimeError(f"credit card client_cache 譖ｴ譁ｰ縺ｫ螟ｱ謨励＠縺ｾ縺励◆: {exc}") from exc
+        raise RuntimeError(f"credit card client_cache 更新に失敗しました: {exc}") from exc
 
     kari_ingest = _ingest_single_kari_input(repo_root=repo_root, client_id=client_id, client_dir=client_dir)
 
