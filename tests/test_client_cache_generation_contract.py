@@ -5,6 +5,7 @@ import csv
 import importlib.util
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -47,6 +48,29 @@ def _clear_belle_modules() -> None:
     for name in list(sys.modules):
         if name == "belle" or name.startswith("belle."):
             del sys.modules[name]
+
+
+@contextlib.contextmanager
+def _preserve_interpreter_state():
+    original_cwd = Path.cwd()
+    original_sys_path = list(sys.path)
+    original_environ = os.environ.copy()
+    original_belle_modules = {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "belle" or name.startswith("belle.")
+    }
+    try:
+        yield
+    finally:
+        os.chdir(original_cwd)
+        sys.path[:] = original_sys_path
+        os.environ.clear()
+        os.environ.update(original_environ)
+        for name in list(sys.modules):
+            if name == "belle" or name.startswith("belle."):
+                del sys.modules[name]
+        sys.modules.update(original_belle_modules)
 
 
 def _load_script_module(repo_root: Path, rel_path: str):
@@ -139,70 +163,71 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
             temp_repo_root = Path(td)
             _copy_repo_assets(source_repo_root, temp_repo_root)
 
-            term_needle, expected_category_key = _pick_current_term(temp_repo_root)
-            current_category_keys = _current_category_keys(temp_repo_root)
+            with _preserve_interpreter_state():
+                term_needle, expected_category_key = _pick_current_term(temp_repo_root)
+                current_category_keys = _current_category_keys(temp_repo_root)
 
-            line_root = temp_repo_root / "clients" / client_id / "lines" / "receipt"
-            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
-            telemetry_dir = line_root / "artifacts" / "telemetry"
-            legacy_cache_path = temp_repo_root / "clients" / client_id / "artifacts" / "cache" / "client_cache.json"
+                line_root = temp_repo_root / "clients" / client_id / "lines" / "receipt"
+                cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+                telemetry_dir = line_root / "artifacts" / "telemetry"
+                legacy_cache_path = temp_repo_root / "clients" / client_id / "artifacts" / "cache" / "client_cache.json"
 
-            self.assertFalse(cache_path.exists())
-            self.assertFalse(legacy_cache_path.exists())
+                self.assertFalse(cache_path.exists())
+                self.assertFalse(legacy_cache_path.exists())
 
-            _write_rows(
-                line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
-                [
-                    _receipt_row(
-                        summary=f"{term_needle} T1234567890123",
-                        debit_account="交際費",
-                    )
-                ],
-            )
+                _write_rows(
+                    line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
+                    [
+                        _receipt_row(
+                            summary=f"{term_needle} T1234567890123",
+                            debit_account="莠､髫幄ｲｻ",
+                        )
+                    ],
+                )
 
-            module = _load_script_module(
-                temp_repo_root,
-                ".agents/skills/client-cache-builder/scripts/build_client_cache.py",
-            )
-            output = _run_script_main(
-                module,
-                [
-                    "build_client_cache.py",
-                    "--client",
-                    client_id,
-                    "--line",
-                    "receipt",
-                ],
-            )
+                module = _load_script_module(
+                    temp_repo_root,
+                    ".agents/skills/client-cache-builder/scripts/build_client_cache.py",
+                )
+                output = _run_script_main(
+                    module,
+                    [
+                        "build_client_cache.py",
+                        "--client",
+                        client_id,
+                        "--line",
+                        "receipt",
+                    ],
+                )
 
-            self.assertTrue(cache_path.exists(), msg=output)
-            self.assertFalse(legacy_cache_path.exists(), msg=output)
+                self.assertTrue(cache_path.exists(), msg=output)
+                self.assertFalse(legacy_cache_path.exists(), msg=output)
 
-            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-            self.assertEqual("belle.client_cache.v1", cache_obj.get("schema"))
-            self.assertTrue(cache_obj.get("append_only"))
+                cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+                self.assertEqual("belle.client_cache.v1", cache_obj.get("schema"))
+                self.assertTrue(cache_obj.get("append_only"))
 
-            applied = cache_obj.get("applied_ledger_ref_sha256") or {}
-            self.assertEqual(1, len(applied), msg=output)
+                applied = cache_obj.get("applied_ledger_ref_sha256") or {}
+                self.assertEqual(1, len(applied), msg=output)
 
-            stats = cache_obj.get("stats") or {}
-            categories = stats.get("categories") or {}
-            self.assertIn(expected_category_key, categories, msg=output)
-            self.assertTrue(set(categories).issubset(current_category_keys), msg=output)
+                stats = cache_obj.get("stats") or {}
+                categories = stats.get("categories") or {}
+                self.assertIn(expected_category_key, categories, msg=output)
+                self.assertTrue(set(categories).issubset(current_category_keys), msg=output)
 
-            t_numbers_by_category = stats.get("t_numbers_by_category") or {}
-            self.assertIn("T1234567890123", t_numbers_by_category, msg=output)
-            self.assertIn(expected_category_key, t_numbers_by_category["T1234567890123"], msg=output)
-            self.assertTrue(
-                set(t_numbers_by_category["T1234567890123"]).issubset(current_category_keys),
-                msg=output,
-            )
+                t_numbers_by_category = stats.get("t_numbers_by_category") or {}
+                self.assertIn("T1234567890123", t_numbers_by_category, msg=output)
+                self.assertIn(expected_category_key, t_numbers_by_category["T1234567890123"], msg=output)
+                self.assertTrue(
+                    set(t_numbers_by_category["T1234567890123"]).issubset(current_category_keys),
+                    msg=output,
+                )
 
-            telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))
-            self.assertEqual(1, len(telemetry_files), msg=output)
-            telemetry_obj = json.loads(telemetry_files[0].read_text(encoding="utf-8"))
-            self.assertEqual("belle.client_cache_update_run.v1", telemetry_obj.get("schema"))
-            self.assertEqual(str(cache_path), ((telemetry_obj.get("paths") or {}).get("client_cache") or ""))
+                telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))
+                self.assertEqual(1, len(telemetry_files), msg=output)
+                telemetry_obj = json.loads(telemetry_files[0].read_text(encoding="utf-8"))
+                self.assertEqual("belle.client_cache_update_run.v1", telemetry_obj.get("schema"))
+                self.assertEqual(str(cache_path), ((telemetry_obj.get("paths") or {}).get("client_cache") or ""))
 
     def test_credit_card_client_cache_generation_from_empty_state_needs_no_prior_artifacts(self) -> None:
         source_repo_root = Path(__file__).resolve().parents[1]
@@ -212,91 +237,92 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
             temp_repo_root = Path(td)
             _copy_repo_assets(source_repo_root, temp_repo_root)
 
-            line_root = temp_repo_root / "clients" / client_id / "lines" / "credit_card_statement"
-            cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
-            telemetry_dir = line_root / "artifacts" / "telemetry"
+            with _preserve_interpreter_state():
+                line_root = temp_repo_root / "clients" / client_id / "lines" / "credit_card_statement"
+                cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
+                telemetry_dir = line_root / "artifacts" / "telemetry"
 
-            self.assertFalse(cache_path.exists())
-            self.assertFalse((line_root / "artifacts").exists())
+                self.assertFalse(cache_path.exists())
+                self.assertFalse((line_root / "artifacts").exists())
 
-            config_path = line_root / "config" / "credit_card_line_config.json"
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            config_path.write_text(
-                json.dumps(
-                    {
-                        "schema": "belle.credit_card_line_config.v0",
-                        "version": "0.1",
-                        "placeholder_account_name": "TEMP_PLACEHOLDER",
-                        "payable_account_name": "未払金",
-                        "training": {"exclude_counter_accounts": []},
-                        "thresholds": {
-                            "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
-                            "file_level_card_inference": {"min_votes": 1, "min_p_majority": 0.5},
+                config_path = line_root / "config" / "credit_card_line_config.json"
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                config_path.write_text(
+                    json.dumps(
+                        {
+                            "schema": "belle.credit_card_line_config.v0",
+                            "version": "0.1",
+                            "placeholder_account_name": "TEMP_PLACEHOLDER",
+                            "payable_account_name": "譛ｪ謇暮≡",
+                            "training": {"exclude_counter_accounts": []},
+                            "thresholds": {
+                                "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
+                                "file_level_card_inference": {"min_votes": 1, "min_p_majority": 0.5},
+                            },
+                            "candidate_extraction": {
+                                "min_total_count": 1,
+                                "min_unique_merchants": 1,
+                                "min_unique_counter_accounts": 1,
+                                "manual_allow": [],
+                            },
                         },
-                        "candidate_extraction": {
-                            "min_total_count": 1,
-                            "min_unique_merchants": 1,
-                            "min_unique_counter_accounts": 1,
-                            "manual_allow": [],
-                        },
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
-                encoding="utf-8",
-            )
-
-            _write_rows(
-                line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
-                [
-                    _credit_card_row(
-                        date_text="2026/03/01",
-                        summary="PHASE4CARDALPHA",
-                        debit_account="旅費交通費",
-                        credit_account="未払金",
-                        credit_subaccount="CARD_A",
+                        ensure_ascii=False,
+                        indent=2,
                     ),
-                    _credit_card_row(
-                        date_text="2026/03/02",
-                        summary="PHASE4CARDBETA",
-                        debit_account="消耗品費",
-                        credit_account="未払金",
-                        credit_subaccount="CARD_A",
-                    ),
-                ],
-            )
+                    encoding="utf-8",
+                )
 
-            module = _load_script_module(
-                temp_repo_root,
-                ".agents/skills/client-cache-builder/scripts/build_client_cache.py",
-            )
-            output = _run_script_main(
-                module,
-                [
-                    "build_client_cache.py",
-                    "--client",
-                    client_id,
-                    "--line",
-                    "credit_card_statement",
-                ],
-            )
+                _write_rows(
+                    line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
+                    [
+                        _credit_card_row(
+                            date_text="2026/03/01",
+                            summary="PHASE4CARDALPHA",
+                            debit_account="譌・ｲｻ莠､騾夊ｲｻ",
+                            credit_account="譛ｪ謇暮≡",
+                            credit_subaccount="CARD_A",
+                        ),
+                        _credit_card_row(
+                            date_text="2026/03/02",
+                            summary="PHASE4CARDBETA",
+                            debit_account="豸郁怜刀雋ｻ",
+                            credit_account="譛ｪ謇暮≡",
+                            credit_subaccount="CARD_A",
+                        ),
+                    ],
+                )
 
-            self.assertTrue(cache_path.exists(), msg=output)
+                module = _load_script_module(
+                    temp_repo_root,
+                    ".agents/skills/client-cache-builder/scripts/build_client_cache.py",
+                )
+                output = _run_script_main(
+                    module,
+                    [
+                        "build_client_cache.py",
+                        "--client",
+                        client_id,
+                        "--line",
+                        "credit_card_statement",
+                    ],
+                )
 
-            cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-            self.assertEqual("belle.cc_client_cache.v0", cache_obj.get("schema"))
-            self.assertEqual("credit_card_statement", cache_obj.get("line_id"))
+                self.assertTrue(cache_path.exists(), msg=output)
 
-            applied = cache_obj.get("applied_ledger_ref_sha256") or {}
-            self.assertEqual(1, len(applied), msg=output)
-            self.assertEqual(2, len(cache_obj.get("merchant_key_account_stats") or {}), msg=output)
-            self.assertEqual(2, len(cache_obj.get("merchant_key_payable_sub_stats") or {}), msg=output)
+                cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
+                self.assertEqual("belle.cc_client_cache.v0", cache_obj.get("schema"))
+                self.assertEqual("credit_card_statement", cache_obj.get("line_id"))
 
-            telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))
-            self.assertEqual(1, len(telemetry_files), msg=output)
-            telemetry_obj = json.loads(telemetry_files[0].read_text(encoding="utf-8"))
-            self.assertEqual("belle.cc_client_cache_update_run.v1", telemetry_obj.get("schema"))
-            self.assertEqual(str(cache_path), ((telemetry_obj.get("paths") or {}).get("client_cache") or ""))
+                applied = cache_obj.get("applied_ledger_ref_sha256") or {}
+                self.assertEqual(1, len(applied), msg=output)
+                self.assertEqual(2, len(cache_obj.get("merchant_key_account_stats") or {}), msg=output)
+                self.assertEqual(2, len(cache_obj.get("merchant_key_payable_sub_stats") or {}), msg=output)
+
+                telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))
+                self.assertEqual(1, len(telemetry_files), msg=output)
+                telemetry_obj = json.loads(telemetry_files[0].read_text(encoding="utf-8"))
+                self.assertEqual("belle.cc_client_cache_update_run.v1", telemetry_obj.get("schema"))
+                self.assertEqual(str(cache_path), ((telemetry_obj.get("paths") or {}).get("client_cache") or ""))
 
 
 if __name__ == "__main__":
