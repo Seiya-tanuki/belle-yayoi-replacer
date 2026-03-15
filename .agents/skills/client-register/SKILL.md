@@ -38,7 +38,8 @@ python .agents/skills/client-register/register_client.py --line credit_card_stat
    1. `defaults/receipt/category_defaults.json`
    2. `defaults/credit_card_statement/category_defaults.json`
 2. category_overrides generation is best-effort; missing per-category defaults are filled with `global_fallback`.
-3. `bank_statement` does not use category_overrides.
+3. Generated `category_overrides.json` files are runtime/client assets and are not tracked in the repository baseline.
+4. `bank_statement` does not use category_overrides.
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.

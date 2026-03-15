@@ -3,7 +3,10 @@
 ## Purpose
 
 `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` is a per-client, per-line editable overlay for debit account defaults.
-The generated file is full-expanded (all `category_key`s), but runtime loading is best-effort and applies only validated rows.
+The generated file is full-expanded from the current shared `lexicon/lexicon.json` category keys
+and `defaults/<line_id>/category_defaults.json`, but runtime loading is best-effort and applies
+only validated rows. These generated files are not tracked as repository assets in the current
+baseline.
 Phase D line scope:
 1. `receipt`: used.
 2. `credit_card_statement`: used.
@@ -27,7 +30,9 @@ Top-level keys:
   "generated_at": "2026-02-14T00:00:00Z",
   "note_ja": "Edit ONLY debit_account string values. Do not change keys/structure.",
   "overrides": {
-    "office_supplies": { "debit_account": "消耗品費" }
+    "restaurant_izakaya": { "debit_account": "交際費" },
+    "utilities": { "debit_account": "水道光熱費" },
+    "banks_credit_unions": { "debit_account": "支払手数料" }
   }
 }
 ```
@@ -41,7 +46,7 @@ Top-level keys:
 ## Runtime validation semantics (best-effort)
 
 1. Missing file:
-   1. `receipt` and `credit_card_statement` runtimes auto-generate a full-expanded file, then load best-effort.
+   1. `receipt` and `credit_card_statement` runtimes auto-generate a full-expanded file from current lexicon keys + line defaults, then load best-effort.
    2. If still unavailable, continue with empty overrides.
 2. UTF-8 BOM at file head:
    1. BOM is removed in-place and loading continues.

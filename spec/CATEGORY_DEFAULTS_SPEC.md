@@ -3,7 +3,9 @@
 ## Purpose
 `defaults/<line_id>/category_defaults.json` provides a **global default debit account** per lexicon category.
 It is used when per-client evidence is missing or too weak, especially for **new clients** that
-have no historical journals.
+have no historical journals. The current repository tracks line-specific defaults for:
+1. `receipt`
+2. `credit_card_statement`
 
 This is deliberately **opinionated** to increase replacement coverage.
 Human review remains the source of truth.
@@ -25,6 +27,6 @@ Top-level keys:
 ## Design notes
 - Defaults should use **commonly available** Japanese account names to reduce import risk.
 - Defaults are not client-specific; client_cache overrides them when evidence is strong enough.
+- Tracked defaults are aligned to the shared `lexicon/lexicon.json` category keyset for each supported line.
 - If the client has an allowlist of valid accounts (optional future), defaults should be filtered against it.
-- Phase 1 implementation line: `receipt`.
 

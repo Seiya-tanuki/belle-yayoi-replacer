@@ -2,7 +2,9 @@
 
 ## Purpose
 `lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text
-(Yayoi summary text) to a **category**. Categories are later mapped to debit accounts via:
+(Yayoi summary text) to a **category**. The current taxonomy is the reconstructed
+69-category operational/posting taxonomy. Category labels are routing buckets for deterministic
+replacement, not a strict ontology. Categories are later mapped to debit accounts via:
 1) per-client+line `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` (learned from historical journals), and
 2) global `defaults/<line_id>/category_defaults.json` (fallback).
 
@@ -33,17 +35,24 @@ Top-level keys (stable):
 - `learned`: metadata for learned-term tracking (optional)
 
 ### Category object
-Fields:
+Current asset fields:
 - `id`: int (stable numeric ID)
 - `key`: short string key (stable across versions if possible)
 - `label`: upper snake-case label (display / reporting)
+- `label_ja`: Japanese display label
 - `kind`: one of `merchant|platform|payment|government|utility|...` (for analytics only)
 - `precision_hint`: float (0..1)
 - `deprecated`: bool
 - `negative_terms`: dict with keys `n0` and `n1` (array of needles) used as negative filters
+- `default_rule`: supporting default mapping metadata carried in the canonical asset
+- `source_ref`: supporting provenance / reconstruction metadata
 
 **Important:** categories do NOT embed their own keyword lists.
 Keywords live in `term_rows`.
+
+Runtime-essential matching/routing fields are `id`, `key`, `label`, `negative_terms`, and
+`precision_hint`. `label_ja`, `kind`, `deprecated`, `default_rule`, and `source_ref` are
+supporting metadata used for display, defaults generation, audit, or authoring support.
 
 ### term_rows (explicit keyword table)
 Each row is:
@@ -91,3 +100,5 @@ User labeling is required for many learned terms.
 ## External references
 Any URLs / external reference sources MUST NOT be required for runtime.
 They are stored separately in `spec/LEXICON_SOURCES.md` (documentation only).
+Those references are supplementary seed/sanity-check support only; category assignment source of
+truth is always the local `lexicon/lexicon.json`.

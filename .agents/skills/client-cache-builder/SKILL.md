@@ -10,6 +10,7 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 ## Inputs
 1. Preferred line layout:
    - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+   - `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/ledger_ref/`
 2. Receipt legacy fallback (deprecated):
    - `clients/<CLIENT_ID>/inputs/ledger_ref/`
 3. `bank_statement` line layout (legacy fallbackなし):
@@ -34,7 +35,9 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 ## Notes
 1. Uses only summary (17th col) and debit account (5th col).
 2. Memo (22nd col) is never used.
-3. `artifacts/*` is system-managed.
+3. Tracked repository baseline contains no per-client `client_cache.json`; the builder creates the file from client state when absent and then updates it append-only.
+4. `artifacts/*` is system-managed.
+5. `--config` is receipt-specific. It is not used by `bank_statement` or `credit_card_statement`.
 
 ## Execution
 ```bash
@@ -43,4 +46,8 @@ python .agents/skills/client-cache-builder/scripts/build_client_cache.py --clien
 
 ```bash
 python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID> --line bank_statement
+```
+
+```bash
+python .agents/skills/client-cache-builder/scripts/build_client_cache.py --client <CLIENT_ID> --line credit_card_statement
 ```

@@ -22,6 +22,10 @@ try:
     from belle.build_bank_cache import ensure_bank_client_cache_updated
 except ImportError:  # pragma: no cover - compatibility guard
     ensure_bank_client_cache_updated = None
+try:
+    from belle.build_cc_cache import ensure_cc_client_cache_updated
+except ImportError:  # pragma: no cover - compatibility guard
+    ensure_cc_client_cache_updated = None
 
 
 def _has_manifest_entries(manifest_path: Path) -> bool:
@@ -185,6 +189,53 @@ def main() -> None:
             f"[OK] client={client_id}"
             f" pairs_used={out_manifest['summary']['pairs_unique_used_total']}"
             f" labels={out_manifest['summary']['labels_total']}"
+            f" cache={out_manifest['paths']['client_cache']}"
+        )
+        if out_manifest["summary"]["warnings"]:
+            print("[WARN] " + " | ".join(out_manifest["summary"]["warnings"]))
+        return
+
+    if line_id == "credit_card_statement":
+        if ensure_cc_client_cache_updated is None:
+            print("[ERROR] credit_card_statement cache builder is unavailable.")
+            raise SystemExit(1)
+        cache, summary = ensure_cc_client_cache_updated(repo_root, client_id)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        out_manifest = {
+            "schema": "belle.cc_client_cache_update_run.v1",
+            "version": "0.1",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "client_id": client_id,
+            "line_id": line_id,
+            "summary": {
+                "ingested_new_files": int(summary.get("ingested_new_files") or 0),
+                "ingested_duplicate_files": int(summary.get("ingested_duplicate_files") or 0),
+                "applied_new_files": int(summary.get("applied_new_files") or 0),
+                "rows_total_added": int(summary.get("rows_total_added") or 0),
+                "rows_used_added": int(summary.get("rows_used_added") or 0),
+                "warnings": list(summary.get("warnings") or []),
+            },
+            "cache_stats": {
+                "merchant_key_account_stats": len(cache.merchant_key_account_stats or {}),
+                "merchant_key_payable_sub_stats": len(cache.merchant_key_payable_sub_stats or {}),
+                "card_subaccount_candidates": len(cache.card_subaccount_candidates or {}),
+            },
+            "paths": {
+                "client_cache": str(summary.get("cache_path") or ""),
+                "ingest_manifest": str(summary.get("ingest_manifest_path") or ""),
+            },
+        }
+        (telemetry_dir / f"client_cache_update_run_{ts}.json").write_text(
+            json.dumps(out_manifest, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+        print(
+            f"[OK] client={client_id}"
+            f" applied_new_files={out_manifest['summary']['applied_new_files']}"
+            f" merchant_key_account_stats={out_manifest['cache_stats']['merchant_key_account_stats']}"
+            f" merchant_key_payable_sub_stats={out_manifest['cache_stats']['merchant_key_payable_sub_stats']}"
+            f" card_subaccount_candidates={out_manifest['cache_stats']['card_subaccount_candidates']}"
             f" cache={out_manifest['paths']['client_cache']}"
         )
         if out_manifest["summary"]["warnings"]:

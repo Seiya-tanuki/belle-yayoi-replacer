@@ -17,6 +17,12 @@ This queue supports:
 3. `lexicon/receipt/pending/applied_log.jsonl`
 4. `lexicon/receipt/pending/locks/label_queue.lock`
 
+Repository baseline tracks only:
+1. `lexicon/receipt/pending/.gitkeep`
+2. `lexicon/receipt/pending/locks/.gitkeep`
+
+Queue/state/log files are created on demand from empty state by runtime tools.
+
 `label_queue.lock` must be shared by:
 1. integrated autogrow in `$yayoi-replacer`
 2. manual `$lexicon-extract`

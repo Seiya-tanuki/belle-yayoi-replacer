@@ -1,6 +1,8 @@
 # Belle Yayoi Skillpack (Codex)
 
 Deterministic toolchain for line-aware Yayoi 25-column import CSV replacement.
+Shared canonical lexicon lives at `lexicon/lexicon.json`.
+The current taxonomy is the reconstructed 69-category operational/posting taxonomy used for deterministic routing.
 
 ## Implemented lines
 
@@ -37,6 +39,9 @@ Deterministic toolchain for line-aware Yayoi 25-column import CSV replacement.
 4. Legacy receipt fallback (deprecated): `clients/<CLIENT_ID>/inputs/*`
 
 ## Receipt lexicon pending workflow
+
+Repository baseline tracks only placeholders under `lexicon/receipt/pending/`.
+Queue/state/log files are generated at runtime from empty state.
 
 1. `$yayoi-replacer` updates `client_cache` from `ledger_ref`.
 2. `$yayoi-replacer` then auto-grows `lexicon/receipt/pending/label_queue.csv` from `ledger_ref`.

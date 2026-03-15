@@ -2,6 +2,8 @@
 
 This file lists external references that were used to seed or sanity-check the initial lexicon.
 **Runtime MUST NOT fetch these URLs.**
+These references are supplementary seed support only; the source of truth for category assignment is
+the local shared lexicon at `lexicon/lexicon.json`.
 
 The project is designed to work fully offline.
 

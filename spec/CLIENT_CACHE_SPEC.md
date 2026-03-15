@@ -3,12 +3,16 @@
 ## Scope
 
 This spec applies to receipt line cache only (`line_id=receipt`).
-For bank-statement line cache behavior, see `spec/BANK_CLIENT_CACHE_SPEC.md` (future implementation).
+For bank-statement and credit-card line cache behavior, see:
+1. `spec/BANK_CLIENT_CACHE_SPEC.md`
+2. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
 
 ## Purpose
 
 `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` is a per-client, per-line append-only cache learned from historical finalized journals (`ledger_ref`).
 In this spec, learning source is `ledger_ref` only.
+Repository baseline does not track this file; runtime creates it from client state when needed and
+then extends it append-only.
 
 It provides empirical debit-account distributions keyed by:
 1. **T-number** (`T\d{13}`) extracted from summary (17th column)
