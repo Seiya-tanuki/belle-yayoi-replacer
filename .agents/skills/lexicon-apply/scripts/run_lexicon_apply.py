@@ -22,7 +22,7 @@ def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Pa
     applied_log.touch(exist_ok=True)
     if queue_csv.exists():
         return False
-    with queue_csv.open("w", encoding="utf-8", newline="") as f:
+    with queue_csv.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(LABEL_QUEUE_COLUMNS)
     return True

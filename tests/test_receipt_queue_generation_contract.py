@@ -101,7 +101,7 @@ def _write_receipt_ledger_ref(path: Path, *, summary: str, debit_account: str = 
 
 
 def _read_queue_rows(queue_csv: Path) -> list[dict[str, str]]:
-    with queue_csv.open("r", encoding="utf-8", newline="") as fh:
+    with queue_csv.open("r", encoding="utf-8-sig", newline="") as fh:
         return list(csv.DictReader(fh))
 
 
@@ -191,7 +191,7 @@ class ReceiptQueueGenerationContractTests(unittest.TestCase):
                 fieldnames = list(queue_rows[0].keys())
                 generated_row["user_category_key"] = "restaurant_izakaya"
                 generated_row["action"] = "ADD"
-                with queue_csv.open("w", encoding="utf-8", newline="") as fh:
+                with queue_csv.open("w", encoding="utf-8-sig", newline="") as fh:
                     writer = csv.DictWriter(fh, fieldnames=fieldnames)
                     writer.writeheader()
                     writer.writerow(generated_row)

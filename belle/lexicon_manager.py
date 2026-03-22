@@ -153,7 +153,7 @@ def load_label_queue(path: Path) -> Dict[str, Dict[str, str]]:
     if not path.exists():
         return {}
     rows: Dict[str, Dict[str, str]] = {}
-    with path.open("r", encoding="utf-8", newline="") as f:
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for r in reader:
             if not r:
@@ -184,7 +184,7 @@ def write_label_queue(path: Path, rows: Dict[str, Dict[str, str]]) -> None:
         out["norm_key"] = nk
         writer.writerow(out)
 
-    atomic_write_text(path, buf.getvalue(), encoding="utf-8", newline="")
+    atomic_write_text(path, buf.getvalue(), encoding="utf-8-sig", newline="")
 
 
 def load_label_queue_state(path: Path) -> Dict[str, Any]:

@@ -45,7 +45,7 @@ def _write_yayoi_row(path: Path, *, summary: str, debit: str = "DEBIT_ACCOUNT") 
 def _read_queue_count(queue_csv: Path, norm_key: str) -> int:
     if not queue_csv.exists():
         return 0
-    with queue_csv.open("r", encoding="utf-8", newline="") as f:
+    with queue_csv.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
             if (row.get("norm_key") or "") == norm_key:
