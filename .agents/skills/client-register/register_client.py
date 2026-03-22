@@ -10,6 +10,7 @@ import sys
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 FORBIDDEN_CHARS = set('\\/:*?"<>|')
 RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
@@ -50,6 +51,12 @@ class ValidationResult:
     canonical: str
     reason: str = ""
     substantial_change: bool = False
+
+
+@dataclass(frozen=True)
+class RegistrationError(RuntimeError):
+    headline: str
+    detail: str = ""
 
 
 def _contains_control_chars(value: str) -> bool:
@@ -163,17 +170,21 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
-def _initialize_category_overrides(repo_root: Path, client_id: str, line_id: str) -> None:
+def _initialize_category_overrides(
+    repo_root: Path,
+    client_id: str,
+    line_id: str,
+    destination_line_root: Path,
+) -> None:
     from belle.defaults import generate_full_category_overrides, load_category_defaults
     from belle.lexicon import load_lexicon
     from belle.lines import line_asset_paths
-    from belle.paths import get_category_overrides_path
 
     assets = line_asset_paths(repo_root, line_id)
     lex = load_lexicon(assets["lexicon_path"])
     global_defaults = load_category_defaults(assets["defaults_path"])
     generate_full_category_overrides(
-        path=get_category_overrides_path(repo_root, client_id, line_id=line_id),
+        path=destination_line_root / "config" / "category_overrides.json",
         client_id=client_id,
         global_defaults=global_defaults,
         lexicon_category_keys=set(lex.categories_by_key.keys()),
@@ -228,6 +239,79 @@ def _prune_unselected_lines(destination: Path, selected_lines: tuple[str, ...]) 
         stale_root = lines_root / line_id
         if stale_root.exists():
             shutil.rmtree(stale_root)
+
+
+def _make_staging_destination(clients_dir: Path, client_id: str) -> Path:
+    prefix = f"__client_register_staging_{client_id}_"
+    for _ in range(16):
+        candidate = clients_dir / f"{prefix}{uuid4().hex}"
+        if not candidate.exists():
+            return candidate
+    raise RuntimeError("Could not allocate unique staging directory name.")
+
+
+def _cleanup_staging_directory(staging_dir: Path) -> Exception | None:
+    if not staging_dir.exists():
+        return None
+    try:
+        shutil.rmtree(staging_dir)
+    except Exception as exc:  # pragma: no cover - defensive path
+        return exc
+    return None
+
+
+def _initialize_staged_client(
+    *,
+    repo_root: Path,
+    template_dir: Path,
+    staging_dir: Path,
+    client_id: str,
+    selected_lines: tuple[str, ...],
+) -> None:
+    shutil.copytree(template_dir, staging_dir)
+    (staging_dir / "config").mkdir(parents=True, exist_ok=True)
+    _prune_unselected_lines(staging_dir, selected_lines)
+
+    for line_id in selected_lines:
+        if line_id not in CATEGORY_OVERRIDES_LINES:
+            continue
+        try:
+            _initialize_category_overrides(
+                repo_root,
+                client_id,
+                line_id,
+                staging_dir / "lines" / line_id,
+            )
+        except Exception as exc:
+            raise RegistrationError(
+                f"Failed to initialize category_overrides.json for line={line_id}.",
+                str(exc),
+            ) from exc
+
+    if "bank_statement" in selected_lines:
+        bank_template_line_root = template_dir / "lines" / "bank_statement"
+        bank_destination_line_root = staging_dir / "lines" / "bank_statement"
+        try:
+            _ensure_bank_line_config(bank_template_line_root, bank_destination_line_root)
+        except Exception as exc:
+            raise RegistrationError(
+                "Failed to initialize bank_line_config.json.",
+                str(exc),
+            ) from exc
+
+    for line_id in selected_lines:
+        line_root = staging_dir / "lines" / line_id
+        if not line_root.exists() or not line_root.is_dir():
+            raise RegistrationError(f"{line_id} line directory is missing after registration.")
+
+
+def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path) -> None:
+    if destination.exists():
+        raise RegistrationError(f"Already exists: {_display_path(destination, repo_root)}")
+    try:
+        staging_dir.rename(destination)
+    except Exception as exc:
+        raise RegistrationError("Failed to publish staged client directory.", str(exc)) from exc
 
 
 def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
@@ -315,35 +399,33 @@ def main() -> int:
         print(f"[ERROR] Already exists: {_display_path(destination, repo_root)}")
         return 1
 
-    shutil.copytree(template_dir, destination)
-    (destination / "config").mkdir(parents=True, exist_ok=True)
-    _prune_unselected_lines(destination, selected_lines)
-
-    for line_id in selected_lines:
-        if line_id not in CATEGORY_OVERRIDES_LINES:
-            continue
-        try:
-            _initialize_category_overrides(repo_root, result.canonical, line_id)
-        except Exception as exc:
-            print(f"[ERROR] Failed to initialize category_overrides.json for line={line_id}.")
-            print(f"[ERROR] {exc}")
-            return 2
-
-    if "bank_statement" in selected_lines:
-        bank_template_line_root = template_dir / "lines" / "bank_statement"
-        bank_destination_line_root = destination / "lines" / "bank_statement"
-        try:
-            _ensure_bank_line_config(bank_template_line_root, bank_destination_line_root)
-        except Exception as exc:
-            print("[ERROR] Failed to initialize bank_line_config.json.")
-            print(f"[ERROR] {exc}")
-            return 2
-
-    for line_id in selected_lines:
-        line_root = destination / "lines" / line_id
-        if not line_root.exists() or not line_root.is_dir():
-            print(f"[ERROR] {line_id} line directory is missing after registration.")
-            return 2
+    staging_dir = _make_staging_destination(clients_dir, result.canonical)
+    try:
+        _initialize_staged_client(
+            repo_root=repo_root,
+            template_dir=template_dir,
+            staging_dir=staging_dir,
+            client_id=result.canonical,
+            selected_lines=selected_lines,
+        )
+        _publish_staged_client(staging_dir, destination, repo_root)
+    except RegistrationError as exc:
+        cleanup_error = _cleanup_staging_directory(staging_dir)
+        print(f"[ERROR] {exc.headline}")
+        if exc.detail:
+            print(f"[ERROR] {exc.detail}")
+        if cleanup_error is not None:
+            print(f"[ERROR] Failed to clean up staging directory: {_display_path(staging_dir, repo_root)}")
+            print(f"[ERROR] {cleanup_error}")
+        return 2
+    except Exception as exc:
+        cleanup_error = _cleanup_staging_directory(staging_dir)
+        print("[ERROR] Client registration failed before publish.")
+        print(f"[ERROR] {exc}")
+        if cleanup_error is not None:
+            print(f"[ERROR] Failed to clean up staging directory: {_display_path(staging_dir, repo_root)}")
+            print(f"[ERROR] {cleanup_error}")
+        return 2
 
     created_path = _display_path(destination, repo_root)
     print(f"[OK] Created: {created_path}")

@@ -119,6 +119,13 @@ def _run_register(module, repo_root: Path, *, client_id: str, line: str | None =
     return rc, output_buffer.getvalue()
 
 
+def _client_dir_names(repo_root: Path) -> list[str]:
+    clients_dir = repo_root / "clients"
+    if not clients_dir.exists():
+        return []
+    return sorted(path.name for path in clients_dir.iterdir() if path.is_dir())
+
+
 class ClientRegisterLineAwareTests(unittest.TestCase):
     def setUp(self) -> None:
         self.real_repo_root = Path(__file__).resolve().parents[1]
@@ -165,6 +172,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertTrue(
                 (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
             )
+            self.assertEqual(["C_BANK_LINE_AWARE", "TEMPLATE"], _client_dir_names(repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -263,6 +271,87 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertTrue(
                 (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
             )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_registration_rolls_back_when_category_overrides_init_fails(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_receipt_rollback_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            with mock.patch.object(
+                module,
+                "_initialize_category_overrides",
+                side_effect=RuntimeError("category init failed"),
+            ):
+                rc, output = _run_register(
+                    module,
+                    repo_root,
+                    client_id="C_RECEIPT_ROLLBACK",
+                    line="receipt",
+                )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Failed to initialize category_overrides.json for line=receipt.", output)
+            self.assertFalse((repo_root / "clients" / "C_RECEIPT_ROLLBACK").exists())
+            self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_bank_registration_rolls_back_when_bank_config_init_fails(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_bank_rollback_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            with mock.patch.object(
+                module,
+                "_ensure_bank_line_config",
+                side_effect=RuntimeError("bank init failed"),
+            ):
+                rc, output = _run_register(
+                    module,
+                    repo_root,
+                    client_id="C_BANK_ROLLBACK",
+                    line="bank_statement",
+                )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Failed to initialize bank_line_config.json.", output)
+            self.assertFalse((repo_root / "clients" / "C_BANK_ROLLBACK").exists())
+            self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_existing_client_failure_leaves_existing_directory_unchanged(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_existing_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            existing_root = repo_root / "clients" / "C_EXISTING"
+            sentinel_path = existing_root / "sentinel.txt"
+            sentinel_path.parent.mkdir(parents=True, exist_ok=True)
+            sentinel_path.write_text("keep-me", encoding="utf-8")
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_EXISTING",
+            )
+
+            self.assertEqual(1, rc, msg=output)
+            self.assertIn("Already exists: clients\\C_EXISTING", output)
+            self.assertTrue(existing_root.exists())
+            self.assertEqual("keep-me", sentinel_path.read_text(encoding="utf-8"))
+            self.assertEqual(["C_EXISTING", "TEMPLATE"], _client_dir_names(repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
