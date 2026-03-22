@@ -5,7 +5,6 @@ import importlib.util
 import io
 import json
 import shutil
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -57,23 +56,17 @@ def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]
     return rc, output_buffer.getvalue()
 
 
-def _tracked_override_paths(repo_root: Path) -> list[str]:
-    completed = subprocess.run(
-        ["git", "ls-files"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    tracked = [line.strip().replace("\\", "/") for line in completed.stdout.splitlines() if line.strip()]
+def _override_paths_in_repo_subset(repo_root: Path) -> list[str]:
+    tracked = [
+        path.relative_to(repo_root).as_posix()
+        for path in repo_root.glob("clients/**/config/category_overrides.json")
+        if path.is_file()
+    ]
     return sorted(
         path
         for path in tracked
-        if path.startswith("clients/")
-        and (
-            path.endswith("/lines/receipt/config/category_overrides.json")
-            or path.endswith("/lines/credit_card_statement/config/category_overrides.json")
-        )
+        if path.endswith("/lines/receipt/config/category_overrides.json")
+        or path.endswith("/lines/credit_card_statement/config/category_overrides.json")
     )
 
 
@@ -99,9 +92,6 @@ class CategoryOverridesGenerationContractTests(unittest.TestCase):
         self.test_tmp_root.mkdir(parents=True, exist_ok=True)
 
     def test_client_register_generates_expected_overrides_from_repo_assets(self) -> None:
-        tracked_override_paths = _tracked_override_paths(self.real_repo_root)
-        self.assertEqual([], tracked_override_paths)
-
         repo_root = Path(
             tempfile.mkdtemp(
                 prefix="category_overrides_generation_contract_",
@@ -110,6 +100,7 @@ class CategoryOverridesGenerationContractTests(unittest.TestCase):
         )
         try:
             _prepare_repo_subset(self.real_repo_root, repo_root)
+            self.assertEqual([], _override_paths_in_repo_subset(repo_root))
             module = _load_register_module(self.real_repo_root)
 
             rc, output = _run_register(module, repo_root, client_id="C_OVERRIDES_CONTRACT")

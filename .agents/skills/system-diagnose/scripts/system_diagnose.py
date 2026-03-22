@@ -1113,10 +1113,10 @@ def main() -> int:
 
     d3_env = os.environ.copy()
     d3_env.pop(_REPORT_RENDER_ONLY_ENV, None)
-    d3 = run_and_store("D3", "python -m unittest discover -s tests -v", timeout_sec=180, env=d3_env)
+    d3 = run_and_store("D3", "python tools/run_tests.py", timeout_sec=180, env=d3_env)
     add_hard(
         "D3",
-        "python -m unittest discover -s tests -v returns 0",
+        "python tools/run_tests.py returns 0",
         d3.returncode == 0,
         _result_evidence(d3),
         "Fix failing tests or test execution environment and re-run.",

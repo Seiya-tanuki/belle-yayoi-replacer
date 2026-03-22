@@ -73,3 +73,20 @@ credit-card line references:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
 2. `spec/CREDIT_CARD_CLIENT_CACHE_SPEC.md`
 3. `spec/CREDIT_CARD_REPLACER_SPEC.md`
+
+## Developer Validation
+
+Run the canonical repo-owned validation command from the repository root:
+
+```bash
+python tools/run_tests.py
+```
+
+This is the standard unittest entrypoint for fresh checkouts and ZIP-extracted copies.
+It sets up import resolution from the script location, so no manual `PYTHONPATH=.` setup is required.
+
+Optional legacy direct command from the repository root only:
+
+```bash
+python -m unittest discover -s tests -v
+```

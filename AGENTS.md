@@ -89,3 +89,11 @@
    1. `python tools/bom_guard.py --fix`
 3. After clone, enable pre-commit hook:
    1. `git config core.hooksPath .githooks`
+
+## 8) Developer Validation
+1. Canonical validation command from the repository root:
+   1. `python tools/run_tests.py`
+2. This repo-owned entrypoint is the default for humans and Codex.
+   1. It must be preferred over shell-specific `PYTHONPATH` setup.
+3. Optional legacy direct command from the repository root only:
+   1. `python -m unittest discover -s tests -v`

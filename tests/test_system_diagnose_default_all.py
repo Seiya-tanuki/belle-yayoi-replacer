@@ -36,6 +36,8 @@ def _write_text(path: Path, text: str) -> None:
 class SystemDiagnoseDefaultAllTests(unittest.TestCase):
     def test_default_all_is_bootstrap_safe_and_reports_each_line(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
+        if shutil.which("git") is None:
+            self.skipTest("git executable is required for self-contained diagnose fixture setup")
         temp_root = real_repo_root / ".tmp" / f"diagnose_default_all_{uuid4().hex}"
         temp_root.mkdir(parents=True, exist_ok=False)
         try:
@@ -57,6 +59,10 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             )
             script_target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(script_source, script_target)
+            run_tests_source = real_repo_root / "tools" / "run_tests.py"
+            run_tests_target = temp_root / "tools" / "run_tests.py"
+            run_tests_target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(run_tests_source, run_tests_target)
 
             for name in SPEC_FILES:
                 _write_text(temp_root / "spec" / name, f"# {name}\n")
@@ -150,9 +156,11 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                     [
                         "import unittest",
                         "",
+                        "from belle.lines import validate_line_id",
+                        "",
                         "class SmokeTests(unittest.TestCase):",
                         "    def test_ok(self) -> None:",
-                        "        self.assertTrue(True)",
+                        "        self.assertEqual('receipt', validate_line_id('receipt'))",
                         "",
                         "if __name__ == '__main__':",
                         "    unittest.main()",

@@ -143,7 +143,7 @@ def _make_fake_run_command(module):
         ),
         "python tools/bom_guard.py --check": (0, "UTF-8 BOM files: 0\n"),
         "python -m compileall belle tools .agents/skills tests": (0, "ok\n"),
-        "python -m unittest discover -s tests -v": (0, "ok\n"),
+        "python tools/run_tests.py": (0, "ok\n"),
         'python -c "import codecs; codecs.lookup(\'cp932\'); print(\'cp932 OK\')"': (0, "cp932 OK\n"),
         "py -0p": (0, " -V:3.12 * C:\\Python312\\python.exe\n"),
         "git config --get core.hooksPath": (0, ".githooks\n"),
