@@ -62,6 +62,11 @@ Columns:
 3. `$lexicon-apply`
    1. Applies only `action=ADD` rows into `lexicon/lexicon.json`
    2. Removes applied rows from queue/state
+   3. Must validate the full batch before mutating `lexicon.json` or `label_queue.csv`
+   4. Any actionable validation error or queue-schema validation error must fail closed:
+      1. `lexicon.json` remains unchanged
+      2. `label_queue.csv` remains unchanged
+   5. Unsupported non-empty `action` values are validation errors
 
 ## Strict autogrow filter contract
 

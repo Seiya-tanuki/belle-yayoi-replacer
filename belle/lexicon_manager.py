@@ -806,6 +806,19 @@ class ApplyRunSummary:
     errors: List[str]
 
 
+SUPPORTED_LABEL_QUEUE_APPLY_ACTIONS = {"ADD"}
+SUPPORTED_LABEL_QUEUE_NON_APPLY_ACTIONS = {"", "HOLD"}
+
+
+@dataclass
+class _ApplyQueuePlanRow:
+    norm_key: str
+    row: Dict[str, str]
+    category_key: str
+    category_id: int
+    status: str
+
+
 def _rebuild_prefix2_buckets(term_rows: List[List[Any]]) -> Dict[str, List[int]]:
     buckets: Dict[str, List[int]] = {}
     for idx, row in enumerate(term_rows):
@@ -818,6 +831,136 @@ def _rebuild_prefix2_buckets(term_rows: List[List[Any]]) -> Dict[str, List[int]]
         p2 = needle[:2] if len(needle) >= 2 else needle
         buckets.setdefault(p2, []).append(idx)
     return buckets
+
+
+def _load_label_queue_for_apply_strict(queue_csv_path: Path) -> Tuple[Dict[str, Dict[str, str]], List[str]]:
+    errors: List[str] = []
+    rows: Dict[str, Dict[str, str]] = {}
+
+    with queue_csv_path.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        fieldnames = [str(name or "") for name in (reader.fieldnames or [])]
+        if not fieldnames:
+            return {}, ["missing_queue_header"]
+
+        header_counts = Counter(fieldnames)
+        duplicate_columns = sorted(col for col, count in header_counts.items() if col and count > 1)
+        missing_columns = [col for col in LABEL_QUEUE_COLUMNS if col not in fieldnames]
+        unexpected_columns = [col for col in fieldnames if col and col not in LABEL_QUEUE_COLUMNS]
+        if duplicate_columns:
+            errors.append(f"duplicate_queue_columns: {','.join(duplicate_columns)}")
+        if missing_columns:
+            errors.append(f"missing_queue_columns: {','.join(missing_columns)}")
+        if unexpected_columns:
+            errors.append(f"unexpected_queue_columns: {','.join(unexpected_columns)}")
+        if errors:
+            return {}, errors
+
+        for row_number, raw_row in enumerate(reader, start=2):
+            row = {k: (raw_row.get(k) or "") for k in LABEL_QUEUE_COLUMNS}
+            if not any((row.get(k) or "").strip() for k in LABEL_QUEUE_COLUMNS):
+                continue
+
+            norm_key = (row.get("norm_key") or "").strip()
+            action_raw = (row.get("action") or "").strip()
+            action = action_raw.upper()
+            if not norm_key:
+                errors.append(f"missing_norm_key: row={row_number}")
+                continue
+            if norm_key in rows:
+                errors.append(f"duplicate_norm_key: norm_key={norm_key} row={row_number}")
+                continue
+            if action and action not in SUPPORTED_LABEL_QUEUE_APPLY_ACTIONS.union(SUPPORTED_LABEL_QUEUE_NON_APPLY_ACTIONS):
+                errors.append(f"unsupported_action: row={row_number} action={action_raw}")
+                continue
+
+            row["norm_key"] = norm_key
+            row["action"] = action
+            rows[norm_key] = row
+
+    return rows, errors
+
+
+def _existing_category_ids_by_needle(
+    lex_obj: Dict[str, Any],
+    *,
+    lock_token: Optional[LabelQueueLockToken] = None,
+) -> Dict[Tuple[str, str], List[int]]:
+    existing_by_needle: Dict[Tuple[str, str], List[int]] = {}
+    for row in lex_obj.get("term_rows", []):
+        if lock_token is not None:
+            lock_token.maybe_heartbeat()
+        try:
+            field, needle, cat_id, weight, typ = row
+            key = (str(field), str(needle))
+            existing_by_needle.setdefault(key, []).append(int(cat_id))
+        except Exception:
+            continue
+    return existing_by_needle
+
+
+def _preflight_label_queue_adds(
+    *,
+    queue: Dict[str, Dict[str, str]],
+    lex_obj: Dict[str, Any],
+    lock_token: Optional[LabelQueueLockToken] = None,
+) -> Tuple[List[_ApplyQueuePlanRow], List[str]]:
+    errors: List[str] = []
+    plan: List[_ApplyQueuePlanRow] = []
+    cat_key_to_id = {c["key"]: int(c["id"]) for c in lex_obj.get("categories", [])}
+    existing_by_needle = _existing_category_ids_by_needle(lex_obj, lock_token=lock_token)
+    staged_by_needle = {key: list(ids) for key, ids in existing_by_needle.items()}
+
+    for norm_key, row in queue.items():
+        if lock_token is not None:
+            lock_token.maybe_heartbeat()
+        action = (row.get("action") or "").strip().upper()
+        if action in SUPPORTED_LABEL_QUEUE_NON_APPLY_ACTIONS:
+            continue
+        if action not in SUPPORTED_LABEL_QUEUE_APPLY_ACTIONS:
+            errors.append(f"unsupported_action: norm_key={norm_key} action={action}")
+            continue
+
+        user_cat = (row.get("user_category_key") or "").strip()
+        if not user_cat:
+            errors.append(f"missing_user_category_key: norm_key={norm_key}")
+            continue
+        if user_cat not in cat_key_to_id:
+            errors.append(f"unknown_category_key: {user_cat} norm_key={norm_key}")
+            continue
+
+        cat_id = cat_key_to_id[user_cat]
+        key = ("n0", norm_key)
+        existing_ids = staged_by_needle.get(key) or []
+        if existing_ids and cat_id in existing_ids:
+            plan.append(
+                _ApplyQueuePlanRow(
+                    norm_key=norm_key,
+                    row=row,
+                    category_key=user_cat,
+                    category_id=cat_id,
+                    status="already_exists_same_category",
+                )
+            )
+            continue
+        if existing_ids:
+            errors.append(
+                f"conflict_existing_category: norm_key={norm_key} existing={existing_ids} requested={cat_id}"
+            )
+            continue
+
+        plan.append(
+            _ApplyQueuePlanRow(
+                norm_key=norm_key,
+                row=row,
+                category_key=user_cat,
+                category_id=cat_id,
+                status="added",
+            )
+        )
+        staged_by_needle.setdefault(key, []).append(cat_id)
+
+    return plan, errors
 
 
 def apply_label_queue_adds(
@@ -843,70 +986,48 @@ def apply_label_queue_adds(
     lock_path = queue_csv_path.parent / "locks" / "label_queue.lock"
     with label_queue_lock(lock_path=lock_path, client_id="lexicon-apply") as lock_token:
         lex_obj = json.loads(lexicon_path.read_text(encoding="utf-8"))
-        cat_key_to_id = {c["key"]: int(c["id"]) for c in lex_obj.get("categories", [])}
+        queue, queue_errors = _load_label_queue_for_apply_strict(queue_csv_path)
+        if queue_errors:
+            return ApplyRunSummary(added=0, skipped=0, removed_from_queue=0, errors=queue_errors)
 
-        existing_by_needle: Dict[Tuple[str, str], List[int]] = {}
-        for r in lex_obj.get("term_rows", []):
-            lock_token.maybe_heartbeat()
-            try:
-                field, needle, cat_id, weight, typ = r
-                key = (str(field), str(needle))
-                existing_by_needle.setdefault(key, []).append(int(cat_id))
-            except Exception:
-                continue
+        apply_plan, validation_errors = _preflight_label_queue_adds(
+            queue=queue,
+            lex_obj=lex_obj,
+            lock_token=lock_token,
+        )
+        if validation_errors:
+            return ApplyRunSummary(added=0, skipped=0, removed_from_queue=0, errors=validation_errors)
+        if not apply_plan:
+            return ApplyRunSummary(added=0, skipped=0, removed_from_queue=0, errors=[])
 
-        queue = load_label_queue(queue_csv_path)
         state = load_label_queue_state(queue_state_path)
         clients_by_key: Dict[str, List[str]] = state.setdefault("clients_by_norm_key", {})
-
-        to_delete: List[str] = []
         applied_records: List[Dict[str, Any]] = []
 
-        for norm_key, r in queue.items():
+        for plan_row in apply_plan:
             lock_token.maybe_heartbeat()
-            action = (r.get("action") or "").strip().upper()
-            if action != "ADD":
-                continue
-            user_cat = (r.get("user_category_key") or "").strip()
-            if not user_cat:
-                errors.append(f"missing_user_category_key: norm_key={norm_key}")
-                continue
-            if user_cat not in cat_key_to_id:
-                errors.append(f"unknown_category_key: {user_cat} norm_key={norm_key}")
-                continue
-
-            cat_id = cat_key_to_id[user_cat]
-            key = ("n0", norm_key)
-            existing_ids = existing_by_needle.get(key) or []
-            if existing_ids and cat_id in existing_ids:
+            if plan_row.status == "already_exists_same_category":
                 skipped += 1
-                to_delete.append(norm_key)
                 applied_records.append(
                     {
                         "status": "already_exists_same_category",
-                        "norm_key": norm_key,
-                        "category_key": user_cat,
-                        "category_id": cat_id,
+                        "norm_key": plan_row.norm_key,
+                        "category_key": plan_row.category_key,
+                        "category_id": plan_row.category_id,
                         "applied_at": now_utc_iso(),
                     }
                 )
                 continue
-            if existing_ids and cat_id not in existing_ids:
-                errors.append(
-                    f"conflict_existing_category: norm_key={norm_key} existing={existing_ids} requested={cat_id}"
-                )
-                continue
 
-            lex_obj.setdefault("term_rows", []).append(["n0", norm_key, int(cat_id), float(learned_weight), "S"])
-            existing_by_needle.setdefault(key, []).append(cat_id)
+            lex_obj.setdefault("term_rows", []).append(
+                ["n0", plan_row.norm_key, int(plan_row.category_id), float(learned_weight), "S"]
+            )
             added += 1
-            to_delete.append(norm_key)
-
             reg = {
-                "raw_example": r.get("raw_example") or "",
-                "norm_key": norm_key,
-                "category_key": user_cat,
-                "category_id": int(cat_id),
+                "raw_example": plan_row.row.get("raw_example") or "",
+                "norm_key": plan_row.norm_key,
+                "category_key": plan_row.category_key,
+                "category_id": int(plan_row.category_id),
                 "added_at": now_utc_iso(),
                 "weight": float(learned_weight),
             }
@@ -919,13 +1040,13 @@ def apply_label_queue_adds(
         lexicon_payload = json.dumps(lex_obj, ensure_ascii=False, indent=2).encode("utf-8")
         atomic_write_bytes(lexicon_path, lexicon_payload)
 
-        for nk in to_delete:
+        for plan_row in apply_plan:
             lock_token.maybe_heartbeat()
-            if nk in queue:
-                del queue[nk]
+            if plan_row.norm_key in queue:
+                del queue[plan_row.norm_key]
                 removed += 1
-            if nk in clients_by_key:
-                del clients_by_key[nk]
+            if plan_row.norm_key in clients_by_key:
+                del clients_by_key[plan_row.norm_key]
 
         lock_token.maybe_heartbeat()
         write_label_queue(queue_csv_path, queue)

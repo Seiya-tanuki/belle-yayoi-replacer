@@ -16,10 +16,9 @@ from belle.lines import line_asset_paths, validate_line_id
 from belle.lexicon_manager import LABEL_QUEUE_COLUMNS, apply_label_queue_adds
 
 
-def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, applied_log: Path, lock_dir: Path) -> bool:
+def ensure_pending_workspace(pending_dir: Path, queue_csv: Path, lock_dir: Path) -> bool:
     pending_dir.mkdir(parents=True, exist_ok=True)
     lock_dir.mkdir(parents=True, exist_ok=True)
-    applied_log.touch(exist_ok=True)
     if queue_csv.exists():
         return False
     with queue_csv.open("w", encoding="utf-8-sig", newline="") as f:
@@ -57,7 +56,7 @@ def main() -> int:
     applied_log = pending_dir / "applied_log.jsonl"
     lock_dir = pending_dir / "locks"
 
-    created_queue = ensure_pending_workspace(pending_dir, queue_csv, applied_log, lock_dir)
+    created_queue = ensure_pending_workspace(pending_dir, queue_csv, lock_dir)
     if args.show_paths:
         print(
             f"[PATHS] lexicon={lexicon_path} queue_csv={queue_csv} queue_state={queue_state} "
