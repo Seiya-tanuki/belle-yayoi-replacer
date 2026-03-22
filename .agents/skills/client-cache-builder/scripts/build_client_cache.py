@@ -145,16 +145,14 @@ def main() -> None:
         summary = ensure_bank_client_cache_updated(repo_root, client_id)
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         out_manifest = {
-            "schema": "belle.bank_client_cache_update_run.v1",
-            "version": "0.1",
+            "schema": "belle.bank_client_cache_update_run.v2",
+            "version": "0.2",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "client_id": client_id,
             "line_id": line_id,
             "summary": {
-                "applied_pair_set_ids": len(summary.get("applied_pair_set_ids") or []),
-                "skipped_pair_set_ids": len(summary.get("skipped_pair_set_ids") or []),
-                "applied_pair_ids": len(summary.get("applied_pair_set_ids") or []),
-                "skipped_pair_ids": len(summary.get("skipped_pair_set_ids") or []),
+                "applied_pair_set_count": len(summary.get("applied_pair_set_ids") or []),
+                "skipped_pair_set_count": len(summary.get("skipped_pair_set_ids") or []),
                 "pairs_unique_used_total": int(summary.get("pairs_unique_used_total") or 0),
                 "sign_mismatch_skipped_total": int(summary.get("sign_mismatch_skipped_total") or 0),
                 "labels_total": int(summary.get("labels_total") or 0),

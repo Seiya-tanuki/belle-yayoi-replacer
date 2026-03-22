@@ -283,6 +283,17 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
                 msg=buf.getvalue(),
             )
 
+            run_manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual("belle.bank_replacer_skill_run.v2", run_manifest.get("schema"))
+            bank_cache_update = run_manifest.get("bank_cache_update") or {}
+            self.assertEqual(1, int(bank_cache_update.get("applied_pair_set_count") or 0))
+            self.assertEqual(0, int(bank_cache_update.get("skipped_pair_set_count") or 0))
+            self.assertEqual(2, int(bank_cache_update.get("pairs_unique_used_total") or 0))
+            self.assertNotIn("applied_pair_set_ids", bank_cache_update)
+            self.assertNotIn("skipped_pair_set_ids", bank_cache_update)
+            self.assertNotIn("applied_pair_ids", bank_cache_update)
+            self.assertNotIn("skipped_pair_ids", bank_cache_update)
+
     def test_bank_side_subaccount_can_be_disabled_via_config_through_runner_path(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
         client_id = "C_BANK_SUBCFG_SMOKE"
@@ -790,6 +801,20 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
                 (line_root / "artifacts" / "ingest" / "ledger_ref").exists(),
                 msg=buf.getvalue(),
             )
+
+            telemetry_files = sorted((line_root / "artifacts" / "telemetry").glob("client_cache_update_run_*.json"))
+            self.assertEqual(1, len(telemetry_files), msg=buf.getvalue())
+            telemetry_obj = json.loads(telemetry_files[0].read_text(encoding="utf-8"))
+            self.assertEqual("belle.bank_client_cache_update_run.v2", telemetry_obj.get("schema"))
+            self.assertEqual("0.2", telemetry_obj.get("version"))
+            summary = telemetry_obj.get("summary") or {}
+            self.assertEqual(1, int(summary.get("applied_pair_set_count") or 0))
+            self.assertEqual(0, int(summary.get("skipped_pair_set_count") or 0))
+            self.assertEqual(2, int(summary.get("pairs_unique_used_total") or 0))
+            self.assertNotIn("applied_pair_set_ids", summary)
+            self.assertNotIn("skipped_pair_set_ids", summary)
+            self.assertNotIn("applied_pair_ids", summary)
+            self.assertNotIn("skipped_pair_ids", summary)
 
 
 if __name__ == "__main__":

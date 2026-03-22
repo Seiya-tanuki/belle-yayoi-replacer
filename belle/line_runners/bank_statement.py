@@ -271,7 +271,7 @@ def run_bank(
                 reasons.append(f"file_bank_sub_inference_status={infer_status}")
 
     run_manifest = {
-        "schema": "belle.bank_replacer_skill_run.v1",
+        "schema": "belle.bank_replacer_skill_run.v2",
         "version": str(bank_config.get("version") or "0.1"),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "client_id": client_id,
@@ -279,10 +279,8 @@ def run_bank(
         "run_id": run_id,
         "run_dir": str(run_dir),
         "bank_cache_update": {
-            "applied_pair_set_ids": int(len(cache_update.get("applied_pair_set_ids") or [])),
-            "skipped_pair_set_ids": int(len(cache_update.get("skipped_pair_set_ids") or [])),
-            "applied_pair_ids": int(len(cache_update.get("applied_pair_set_ids") or [])),
-            "skipped_pair_ids": int(len(cache_update.get("skipped_pair_set_ids") or [])),
+            "applied_pair_set_count": int(len(cache_update.get("applied_pair_set_ids") or [])),
+            "skipped_pair_set_count": int(len(cache_update.get("skipped_pair_set_ids") or [])),
             "pairs_unique_used_total": int(cache_update.get("pairs_unique_used_total") or 0),
             "sign_mismatch_skipped_total": int(cache_update.get("sign_mismatch_skipped_total") or 0),
             "warnings": list(cache_update.get("warnings") or []),

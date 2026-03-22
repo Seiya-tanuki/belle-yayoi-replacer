@@ -177,6 +177,8 @@ class BankCachePairLearningTests(unittest.TestCase):
             summary = ensure_bank_client_cache_updated(repo_root, client_id)
             self.assertEqual(summary["pairs_unique_used_total"], 2)
             self.assertEqual(len(summary.get("applied_pair_set_ids") or []), 1)
+            self.assertNotIn("applied_pair_ids", summary)
+            self.assertNotIn("skipped_pair_ids", summary)
 
             cache_path = line_root / "artifacts" / "cache" / "client_cache.json"
             self.assertTrue(cache_path.exists())
@@ -630,6 +632,10 @@ class BankCachePairLearningTests(unittest.TestCase):
             self.assertEqual("none", summary.get("training_input_state"))
             self.assertEqual(0, int(summary.get("training_ocr_input_count", -1)))
             self.assertEqual(0, int(summary.get("training_reference_input_count", -1)))
+            self.assertEqual([], summary.get("applied_pair_set_ids"))
+            self.assertEqual([], summary.get("skipped_pair_set_ids"))
+            self.assertNotIn("applied_pair_ids", summary)
+            self.assertNotIn("skipped_pair_ids", summary)
 
             self.assertFalse(cache_path.exists())
             self.assertFalse(ocr_manifest_path.exists())
