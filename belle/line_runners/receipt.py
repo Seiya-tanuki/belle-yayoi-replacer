@@ -92,7 +92,7 @@ def _ingest_single_kari_input(
     client_dir: Path,
 ) -> Any:
     in_dir = client_dir / "inputs" / "kari_shiwake"
-    input_files = list_input_files(in_dir)
+    input_files = list_input_files(in_dir, allowed_extensions={".csv"})
     if len(input_files) != 1:
         raise RuntimeError(
             "receipt target input must be exactly one file under inputs/kari_shiwake "

@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from belle.ingest import list_discoverable_files
 from belle.paths import get_client_root
 
 
@@ -16,19 +17,12 @@ class LinePlan:
     details: dict[str, object] = field(default_factory=dict)
 
 
-def list_input_files(dir_path: Path) -> list[Path]:
-    if not dir_path.exists():
-        return []
-    files: list[Path] = []
-    for p in dir_path.iterdir():
-        if not p.is_file():
-            continue
-        if p.name == ".gitkeep":
-            continue
-        if p.name.endswith(".tmp"):
-            continue
-        files.append(p)
-    return sorted(files, key=lambda x: x.name)
+def list_input_files(
+    dir_path: Path,
+    *,
+    allowed_extensions: set[str] | None = None,
+) -> list[Path]:
+    return list_discoverable_files(dir_path, allowed_extensions=allowed_extensions)
 
 
 def resolve_client_layout(
@@ -47,7 +41,10 @@ def resolve_client_layout(
 
 
 def compute_target_file_status(client_dir: Path) -> tuple[str, str, list[str]]:
-    input_files = list_input_files(client_dir / "inputs" / "kari_shiwake")
+    input_files = list_input_files(
+        client_dir / "inputs" / "kari_shiwake",
+        allowed_extensions={".csv"},
+    )
     target_names = [p.name for p in input_files]
     if not input_files:
         return "SKIP", "no target input", target_names

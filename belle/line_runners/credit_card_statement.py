@@ -91,7 +91,10 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
 
 
 def _ingest_single_kari_input(*, repo_root: Path, client_id: str, client_dir: Path) -> Any:
-    input_files = list_input_files(client_dir / "inputs" / "kari_shiwake")
+    input_files = list_input_files(
+        client_dir / "inputs" / "kari_shiwake",
+        allowed_extensions={".csv"},
+    )
     if len(input_files) != 1:
         raise RuntimeError(
             "credit_card_statement target input must be exactly one file under inputs/kari_shiwake "

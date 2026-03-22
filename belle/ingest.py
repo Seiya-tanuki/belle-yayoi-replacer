@@ -17,7 +17,7 @@ This module is intentionally simple and deterministic.
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, Iterable, List, Tuple, Optional
 import json
 import shutil
 
@@ -32,6 +32,55 @@ def now_utc_compact() -> str:
 
 def sha256_file(path: Path) -> str:
     return sha256_file_chunked(path)
+
+
+def _normalize_allowed_extensions(allowed_extensions: Iterable[str]) -> set[str]:
+    normalized: set[str] = set()
+    for ext in allowed_extensions:
+        text = str(ext or "").strip().lower()
+        if not text:
+            continue
+        if not text.startswith("."):
+            text = f".{text}"
+        normalized.add(text)
+    if not normalized:
+        raise ValueError("allowed_extensions must not be empty")
+    return normalized
+
+
+def list_discoverable_files(
+    dir_path: Path,
+    *,
+    allowed_extensions: Optional[Iterable[str]] = None,
+) -> List[Path]:
+    if not dir_path.exists():
+        return []
+
+    normalized_exts: Optional[set[str]] = None
+    if allowed_extensions is not None:
+        normalized_exts = _normalize_allowed_extensions(allowed_extensions)
+
+    files: List[Path] = []
+    for p in sorted(dir_path.iterdir(), key=lambda v: v.name):
+        if not p.is_file():
+            continue
+        if p.name == ".gitkeep":
+            continue
+        if p.name.endswith(".tmp"):
+            continue
+        if normalized_exts is not None and p.suffix.lower() not in normalized_exts:
+            continue
+        files.append(p)
+    return files
+
+
+def _allowed_extensions_from_include_glob(include_glob: str) -> tuple[str, ...]:
+    normalized = str(include_glob or "").strip().lower()
+    if normalized == "*.csv":
+        return (".csv",)
+    if normalized == "*.txt":
+        return (".txt",)
+    raise ValueError(f"unsupported include_glob for ingest_csv_dir: {include_glob}")
 
 
 def _atomic_write_json(path: Path, obj: Dict[str, Any]) -> None:
@@ -293,13 +342,9 @@ def ingest_csv_dir(
 
     new_shas: List[str] = []
     dup_shas: List[str] = []
+    allowed_extensions = _allowed_extensions_from_include_glob(include_glob)
 
-    for p in sorted(source_dir.glob(include_glob)):
-        if not p.is_file():
-            continue
-        if p.name.endswith(".tmp"):
-            continue
-
+    for p in list_discoverable_files(source_dir, allowed_extensions=allowed_extensions):
         original_name_before = p.name
         sha = sha256_file(p)
         sha8 = sha[:8].upper()

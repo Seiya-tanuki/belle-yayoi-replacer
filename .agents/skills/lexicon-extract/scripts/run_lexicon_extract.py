@@ -10,6 +10,7 @@ import argparse
 import json
 from pathlib import Path
 
+from belle.ingest import list_discoverable_files
 from belle.lexicon import load_lexicon
 from belle.lines import line_asset_paths, validate_line_id
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
@@ -17,8 +18,7 @@ from belle.paths import get_client_root
 
 
 def _list_ref_files_with_txt(dir_path: Path):
-    files = list(dir_path.glob("*.csv")) + list(dir_path.glob("*.txt"))
-    return sorted({p.resolve(): p for p in files}.values(), key=lambda p: p.name)
+    return list_discoverable_files(dir_path, allowed_extensions={".csv", ".txt"})
 
 
 def _has_ingested_manifest_entries(client_dir: Path) -> bool:

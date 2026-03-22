@@ -10,6 +10,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+from belle.ingest import list_discoverable_files
 from belle.lexicon import load_lexicon
 from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
 from belle.build_client_cache import ensure_client_cache_updated
@@ -43,27 +44,12 @@ def _has_ingested_manifest_entries(client_dir: Path) -> bool:
     return _has_manifest_entries(client_dir / "artifacts" / "ingest" / "ledger_ref_ingested.json")
 
 
-def _iter_non_placeholder_files(dir_path: Path) -> list[Path]:
-    if not dir_path.exists():
-        return []
-    files: list[Path] = []
-    for p in dir_path.iterdir():
-        if not p.is_file():
-            continue
-        if p.name == ".gitkeep":
-            continue
-        if p.name.endswith(".tmp"):
-            continue
-        files.append(p)
-    return files
-
-
 def _has_bank_training_inputs_or_manifests(client_dir: Path) -> bool:
     ocr_dir = client_dir / "inputs" / "training" / "ocr_kari_shiwake"
     ref_dir = client_dir / "inputs" / "training" / "reference_yayoi"
-    if _iter_non_placeholder_files(ocr_dir):
+    if list_discoverable_files(ocr_dir, allowed_extensions={".csv"}):
         return True
-    if _iter_non_placeholder_files(ref_dir):
+    if list_discoverable_files(ref_dir, allowed_extensions={".csv", ".txt"}):
         return True
     ingest_dir = client_dir / "artifacts" / "ingest"
     if _has_manifest_entries(ingest_dir / "training_ocr_ingested.json"):
@@ -99,7 +85,9 @@ def find_client_id_auto(repo_root: Path, line_id: str) -> tuple[str, str | None]
                 cands.append((tdir.name, client_layout_line_id))
         else:
             ref = client_dir / "inputs" / "ledger_ref"
-            has_inbox_files = ref.exists() and (list(ref.glob("*.csv")) or list(ref.glob("*.txt")))
+            has_inbox_files = bool(
+                list_discoverable_files(ref, allowed_extensions={".csv", ".txt"})
+            )
             if has_inbox_files or _has_ingested_manifest_entries(client_dir):
                 cands.append((tdir.name, client_layout_line_id))
     if len(cands) == 1:

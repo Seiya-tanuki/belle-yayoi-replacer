@@ -36,11 +36,7 @@ LINE_ID_BANK = "bank_statement"
 
 
 def _list_training_files(dir_path: Path, *, allowed_exts: set[str]) -> list[Path]:
-    files = []
-    for p in list_input_files(dir_path):
-        if p.suffix.lower() in allowed_exts:
-            files.append(p)
-    return files
+    return list_input_files(dir_path, allowed_extensions=allowed_exts)
 
 
 def _inspect_training_pair_state(client_dir: Path) -> tuple[str, str, dict[str, object]]:
@@ -170,7 +166,10 @@ def _ingest_single_kari_input(
     client_layout_line_id: str,
     client_dir: Path,
 ) -> Any:
-    input_files = list_input_files(client_dir / "inputs" / "kari_shiwake")
+    input_files = list_input_files(
+        client_dir / "inputs" / "kari_shiwake",
+        allowed_extensions={".csv"},
+    )
     if len(input_files) != 1:
         raise RuntimeError(
             "bank_statement target input must be exactly one file under inputs/kari_shiwake "
