@@ -125,12 +125,6 @@ def run_receipt(
         print("[WARN] legacy client layout detected (no lines/receipt/). Using legacy paths for this run.")
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
-    kari_ingest = _ingest_single_kari_input(
-        repo_root=repo_root,
-        client_id=client_id,
-        client_layout_line_id=client_layout_line_id,
-        client_dir=client_dir,
-    )
 
     asset_paths = line_asset_paths(repo_root, LINE_ID_RECEIPT)
     lexicon_path = asset_paths["lexicon_path"]
@@ -188,6 +182,12 @@ def run_receipt(
 
     run_id, run_dir = make_run_dir(repo_root, client_id, line_id=client_layout_line_id)
     latest_path = get_latest_path(repo_root, client_id, line_id=client_layout_line_id)
+    kari_ingest = _ingest_single_kari_input(
+        repo_root=repo_root,
+        client_id=client_id,
+        client_layout_line_id=client_layout_line_id,
+        client_dir=client_dir,
+    )
 
     run_manifest = {
         "schema": "belle.replacer_run.v2",

@@ -213,12 +213,6 @@ def run_bank(
 
     client_layout_line_id = LINE_ID_BANK
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
-    kari_ingest = _ingest_single_kari_input(
-        repo_root=repo_root,
-        client_id=client_id,
-        client_layout_line_id=client_layout_line_id,
-        client_dir=client_dir,
-    )
 
     try:
         cache_update = ensure_bank_client_cache_updated(repo_root, client_id)
@@ -237,6 +231,12 @@ def run_bank(
             cache_update.get("cache_path")
             or get_client_cache_path(repo_root, client_id, line_id=client_layout_line_id)
         )
+    )
+    kari_ingest = _ingest_single_kari_input(
+        repo_root=repo_root,
+        client_id=client_id,
+        client_layout_line_id=client_layout_line_id,
+        client_dir=client_dir,
     )
 
     input_stem = Path(kari_ingest.original_name).stem or kari_ingest.stored_path.stem

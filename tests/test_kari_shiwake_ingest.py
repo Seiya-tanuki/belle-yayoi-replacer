@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import csv
 import hashlib
 import importlib.util
 import io
@@ -13,7 +14,18 @@ from types import SimpleNamespace
 from unittest import mock
 from uuid import uuid4
 
+from belle.line_runners import bank_statement as bank_runner
 from belle.line_runners import receipt as receipt_runner
+from belle.yayoi_columns import (
+    COL_CREDIT_ACCOUNT,
+    COL_CREDIT_AMOUNT,
+    COL_CREDIT_SUBACCOUNT,
+    COL_DATE,
+    COL_DEBIT_ACCOUNT,
+    COL_DEBIT_AMOUNT,
+    COL_MEMO,
+    COL_SUMMARY,
+)
 
 
 def _write_yayoi_row(path: Path, *, summary: str, debit: str = "譌・ｲｻ莠､騾夊ｲｻ") -> bytes:
@@ -62,6 +74,79 @@ def _prepare_temp_repo_structure_line(repo_root: Path, client_id: str, *, line_i
     )
     (client_line_dir / "config" / "category_overrides.json").write_text("{}", encoding="utf-8")
     return client_line_dir
+
+
+def _prepare_temp_bank_repo_structure_line(repo_root: Path, client_id: str) -> Path:
+    client_line_dir = repo_root / "clients" / client_id / "lines" / "bank_statement"
+    (client_line_dir / "config").mkdir(parents=True, exist_ok=True)
+    (client_line_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
+    (client_line_dir / "inputs" / "training" / "ocr_kari_shiwake").mkdir(parents=True, exist_ok=True)
+    (client_line_dir / "inputs" / "training" / "reference_yayoi").mkdir(parents=True, exist_ok=True)
+    (client_line_dir / "config" / "bank_line_config.json").write_text(
+        json.dumps(
+            {
+                "schema": "belle.bank_line_config.v0",
+                "version": "0.1",
+                "placeholder_account_name": "TEMP_PLACEHOLDER",
+                "bank_account_name": "BANK_ACCOUNT",
+                "bank_account_subaccount": "",
+                "thresholds": {
+                    "kana_sign_amount": {"min_count": 2, "min_p_majority": 0.85},
+                    "kana_sign": {"min_count": 3, "min_p_majority": 0.80},
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    return client_line_dir
+
+
+def _build_bank_row(
+    *,
+    date_text: str,
+    summary: str,
+    debit_account: str,
+    credit_account: str,
+    amount: int,
+    memo: str = "",
+    credit_subaccount: str = "",
+) -> list[str]:
+    cols = [""] * 25
+    cols[COL_DATE] = date_text
+    cols[COL_DEBIT_ACCOUNT] = debit_account
+    cols[COL_DEBIT_AMOUNT] = str(int(amount))
+    cols[COL_CREDIT_ACCOUNT] = credit_account
+    cols[COL_CREDIT_AMOUNT] = str(int(amount))
+    cols[COL_CREDIT_SUBACCOUNT] = credit_subaccount
+    cols[COL_SUMMARY] = summary
+    cols[COL_MEMO] = memo
+    return cols
+
+
+def _write_yayoi_rows(path: Path, rows: list[list[str]]) -> bytes:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="cp932", newline="") as f:
+        writer = csv.writer(f, lineterminator="\r\n", quoting=csv.QUOTE_MINIMAL)
+        writer.writerows(rows)
+    return path.read_bytes()
+
+
+def _snapshot_kari_ingest_state(client_dir: Path) -> dict[str, object]:
+    manifest_path = client_dir / "artifacts" / "ingest" / "kari_shiwake_ingested.json"
+    store_dir = client_dir / "artifacts" / "ingest" / "kari_shiwake"
+    stored_files = {}
+    if store_dir.exists():
+        stored_files = {
+            p.name: p.read_bytes()
+            for p in sorted(store_dir.iterdir(), key=lambda path: path.name)
+            if p.is_file()
+        }
+    return {
+        "manifest_text": manifest_path.read_text(encoding="utf-8") if manifest_path.exists() else None,
+        "stored_files": stored_files,
+    }
 
 
 class KariShiwakeIngestTests(unittest.TestCase):
@@ -378,6 +463,287 @@ class KariShiwakeIngestTests(unittest.TestCase):
             self.assertTrue(run_manifest_path.exists())
             run_manifest = json.loads(run_manifest_path.read_text(encoding="utf-8"))
             self.assertEqual(run_manifest.get("line_id"), "receipt")
+
+    def test_receipt_invalid_runtime_config_keeps_target_in_inbox(self) -> None:
+        client_id = "C_RECEIPT_BAD_CONFIG"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_row(target_path, summary="BAD CONFIG TARGET")
+            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+            config_path.write_text("{invalid json", encoding="utf-8")
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+            lex = SimpleNamespace(categories_by_key={})
+
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "try_load_category_overrides", return_value=({}, [])):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "replace_yayoi_csv",
+                                side_effect=AssertionError("replace_yayoi_csv must not be called"),
+                            ):
+                                with self.assertRaises(json.JSONDecodeError):
+                                    receipt_runner.run_receipt(
+                                        repo_root,
+                                        client_id,
+                                        client_layout_line_id="receipt",
+                                        client_dir=client_line_dir,
+                                        config_path=config_path,
+                                    )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_receipt_client_cache_failure_keeps_target_in_inbox(self) -> None:
+        client_id = "C_RECEIPT_CACHE_FAIL"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_row(target_path, summary="CACHE FAIL TARGET")
+            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+            lex = SimpleNamespace(categories_by_key={})
+
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "try_load_category_overrides", return_value=({}, [])):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "ensure_client_cache_updated",
+                                side_effect=RuntimeError("cache boom"),
+                            ):
+                                with mock.patch.object(
+                                    receipt_runner,
+                                    "ensure_lexicon_candidates_updated_from_ledger_ref",
+                                    side_effect=AssertionError("autogrow must not run"),
+                                ):
+                                    with mock.patch.object(
+                                        receipt_runner,
+                                        "replace_yayoi_csv",
+                                        side_effect=AssertionError("replace_yayoi_csv must not be called"),
+                                    ):
+                                        with self.assertRaisesRegex(RuntimeError, "client_cache 更新に失敗しました"):
+                                            receipt_runner.run_receipt(
+                                                repo_root,
+                                                client_id,
+                                                client_layout_line_id="receipt",
+                                                client_dir=client_line_dir,
+                                                config_path=config_path,
+                                            )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_receipt_lexicon_autogrow_failure_keeps_target_in_inbox(self) -> None:
+        client_id = "C_RECEIPT_AUTOGROW_FAIL"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_row(target_path, summary="AUTOGROW FAIL TARGET")
+            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+            lex = SimpleNamespace(categories_by_key={})
+            tm = SimpleNamespace(t_numbers={})
+            tm_summary = SimpleNamespace(applied_new_files=[], rows_used_added=0, warnings=[])
+
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "try_load_category_overrides", return_value=({}, [])):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "ensure_client_cache_updated",
+                                return_value=(tm, tm_summary),
+                            ):
+                                with mock.patch.object(
+                                    receipt_runner,
+                                    "ensure_lexicon_candidates_updated_from_ledger_ref",
+                                    side_effect=RuntimeError("autogrow boom"),
+                                ):
+                                    with mock.patch.object(
+                                        receipt_runner,
+                                        "replace_yayoi_csv",
+                                        side_effect=AssertionError("replace_yayoi_csv must not be called"),
+                                    ):
+                                        with self.assertRaisesRegex(
+                                            RuntimeError,
+                                            "label_queue 自動更新に失敗しました。出力は作成しません",
+                                        ):
+                                            receipt_runner.run_receipt(
+                                                repo_root,
+                                                client_id,
+                                                client_layout_line_id="receipt",
+                                                client_dir=client_line_dir,
+                                                config_path=config_path,
+                                            )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_bank_client_cache_failure_keeps_target_in_inbox(self) -> None:
+        client_id = "C_BANK_CACHE_FAIL"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_bank_repo_structure_line(repo_root, client_id)
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_rows(
+                target_path,
+                [
+                    _build_bank_row(
+                        date_text="2026/03/01",
+                        summary="BANK TARGET CACHE FAIL",
+                        debit_account="TEMP_PLACEHOLDER",
+                        credit_account="BANK_ACCOUNT",
+                        amount=1200,
+                        memo="SIGN=debit",
+                    )
+                ],
+            )
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+
+            with mock.patch.object(
+                bank_runner,
+                "ensure_bank_client_cache_updated",
+                side_effect=RuntimeError("bank cache boom"),
+            ):
+                with mock.patch.object(
+                    bank_runner,
+                    "replace_bank_yayoi_csv",
+                    side_effect=AssertionError("replace_bank_yayoi_csv must not be called"),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "bank client_cache 更新に失敗しました"):
+                        bank_runner.run_bank(
+                            repo_root,
+                            client_id,
+                            client_dir=client_line_dir,
+                        )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_bank_zero_usable_training_pairs_keeps_target_in_inbox(self) -> None:
+        client_id = "C_BANK_ZERO_PAIRS"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_bank_repo_structure_line(repo_root, client_id)
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_rows(
+                target_path,
+                [
+                    _build_bank_row(
+                        date_text="2026/03/05",
+                        summary="BANK TARGET ZERO PAIRS",
+                        debit_account="TEMP_PLACEHOLDER",
+                        credit_account="BANK_ACCOUNT",
+                        amount=1200,
+                        memo="SIGN=debit",
+                    )
+                ],
+            )
+            _write_yayoi_rows(
+                client_line_dir / "inputs" / "training" / "ocr_kari_shiwake" / "training_ocr.csv",
+                [
+                    _build_bank_row(
+                        date_text="2026/02/01",
+                        summary="OCR DUP",
+                        debit_account="TEMP_PLACEHOLDER",
+                        credit_account="BANK_ACCOUNT",
+                        amount=1200,
+                        memo="SIGN=debit",
+                    ),
+                    _build_bank_row(
+                        date_text="2026/02/01",
+                        summary="OCR DUP",
+                        debit_account="TEMP_PLACEHOLDER",
+                        credit_account="BANK_ACCOUNT",
+                        amount=1200,
+                        memo="SIGN=debit",
+                    ),
+                ],
+            )
+            _write_yayoi_rows(
+                client_line_dir / "inputs" / "training" / "reference_yayoi" / "teacher.csv",
+                [
+                    _build_bank_row(
+                        date_text="2026/02/01",
+                        summary="TEACHER UNIQUE",
+                        debit_account="COUNTER_ACCOUNT",
+                        credit_account="BANK_ACCOUNT",
+                        amount=1200,
+                        credit_subaccount="BANK_SUB",
+                    )
+                ],
+            )
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+
+            with mock.patch.object(
+                bank_runner,
+                "replace_bank_yayoi_csv",
+                side_effect=AssertionError("replace_bank_yayoi_csv must not be called"),
+            ):
+                with self.assertRaisesRegex(SystemExit, "zero usable pairs"):
+                    bank_runner.run_bank(
+                        repo_root,
+                        client_id,
+                        client_dir=client_line_dir,
+                    )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_bank_invalid_runtime_config_keeps_target_in_inbox(self) -> None:
+        client_id = "C_BANK_BAD_CONFIG"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_bank_repo_structure_line(repo_root, client_id)
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_rows(
+                target_path,
+                [
+                    _build_bank_row(
+                        date_text="2026/03/09",
+                        summary="BANK TARGET BAD CONFIG",
+                        debit_account="TEMP_PLACEHOLDER",
+                        credit_account="BANK_ACCOUNT",
+                        amount=2200,
+                        memo="SIGN=debit",
+                    )
+                ],
+            )
+            (client_line_dir / "config" / "bank_line_config.json").write_text("{invalid json", encoding="utf-8")
+            before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
+
+            with mock.patch.object(
+                bank_runner,
+                "ensure_bank_client_cache_updated",
+                return_value={"cache_path": str(client_line_dir / "artifacts" / "cache" / "client_cache.json")},
+            ):
+                with mock.patch.object(
+                    bank_runner,
+                    "replace_bank_yayoi_csv",
+                    side_effect=AssertionError("replace_bank_yayoi_csv must not be called"),
+                ):
+                    with self.assertRaisesRegex(RuntimeError, "bank_line_config 読み込みに失敗しました"):
+                        bank_runner.run_bank(
+                            repo_root,
+                            client_id,
+                            client_dir=client_line_dir,
+                        )
+
+            self.assertTrue(target_path.exists())
+            self.assertEqual(payload, target_path.read_bytes())
+            self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
 
 
 if __name__ == "__main__":
