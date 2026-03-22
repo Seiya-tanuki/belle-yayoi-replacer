@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import json
+import shutil
 
 from .bank_cache import (
     BankClientCache,
@@ -22,6 +24,7 @@ from .bank_cache import (
 )
 from .bank_pairing import build_training_pairs
 from .ingest import ingest_single_file, load_manifest_strict, sha256_file
+from .io_atomic import atomic_write_bytes
 
 
 def _now_utc_iso() -> str:
@@ -105,6 +108,94 @@ def _entry_stored_meta(
 def _pair_set_sha256(ocr_sha256: str, ref_sha256: str) -> str:
     payload = f"ocr={ocr_sha256}|ref={ref_sha256}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def _move_with_fallback(src: Path, dst: Path) -> Path:
+    try:
+        src.replace(dst)
+        return dst
+    except OSError:
+        moved = shutil.move(str(src), str(dst))
+        return Path(moved)
+
+
+@dataclass
+class _FileSnapshot:
+    path: Path
+    existed: bool
+    content: Optional[bytes]
+
+
+@dataclass
+class _MovedFileRecord:
+    source_path: Path
+    stored_path: Path
+
+
+def _snapshot_file(path: Path) -> _FileSnapshot:
+    if not path.exists():
+        return _FileSnapshot(path=path, existed=False, content=None)
+    return _FileSnapshot(path=path, existed=True, content=path.read_bytes())
+
+
+def _restore_file_snapshot(snapshot: _FileSnapshot) -> None:
+    if snapshot.existed:
+        atomic_write_bytes(snapshot.path, snapshot.content if snapshot.content is not None else b"")
+        return
+    if snapshot.path.exists():
+        snapshot.path.unlink()
+
+
+def _restore_moved_file(record: _MovedFileRecord) -> None:
+    errors: List[str] = []
+    source_path = record.source_path
+    stored_path = record.stored_path
+
+    if source_path.exists():
+        if stored_path.exists():
+            errors.append(
+                f"rollback conflict: both source and stored path exist: source={source_path} stored={stored_path}"
+            )
+    else:
+        if not stored_path.exists():
+            errors.append(
+                f"rollback failed: neither source nor stored path exists: source={source_path} stored={stored_path}"
+            )
+        else:
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _move_with_fallback(stored_path, source_path)
+            except Exception as exc:
+                errors.append(
+                    f"rollback move failed: source={source_path} stored={stored_path}: {exc}"
+                )
+
+    if stored_path.exists():
+        errors.append(f"rollback left stray stored file: {stored_path}")
+    if not source_path.exists():
+        errors.append(f"rollback did not restore source file: {source_path}")
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def _rollback_bank_training_transaction(
+    *,
+    moved_files: List[_MovedFileRecord],
+    file_snapshots: List[_FileSnapshot],
+) -> None:
+    errors: List[str] = []
+    for record in reversed(moved_files):
+        try:
+            _restore_moved_file(record)
+        except Exception as exc:
+            errors.append(str(exc))
+    for snapshot in file_snapshots:
+        try:
+            _restore_file_snapshot(snapshot)
+        except Exception as exc:
+            errors.append(f"failed to restore snapshot for {snapshot.path}: {exc}")
+    if errors:
+        raise RuntimeError("bank training transaction rollback failed: " + " | ".join(errors))
 
 
 def _prepare_cache(
@@ -511,48 +602,69 @@ def ensure_bank_client_cache_updated(repo_root: Path, client_id: str) -> Dict[st
         "pairs_skipped_missing": int(metrics.get("pairs_missing_skipped") or 0),
     }
 
-    _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
-    save_bank_cache(cache_path, cache)
+    file_snapshots = [
+        _snapshot_file(cache_path),
+        _snapshot_file(training_ocr_ingested_path),
+        _snapshot_file(training_ref_ingested_path),
+    ]
+    moved_files: List[_MovedFileRecord] = []
 
-    _manifest_ocr_after, ocr_ingest_result = ingest_single_file(
-        source_path=ocr_input_path,
-        store_dir=training_ocr_store_dir,
-        manifest_path=training_ocr_ingested_path,
-        client_id=client_id,
-        kind="training_ocr",
-    )
-    _manifest_ref_after, ref_ingest_result = ingest_single_file(
-        source_path=ref_input_path,
-        store_dir=training_ref_store_dir,
-        manifest_path=training_ref_ingested_path,
-        client_id=client_id,
-        kind="training_reference",
-    )
+    try:
+        _manifest_ocr_after, ocr_ingest_result = ingest_single_file(
+            source_path=ocr_input_path,
+            store_dir=training_ocr_store_dir,
+            manifest_path=training_ocr_ingested_path,
+            client_id=client_id,
+            kind="training_ocr",
+        )
+        moved_files.append(
+            _MovedFileRecord(source_path=ocr_input_path, stored_path=ocr_ingest_result.stored_path)
+        )
 
-    ocr_ingested_after = _load_ingested_entries_or_empty(training_ocr_ingested_path)
-    ref_ingested_after = _load_ingested_entries_or_empty(training_ref_ingested_path)
-    ocr_meta = _entry_stored_meta(
-        entry=ocr_ingested_after.get(ocr_sha) or {},
-        fallback_store_dir=training_ocr_store_dir,
-        fallback_stored_name=ocr_ingest_result.stored_name,
-        line_root=line_root,
-    )
-    ref_meta = _entry_stored_meta(
-        entry=ref_ingested_after.get(ref_sha) or {},
-        fallback_store_dir=training_ref_store_dir,
-        fallback_stored_name=ref_ingest_result.stored_name,
-        line_root=line_root,
-    )
+        _manifest_ref_after, ref_ingest_result = ingest_single_file(
+            source_path=ref_input_path,
+            store_dir=training_ref_store_dir,
+            manifest_path=training_ref_ingested_path,
+            client_id=client_id,
+            kind="training_reference",
+        )
+        moved_files.append(
+            _MovedFileRecord(source_path=ref_input_path, stored_path=ref_ingest_result.stored_path)
+        )
 
-    applied_entry = cache.applied_training_sets.get(pair_set_id)
-    if isinstance(applied_entry, dict):
-        applied_entry["training_ocr_stored_name"] = ocr_meta["stored_name"]
-        applied_entry["training_ocr_stored_relpath"] = ocr_meta["stored_relpath"]
-        applied_entry["training_reference_stored_name"] = ref_meta["stored_name"]
-        applied_entry["training_reference_stored_relpath"] = ref_meta["stored_relpath"]
+        ocr_ingested_after = _load_ingested_entries_or_empty(training_ocr_ingested_path)
+        ref_ingested_after = _load_ingested_entries_or_empty(training_ref_ingested_path)
+        ocr_meta = _entry_stored_meta(
+            entry=ocr_ingested_after.get(ocr_sha) or {},
+            fallback_store_dir=training_ocr_store_dir,
+            fallback_stored_name=ocr_ingest_result.stored_name,
+            line_root=line_root,
+        )
+        ref_meta = _entry_stored_meta(
+            entry=ref_ingested_after.get(ref_sha) or {},
+            fallback_store_dir=training_ref_store_dir,
+            fallback_stored_name=ref_ingest_result.stored_name,
+            line_root=line_root,
+        )
 
-    _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
-    save_bank_cache(cache_path, cache)
+        applied_entry = cache.applied_training_sets.get(pair_set_id)
+        if isinstance(applied_entry, dict):
+            applied_entry["training_ocr_stored_name"] = ocr_meta["stored_name"]
+            applied_entry["training_ocr_stored_relpath"] = ocr_meta["stored_relpath"]
+            applied_entry["training_reference_stored_name"] = ref_meta["stored_name"]
+            applied_entry["training_reference_stored_relpath"] = ref_meta["stored_relpath"]
+
+        _finalize_cache_meta(cache, client_id=client_id, thresholds=thresholds)
+        save_bank_cache(cache_path, cache)
+    except Exception as exc:
+        try:
+            _rollback_bank_training_transaction(moved_files=moved_files, file_snapshots=file_snapshots)
+        except Exception as rollback_exc:
+            raise RuntimeError(
+                "bank training transactional commit rollback failed after error: "
+                f"{exc}"
+            ) from rollback_exc
+        raise
 
     applied_pair_set_ids.append(pair_set_id)
 

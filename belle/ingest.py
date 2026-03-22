@@ -176,6 +176,56 @@ def _move_with_fallback(src: Path, dst: Path) -> Path:
         return Path(moved)
 
 
+def _restore_moved_source(*, source_path: Path, stored_path: Path) -> None:
+    errors: List[str] = []
+
+    if source_path.exists():
+        if stored_path.exists():
+            errors.append(
+                f"rollback conflict: both source and stored path exist: source={source_path} stored={stored_path}"
+            )
+    else:
+        if not stored_path.exists():
+            errors.append(
+                f"rollback failed: neither source nor stored path exists: source={source_path} stored={stored_path}"
+            )
+        else:
+            source_path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                _move_with_fallback(stored_path, source_path)
+            except Exception as exc:
+                errors.append(
+                    f"rollback move failed: source={source_path} stored={stored_path}: {exc}"
+                )
+
+    if stored_path.exists():
+        errors.append(f"rollback left stray stored file: {stored_path}")
+    if not source_path.exists():
+        errors.append(f"rollback did not restore source file: {source_path}")
+    if errors:
+        raise RuntimeError("; ".join(errors))
+
+
+def _save_manifest_with_rollback(
+    *,
+    manifest_path: Path,
+    manifest: Dict[str, Any],
+    source_path: Path,
+    stored_path: Path,
+) -> None:
+    try:
+        save_manifest(manifest_path, manifest)
+    except Exception:
+        try:
+            _restore_moved_source(source_path=source_path, stored_path=stored_path)
+        except Exception as rollback_exc:
+            raise RuntimeError(
+                "failed to rollback ingest after manifest persistence failure: "
+                f"source={source_path} stored={stored_path}"
+            ) from rollback_exc
+        raise
+
+
 def _count_rows_observed(path: Path) -> int:
     """
     Prefer Yayoi CSV row counting; fall back to non-empty physical lines.
@@ -271,7 +321,12 @@ def ingest_single_file(
         if not existing_stored_path.exists():
             existing_stored_name = duplicate_path.name
             existing_stored_path = duplicate_path
-        save_manifest(manifest_path, manifest)
+        _save_manifest_with_rollback(
+            manifest_path=manifest_path,
+            manifest=manifest,
+            source_path=source_path,
+            stored_path=duplicate_path,
+        )
         return manifest, SingleFileIngestResult(
             sha256=sha,
             sha8=sha8,
@@ -297,7 +352,12 @@ def ingest_single_file(
         "status": "ingested",
     }
     order.append(sha)
-    save_manifest(manifest_path, manifest)
+    _save_manifest_with_rollback(
+        manifest_path=manifest_path,
+        manifest=manifest,
+        source_path=source_path,
+        stored_path=stored_path,
+    )
     return manifest, SingleFileIngestResult(
         sha256=sha,
         sha8=sha8,

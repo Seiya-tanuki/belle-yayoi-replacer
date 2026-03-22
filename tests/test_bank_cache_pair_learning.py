@@ -6,6 +6,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from belle.bank_cache import make_bank_label_id
 from belle.bank_pairing import normalize_kana_key
@@ -122,6 +123,16 @@ def _manifest_ingested_count(path: Path) -> int:
     return len(ingested)
 
 
+def _snapshot_tree(root: Path) -> dict[str, bytes]:
+    if not root.exists():
+        return {}
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
+
+
 class BankCachePairLearningTests(unittest.TestCase):
     def test_unique_pair_updates_cache(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -200,6 +211,14 @@ class BankCachePairLearningTests(unittest.TestCase):
             bank_sub_stats = cache_obj.get("bank_account_subaccount_stats") or {}
             self.assertIn("kana_sign_amount", bank_sub_stats)
             self.assertIn("kana_sign", bank_sub_stats)
+
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "ocr_kari_shiwake").glob("*.csv"))))
+            self.assertEqual(0, len(list((line_root / "inputs" / "training" / "reference_yayoi").glob("*.txt"))))
+            self.assertEqual(1, _manifest_ingested_count(line_root / "artifacts" / "ingest" / "training_ocr_ingested.json"))
+            self.assertEqual(
+                1,
+                _manifest_ingested_count(line_root / "artifacts" / "ingest" / "training_reference_ingested.json"),
+            )
 
     def test_unique_pair_updates_cache_with_wareki_teacher_dates(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -845,6 +864,133 @@ class BankCachePairLearningTests(unittest.TestCase):
             ref_inbox = line_root / "inputs" / "training" / "reference_yayoi"
             self.assertEqual(2, len(list(ocr_inbox.glob("*.csv"))))
             self.assertEqual(1, len(list(ref_inbox.glob("*.csv"))))
+
+    def test_transaction_rolls_back_when_ocr_ingest_manifest_save_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "TXN_A"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/02/01",
+                        summary="OCR_TXN_A",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1200,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/02/01",
+                        summary="TEACHER_TXN_A",
+                        debit_account="COUNTER_TXN_A",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1200,
+                    ),
+                ],
+            )
+            before = _snapshot_tree(line_root)
+
+            with mock.patch("belle.ingest.save_manifest", side_effect=RuntimeError("ocr ingest persist failed")):
+                with self.assertRaises(RuntimeError):
+                    ensure_bank_client_cache_updated(repo_root, client_id)
+
+            self.assertEqual(before, _snapshot_tree(line_root))
+
+    def test_transaction_rolls_back_when_reference_ingest_manifest_save_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "TXN_B"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/02/02",
+                        summary="OCR_TXN_B",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1300,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/02/02",
+                        summary="TEACHER_TXN_B",
+                        debit_account="COUNTER_TXN_B",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1300,
+                    ),
+                ],
+            )
+            before = _snapshot_tree(line_root)
+
+            from belle import ingest as ingest_module
+
+            real_save_manifest = ingest_module.save_manifest
+            call_count = 0
+
+            def _fail_on_second_save(manifest_path: Path, manifest: dict) -> None:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 2:
+                    raise RuntimeError("reference ingest persist failed")
+                real_save_manifest(manifest_path, manifest)
+
+            with mock.patch("belle.ingest.save_manifest", side_effect=_fail_on_second_save):
+                with self.assertRaises(RuntimeError):
+                    ensure_bank_client_cache_updated(repo_root, client_id)
+
+            self.assertEqual(2, call_count)
+            self.assertEqual(before, _snapshot_tree(line_root))
+
+    def test_transaction_rolls_back_when_final_cache_save_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "TXN_C"
+            line_root = _prepare_bank_layout(repo_root, client_id)
+
+            _write_training_pair(
+                line_root,
+                ocr_rows=[
+                    _build_row(
+                        date_text="2026/02/03",
+                        summary="OCR_TXN_C",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=1400,
+                        memo="SIGN=debit",
+                    ),
+                ],
+                ref_rows=[
+                    _build_row(
+                        date_text="2026/02/03",
+                        summary="TEACHER_TXN_C",
+                        debit_account="COUNTER_TXN_C",
+                        credit_account=BANK_ACCOUNT,
+                        credit_subaccount=LEARNED_BANK_SUBACCOUNT,
+                        debit_tax_division="TAX_D10",
+                        amount=1400,
+                    ),
+                ],
+            )
+            before = _snapshot_tree(line_root)
+
+            with mock.patch("belle.build_bank_cache.save_bank_cache", side_effect=RuntimeError("cache save failed")):
+                with self.assertRaises(RuntimeError):
+                    ensure_bank_client_cache_updated(repo_root, client_id)
+
+            self.assertEqual(before, _snapshot_tree(line_root))
 
 
 if __name__ == "__main__":
