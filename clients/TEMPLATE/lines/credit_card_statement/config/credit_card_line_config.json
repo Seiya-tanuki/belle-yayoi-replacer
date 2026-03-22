@@ -30,6 +30,7 @@
   },
   "candidate_extraction": {
     "min_total_count": 5,
-    "min_unique_merchants": 3
+    "min_unique_merchants": 3,
+    "min_unique_counter_accounts": 2
   }
 }

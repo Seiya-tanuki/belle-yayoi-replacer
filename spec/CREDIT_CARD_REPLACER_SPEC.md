@@ -85,6 +85,17 @@ File-level card candidate extraction is controlled by config knobs such as:
 
 These knobs gate whether a payable subaccount becomes an eligible candidate.
 
+Hard-gate contract:
+1. eligible set for file-level payable-subaccount inference is only payable subaccounts where `is_candidate == true`
+2. if zero payable subaccounts are flagged as candidates, file-level inference must not return `OK`
+3. in that zero-candidate case, no payable subaccount may be inferred and there is no fallback to all observed payable subaccounts
+4. `manual_allow` remains an explicit override that can force candidacy even when numeric thresholds are not met
+
+Default candidate-extraction policy for operators using defaults:
+1. `min_total_count = 5`
+2. `min_unique_merchants = 3`
+3. `min_unique_counter_accounts = 2`
+
 ## Candidate extraction alias policy
 
 1. Canonical key is `candidate_extraction.min_total_count`.

@@ -333,34 +333,6 @@ def _append_partial_example(examples: List[Tuple[str, str]], input_key: str, mat
     examples.append(pair)
 
 
-def _collect_observed_payable_subaccounts(cache: CCClientCache) -> List[str]:
-    observed: set[str] = set()
-
-    global_counts = (
-        cache.payable_sub_global_stats.value_counts
-        if isinstance(getattr(cache.payable_sub_global_stats, "value_counts", None), dict)
-        else {}
-    )
-    for value, count in global_counts.items():
-        s = str(value or "").strip()
-        if s and int(count) > 0:
-            observed.add(s)
-
-    for entry in (cache.merchant_key_payable_sub_stats or {}).values():
-        if isinstance(entry, dict):
-            entry = ValueStatsEntry.from_obj(entry)
-        if not isinstance(entry, ValueStatsEntry):
-            continue
-        if entry.top_value:
-            observed.add(str(entry.top_value).strip())
-        for value, count in (entry.value_counts or {}).items():
-            s = str(value or "").strip()
-            if s and int(count) > 0:
-                observed.add(s)
-
-    return sorted(v for v in observed if v)
-
-
 def _is_candidate_enabled(value: Any) -> bool:
     if isinstance(value, bool):
         return value
@@ -400,8 +372,18 @@ def infer_file_payable_subaccount(
     }
 
     if not eligible:
-        eligible = set(_collect_observed_payable_subaccounts(cache))
-        reasons.append("no_candidates_flagged_fallback")
+        reasons.append("no_candidates_flagged")
+        return CCFileCardInference(
+            status="SKIP",
+            inferred_payable_subaccount=None,
+            votes_total=0,
+            top_value=None,
+            top_count=0,
+            p_majority=0.0,
+            reasons=reasons,
+            votes_partial_used=0,
+            partial_examples=[],
+        )
 
     row_thresholds = _resolve_merchant_payable_sub_thresholds(config, cache)
     row_min_count = int(row_thresholds.get("min_count", 3))

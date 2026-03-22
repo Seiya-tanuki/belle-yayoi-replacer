@@ -81,9 +81,9 @@ def _normalize_candidate_config(obj: Any) -> Dict[str, Any]:
     src = obj if isinstance(obj, dict) else {}
     manual_allow = _normalize_str_list(src.get("manual_allow"), default=[])
     return {
-        "min_total_count": _as_int(src.get("min_total_count", src.get("min_rows", 10)), 10),
-        "min_unique_merchants": _as_int(src.get("min_unique_merchants", 5), 5),
-        "min_unique_counter_accounts": _as_int(src.get("min_unique_counter_accounts", 3), 3),
+        "min_total_count": _as_int(src.get("min_total_count", src.get("min_rows", 5)), 5),
+        "min_unique_merchants": _as_int(src.get("min_unique_merchants", 3), 3),
+        "min_unique_counter_accounts": _as_int(src.get("min_unique_counter_accounts", 2), 2),
         "manual_allow": manual_allow,
     }
 
@@ -318,9 +318,9 @@ def _recompute_card_subaccount_candidates(
     all_subaccounts.update(counter_sets.keys())
     all_subaccounts.update(manual_allow)
 
-    min_total_count = _as_int(candidate_cfg.get("min_total_count", 10), 10)
-    min_unique_merchants = _as_int(candidate_cfg.get("min_unique_merchants", 5), 5)
-    min_unique_counter_accounts = _as_int(candidate_cfg.get("min_unique_counter_accounts", 3), 3)
+    min_total_count = _as_int(candidate_cfg.get("min_total_count", 5), 5)
+    min_unique_merchants = _as_int(candidate_cfg.get("min_unique_merchants", 3), 3)
+    min_unique_counter_accounts = _as_int(candidate_cfg.get("min_unique_counter_accounts", 2), 2)
 
     rebuilt: Dict[str, Dict[str, Any]] = {}
     for subaccount in sorted(str(v) for v in all_subaccounts if str(v)):
