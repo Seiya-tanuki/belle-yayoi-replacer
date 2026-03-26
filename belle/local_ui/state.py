@@ -18,3 +18,16 @@ class LocalUiState:
 
 def create_initial_state() -> LocalUiState:
     return LocalUiState()
+
+
+_STATE = create_initial_state()
+
+
+def get_state() -> LocalUiState:
+    return _STATE
+
+
+def reset_state() -> LocalUiState:
+    global _STATE
+    _STATE = create_initial_state()
+    return _STATE

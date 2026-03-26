@@ -3,8 +3,11 @@ from __future__ import annotations
 import socket
 from typing import Any
 
+from belle.local_ui.nicegui_compat import ensure_nicegui_compat
+
 
 def _import_ui():
+    ensure_nicegui_compat()
     from nicegui import ui
 
     return ui
@@ -24,6 +27,7 @@ def pick_port(host: str, preferred_port: int, attempts: int = 5) -> int:
 
 
 def create_app() -> Any:
+    _import_ui()
     from belle.local_ui.pages import register_routes
 
     register_routes()
