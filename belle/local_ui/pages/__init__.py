@@ -13,9 +13,11 @@ def register_routes() -> None:
     from nicegui import ui
     from belle.local_ui.pages.client_new import build as build_client_new
     from belle.local_ui.pages.client_select import build as build_client_select
+    from belle.local_ui.pages.done import build as build_done
     from belle.local_ui.pages.flow_types import build as build_flow_types
+    from belle.local_ui.pages.precheck import build as build_precheck
+    from belle.local_ui.pages.run_page import build as build_run_page
     from belle.local_ui.pages.upload_line import build as build_upload_line
-    from belle.local_ui.theme import page_shell, secondary_button
 
     @ui.page("/")
     def home_page() -> None:
@@ -35,8 +37,14 @@ def register_routes() -> None:
 
     @ui.page("/flow/check")
     def check_page() -> None:
-        with page_shell("手順 4 / 6", "事前確認", "このまま進めるかを先に確認します。"):
-            ui.label("Phase 4 で実装します。").classes("text-sm text-slate-500")
-            secondary_button("ファイルを直す", lambda: ui.navigate.to("/flow/types"))
+        build_precheck()
+
+    @ui.page("/flow/run")
+    def run_page() -> None:
+        build_run_page()
+
+    @ui.page("/flow/done")
+    def done_page() -> None:
+        build_done()
 
     _ROUTES_REGISTERED = True

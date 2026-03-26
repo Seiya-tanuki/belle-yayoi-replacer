@@ -5,7 +5,7 @@ import argparse
 import sys
 
 UI_DEPENDENCY_ERROR = (
-    "UI の起動に必要なパッケージが見つかりません。"
+    "UI の起動に必要なパッケージが見つかりません。 "
     "'python -m pip install -r requirements-ui.txt' を実行してください。"
 )
 
