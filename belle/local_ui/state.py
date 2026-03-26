@@ -3,6 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 LINE_ORDER = ("receipt", "bank_statement", "credit_card_statement")
+LINE_LABELS = {
+    "receipt": "領収書",
+    "bank_statement": "銀行明細",
+    "credit_card_statement": "クレジットカード",
+}
 
 
 @dataclass
@@ -38,3 +43,7 @@ def reset_state() -> LocalUiState:
 def normalize_selected_lines(line_ids: list[str]) -> list[str]:
     selected = {line_id for line_id in line_ids if line_id in LINE_ORDER}
     return [line_id for line_id in LINE_ORDER if line_id in selected]
+
+
+def line_label(line_id: str) -> str:
+    return LINE_LABELS.get(line_id, line_id)

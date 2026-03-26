@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from belle.local_ui.services.collect import overall_result_title, run_collect, serialize_collect_result
-from belle.local_ui.state import get_state, reset_state
+from belle.local_ui.state import get_state, line_label, reset_state
 from belle.local_ui.theme import page_shell, primary_button, secondary_button
 
 
@@ -32,7 +34,7 @@ def build() -> None:
 
         for result in state.run_results:
             with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
-                ui.label(str(result.get("line_id") or "")).classes("text-sm text-slate-500")
+                ui.label(line_label(str(result.get("line_id") or ""))).classes("text-sm text-slate-500")
                 ui.label(str(result.get("status_label") or "")).classes("text-lg font-semibold")
                 with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
                     ui.markdown(f"```\n{result.get('stdout') or result.get('stderr') or 'ログはありません。'}\n```")

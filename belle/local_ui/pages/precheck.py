@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from belle.local_ui.services.replacer import run_precheck_for_lines, serialize_precheck_results
-from belle.local_ui.state import get_state
+from belle.local_ui.state import get_state, line_label
 from belle.local_ui.theme import card_container, page_shell, primary_button, secondary_button
 
 
@@ -25,7 +25,7 @@ def build() -> None:
 
         for result in results:
             with card_container():
-                ui.label(result.line_id).classes("text-sm text-slate-500")
+                ui.label(line_label(result.line_id)).classes("text-sm text-slate-500")
                 ui.label(result.status_label).classes("text-lg font-semibold")
                 ui.label(result.reason).classes("text-sm text-slate-600")
                 with ui.expansion("詳細ログを見る", value=False).classes("w-full"):

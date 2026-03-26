@@ -90,3 +90,18 @@ Optional legacy direct command from the repository root only:
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+## Local UI
+
+`Belle ローカルUI` は、日常運用で使う最低限の操作をブラウザから順に進めるためのローカル向け UI です。
+対象はクライアント選択、新規作成、line 選択、入力ファイル配置、事前確認、実行、成果物 ZIP 作成です。
+
+起動手順:
+
+```bash
+python -m pip install -r requirements-ui.txt
+python start_local_ui.py
+```
+
+この UI は daily operation 向けの薄い操作盤で、既存 CLI / skill の置き換えではありません。
+辞書編集、config 編集、review CSV 編集、複雑な保守操作は対象外です。
