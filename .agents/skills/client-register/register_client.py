@@ -329,7 +329,7 @@ def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
         print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json")
 
 
-def main() -> int:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--line",
@@ -337,10 +337,69 @@ def main() -> int:
         choices=("all",) + REGISTER_LINES,
         help="Provision target line. Default: all lines.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--client-id",
+        help="Create client without interactive prompt.",
+    )
+    parser.add_argument(
+        "--yes",
+        action="store_true",
+        help="Allow substantial canonicalization change in non-interactive mode.",
+    )
+    return parser.parse_args(argv)
+
+
+def _resolve_repo_root(repo_root: str | Path | None = None) -> Path:
+    if repo_root is None:
+        return Path(__file__).resolve().parents[3]
+    return Path(repo_root).resolve()
+
+
+def _collect_client_id(args: argparse.Namespace) -> ValidationResult | None:
+    if args.client_id is not None:
+        result = validate_and_canonicalize(args.client_id)
+        if not result.ok:
+            print(f"[ERROR] {result.reason}")
+            return None
+
+        if result.trimmed != result.canonical:
+            print(f"Input: {result.trimmed}")
+            print(f"Canonical: {result.canonical}")
+            if result.substantial_change and not args.yes:
+                print("[ERROR] Substantial canonicalization requires --yes in non-interactive mode.")
+                return None
+        else:
+            print(f"CLIENT_ID: {result.canonical}")
+        return result
+
+    print("Create a new client directory.")
+    print("Copy `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.")
+    print("Spaces in CLIENT_ID are canonicalized to `_`.")
+    user_input = input("Enter CLIENT_ID: ")
+    result = validate_and_canonicalize(user_input)
+
+    if not result.ok:
+        print(f"[ERROR] {result.reason}")
+        return None
+
+    if result.trimmed != result.canonical:
+        print(f"Input: {result.trimmed}")
+        print(f"Canonical: {result.canonical}")
+        if result.substantial_change:
+            answer = input("Proceed with canonicalized CLIENT_ID? [y/N]: ").strip().lower()
+            if answer not in {"y", "yes"}:
+                print("Cancelled.")
+                return None
+    else:
+        print(f"CLIENT_ID: {result.canonical}")
+    return result
+
+
+def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> int:
+    args = parse_args(argv)
     selected_lines = _selected_lines(args.line)
 
-    repo_root = Path(__file__).resolve().parents[3]
+    repo_root = _resolve_repo_root(repo_root)
     clients_dir = repo_root / "clients"
     template_dir = clients_dir / "TEMPLATE"
     legacy_tenants_dir = repo_root / "tenants"
@@ -373,26 +432,9 @@ def main() -> int:
             print(f"  - {_display_path(p, repo_root)}")
         return 2
 
-    print("Create a new client directory.")
-    print("Copy `clients/TEMPLATE/` to `clients/<CLIENT_ID>/`.")
-    print("Spaces in CLIENT_ID are canonicalized to `_`.")
-    user_input = input("Enter CLIENT_ID: ")
-    result = validate_and_canonicalize(user_input)
-
-    if not result.ok:
-        print(f"[ERROR] {result.reason}")
+    result = _collect_client_id(args)
+    if result is None:
         return 1
-
-    if result.trimmed != result.canonical:
-        print(f"Input: {result.trimmed}")
-        print(f"Canonical: {result.canonical}")
-        if result.substantial_change:
-            answer = input("Proceed with canonicalized CLIENT_ID? [y/N]: ").strip().lower()
-            if answer not in {"y", "yes"}:
-                print("Cancelled.")
-                return 1
-    else:
-        print(f"CLIENT_ID: {result.canonical}")
 
     destination = clients_dir / result.canonical
     if destination.exists():
