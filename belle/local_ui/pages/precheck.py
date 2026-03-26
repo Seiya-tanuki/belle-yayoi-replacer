@@ -31,11 +31,15 @@ def build() -> None:
                 with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
                     ui.markdown(f"```\n{result.stdout or result.stderr or 'ログはありません。'}\n```")
 
-        if has_fail:
-            ui.button("置換を実行する").props("unelevated color=primary").classes("w-full sm:w-auto").disable()
-        else:
-            primary_button("置換を実行する", lambda: ui.navigate.to("/flow/run"))
-        secondary_button(
-            "ファイルを直す",
-            lambda: ui.navigate.to(f"/flow/upload/{state.selected_lines[-1]}"),
-        )
+        with ui.row().classes("w-full items-center justify-between gap-3"):
+            secondary_button(
+                "ファイルを直す",
+                lambda: ui.navigate.to(f"/flow/upload/{state.selected_lines[-1]}"),
+            )
+            with ui.row().classes("justify-end"):
+                if has_fail:
+                    ui.button("置換を実行する").props("unelevated").classes(
+                        "w-full sm:w-auto bg-sky-600 text-white opacity-50"
+                    ).disable()
+                else:
+                    primary_button("置換を実行する", lambda: ui.navigate.to("/flow/run"))

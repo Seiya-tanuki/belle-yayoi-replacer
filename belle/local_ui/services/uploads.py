@@ -18,11 +18,11 @@ SLOT_CONFIG = {
     "receipt.ledger_ref": {
         "line_id": "receipt",
         "slot_name": "ledger_ref",
-        "title": "過去の参照CSV",
-        "description": "過去の確定済みCSVを追加で入れられます。",
+        "title": "過去の参照CSV / TXT",
+        "description": "過去の確定済みCSV または TXT を追加で入れられます。",
         "relative_dir": Path("inputs/ledger_ref"),
         "multiple": True,
-        "extensions": {".csv"},
+        "extensions": {".csv", ".txt"},
     },
     "bank_statement.target": {
         "line_id": "bank_statement",
@@ -63,11 +63,11 @@ SLOT_CONFIG = {
     "credit_card_statement.ledger_ref": {
         "line_id": "credit_card_statement",
         "slot_name": "ledger_ref",
-        "title": "過去の参照CSV",
-        "description": "過去の確定済みCSVを追加で入れられます。",
+        "title": "過去の参照CSV / TXT",
+        "description": "過去の確定済みCSV または TXT を追加で入れられます。",
         "relative_dir": Path("inputs/ledger_ref"),
         "multiple": True,
-        "extensions": {".csv"},
+        "extensions": {".csv", ".txt"},
     },
 }
 
@@ -75,14 +75,14 @@ LINE_PAGE_COPY = {
     "receipt": {
         "step": "手順 3 / 6",
         "title": "領収書のファイルを入れてください",
-        "subtitle": "どの欄に入れるかだけを見れば大丈夫です。",
+        "subtitle": "",
         "slots": ["receipt.target", "receipt.ledger_ref"],
         "extra_note": "",
     },
     "bank_statement": {
         "step": "手順 3 / 6",
         "title": "銀行明細のファイルを入れてください",
-        "subtitle": "どの欄に入れるかだけを見れば大丈夫です。",
+        "subtitle": "",
         "slots": [
             "bank_statement.target",
             "bank_statement.training_ocr",
@@ -93,7 +93,7 @@ LINE_PAGE_COPY = {
     "credit_card_statement": {
         "step": "手順 3 / 6",
         "title": "クレジットカードのファイルを入れてください",
-        "subtitle": "どの欄に入れるかだけを見れば大丈夫です。",
+        "subtitle": "",
         "slots": ["credit_card_statement.target", "credit_card_statement.ledger_ref"],
         "extra_note": "",
     },
@@ -136,7 +136,7 @@ def list_slot_files(client_id: str, slot_key: str, root: Path | None = None) -> 
     slot_dir = resolve_slot_dir(client_id, slot_key, root)
     if not slot_dir.exists():
         return []
-    return sorted(path.name for path in slot_dir.iterdir() if path.is_file())
+    return sorted(path.name for path in slot_dir.iterdir() if path.is_file() and path.name != ".gitkeep")
 
 
 def _ensure_slot_dir(slot_dir: Path) -> None:
@@ -158,6 +158,8 @@ def save_uploaded_file(
     destination = slot_dir / Path(filename).name
     if not SLOT_CONFIG[slot_key]["multiple"]:
         for existing in slot_dir.iterdir():
+            if existing.name == ".gitkeep":
+                continue
             if existing.is_file():
                 existing.unlink()
     destination.write_bytes(content)
@@ -168,6 +170,8 @@ def clear_slot(client_id: str, slot_key: str, root: Path | None = None) -> list[
     slot_dir = resolve_slot_dir(client_id, slot_key, root)
     if slot_dir.exists():
         for path in slot_dir.iterdir():
+            if path.name == ".gitkeep":
+                continue
             if path.is_file():
                 path.unlink()
             elif path.is_dir():

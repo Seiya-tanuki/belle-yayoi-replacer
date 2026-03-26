@@ -62,8 +62,10 @@ def build() -> None:
             if zip_path:
                 ui.download(Path(str(zip_path)))
 
-        if state.collect_result and state.collect_result.get("zip_path"):
-            primary_button("成果物ZIPをダウンロード", download_zip)
-        else:
-            primary_button("成果物ZIPを作る", collect_zip)
-        secondary_button("最初に戻る", lambda: (reset_state(), ui.navigate.to("/")))
+        with ui.row().classes("w-full items-center justify-between gap-3"):
+            secondary_button("最初に戻る", lambda: (reset_state(), ui.navigate.to("/")))
+            with ui.row().classes("justify-end"):
+                if state.collect_result and state.collect_result.get("zip_path"):
+                    primary_button("成果物ZIPをダウンロード", download_zip)
+                else:
+                    primary_button("成果物ZIPを作る", collect_zip)

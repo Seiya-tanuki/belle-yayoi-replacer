@@ -10,13 +10,13 @@ def build(line_id: str) -> None:
 
     state = get_state()
     if not state.selected_client_id:
-        with page_shell("手順 3 / 6", "必要なファイルを入れてください", "どの欄に入れるかだけを見れば大丈夫です。"):
+        with page_shell("手順 3 / 6", "必要なファイルを入れてください", ""):
             ui.label("先にクライアントを選んでください。").classes("text-sm text-red-600")
             secondary_button("戻る", lambda: ui.navigate.to("/"))
         return
 
     if line_id not in uploads.LINE_PAGE_COPY:
-        with page_shell("手順 3 / 6", "必要なファイルを入れてください", "どの欄に入れるかだけを見れば大丈夫です。"):
+        with page_shell("手順 3 / 6", "必要なファイルを入れてください", ""):
             ui.label("先に処理種類を選んでください。").classes("text-sm text-red-600")
             secondary_button("戻る", lambda: ui.navigate.to("/flow/types"))
         return
@@ -31,6 +31,7 @@ def build(line_id: str) -> None:
     line_copy = uploads.line_copy(line_id)
     slots = uploads.slot_keys_for_line(line_id)
     file_lists: dict[str, object] = {}
+    upload_widgets: dict[str, object] = {}
     error_box = {"element": None}
 
     def refresh_files(slot_key: str) -> None:
@@ -106,8 +107,8 @@ def build(line_id: str) -> None:
             with card_container():
                 ui.label(str(slot_config["title"])).classes("text-lg font-semibold")
                 ui.label(str(slot_config["description"])).classes("text-sm text-slate-600")
-                ui.upload(
-                    label=str(slot_config["title"]),
+                upload_widgets[slot_key] = ui.upload(
+                    label="ここにファイルをドラッグ&ドロップしてください",
                     multiple=bool(slot_config["multiple"]),
                     max_files=None if bool(slot_config["multiple"]) else 1,
                     auto_upload=True,
@@ -126,13 +127,18 @@ def build(line_id: str) -> None:
                             def clear_and_close() -> None:
                                 uploads.clear_slot(state.selected_client_id, slot_key)
                                 refresh_files(slot_key)
+                                upload_widget = upload_widgets.get(slot_key)
+                                if upload_widget is not None:
+                                    upload_widget.reset()
                                 dialog.close()
 
                             ui.button("空にする", on_click=clear_and_close).props("flat color=negative")
                     dialog.open()
 
-                ui.button("この欄を空にする", on_click=confirm_clear).props("flat color=negative").classes(
-                    "w-full sm:w-auto"
-                )
-        primary_button("次へ", go_next)
-        secondary_button("戻る", go_back)
+                ui.button("選択したファイルをリセットする", on_click=confirm_clear).props(
+                    "outline color=negative"
+                ).classes("w-full sm:w-auto")
+        with ui.row().classes("w-full items-center justify-between gap-3"):
+            secondary_button("戻る", go_back)
+            with ui.row().classes("justify-end"):
+                primary_button("次へ", go_next)

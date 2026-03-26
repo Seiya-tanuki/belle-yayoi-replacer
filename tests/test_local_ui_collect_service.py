@@ -130,6 +130,7 @@ class LocalUiCollectServiceTests(unittest.TestCase):
             self.assertTrue(result.ok, msg=result.stdout + result.stderr)
             self.assertTrue(result.exact_match)
             self.assertTrue(Path(result.zip_path).exists())
+            self.assertIn(Path(result.zip_path).name, result.message)
             with zipfile.ZipFile(result.zip_path, mode="r") as zf:
                 manifest_obj = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
             self.assertEqual("receipt", manifest_obj["line_id"])

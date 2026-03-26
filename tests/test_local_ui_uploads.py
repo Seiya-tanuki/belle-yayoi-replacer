@@ -38,6 +38,22 @@ class LocalUiUploadsTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_save_single_file_slot_keeps_gitkeep(self) -> None:
+        from belle.local_ui.services.uploads import save_uploaded_file, resolve_slot_dir
+
+        repo_root = self.test_tmp_root / f"local_ui_upload_single_gitkeep_{uuid4().hex}"
+        try:
+            slot_dir = resolve_slot_dir("C1", "receipt.target", repo_root)
+            slot_dir.mkdir(parents=True, exist_ok=True)
+            (slot_dir / ".gitkeep").write_text("", encoding="utf-8")
+
+            save_uploaded_file("C1", "receipt.target", "target.csv", b"x", repo_root)
+
+            self.assertTrue((slot_dir / ".gitkeep").exists())
+            self.assertEqual([".gitkeep", "target.csv"], sorted(p.name for p in slot_dir.iterdir()))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_save_multi_file_slot_appends_files(self) -> None:
         from belle.local_ui.services.uploads import list_slot_files, save_uploaded_file
 
@@ -46,6 +62,19 @@ class LocalUiUploadsTests(unittest.TestCase):
             save_uploaded_file("C1", "receipt.ledger_ref", "a.csv", b"a", repo_root)
             save_uploaded_file("C1", "receipt.ledger_ref", "b.csv", b"b", repo_root)
             self.assertEqual(["a.csv", "b.csv"], list_slot_files("C1", "receipt.ledger_ref", repo_root))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_list_slot_files_ignores_gitkeep(self) -> None:
+        from belle.local_ui.services.uploads import list_slot_files, resolve_slot_dir
+
+        repo_root = self.test_tmp_root / f"local_ui_upload_gitkeep_{uuid4().hex}"
+        try:
+            slot_dir = resolve_slot_dir("C1", "receipt.ledger_ref", repo_root)
+            slot_dir.mkdir(parents=True, exist_ok=True)
+            (slot_dir / ".gitkeep").write_text("", encoding="utf-8")
+            (slot_dir / "visible.csv").write_text("x", encoding="utf-8")
+            self.assertEqual(["visible.csv"], list_slot_files("C1", "receipt.ledger_ref", repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -67,6 +96,23 @@ class LocalUiUploadsTests(unittest.TestCase):
             self.assertFalse(any(resolve_slot_dir("C1", "receipt.target", repo_root).iterdir()))
             self.assertTrue(artifacts_file.exists())
             self.assertTrue(outputs_file.exists())
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_clear_slot_keeps_gitkeep(self) -> None:
+        from belle.local_ui.services.uploads import clear_slot, resolve_slot_dir
+
+        repo_root = self.test_tmp_root / f"local_ui_upload_clear_gitkeep_{uuid4().hex}"
+        try:
+            slot_dir = resolve_slot_dir("C1", "receipt.ledger_ref", repo_root)
+            slot_dir.mkdir(parents=True, exist_ok=True)
+            (slot_dir / ".gitkeep").write_text("", encoding="utf-8")
+            (slot_dir / "keep_me_not.csv").write_text("x", encoding="utf-8")
+
+            clear_slot("C1", "receipt.ledger_ref", repo_root)
+
+            self.assertTrue((slot_dir / ".gitkeep").exists())
+            self.assertEqual([".gitkeep"], sorted(p.name for p in slot_dir.iterdir()))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -154,9 +200,11 @@ class LocalUiUploadsTests(unittest.TestCase):
     def test_extension_rules_match_contract(self) -> None:
         from belle.local_ui.services.uploads import is_allowed_extension
 
+        self.assertTrue(is_allowed_extension("receipt.ledger_ref", "ref.txt"))
         self.assertTrue(is_allowed_extension("bank_statement.training_reference", "ref.csv"))
         self.assertTrue(is_allowed_extension("bank_statement.training_reference", "ref.txt"))
         self.assertFalse(is_allowed_extension("bank_statement.training_reference", "ref.pdf"))
+        self.assertTrue(is_allowed_extension("credit_card_statement.ledger_ref", "ref.txt"))
         self.assertTrue(is_allowed_extension("receipt.target", "target.csv"))
         self.assertFalse(is_allowed_extension("receipt.target", "target.txt"))
 

@@ -49,5 +49,7 @@ def build() -> None:
         error_label.visible = False
         with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
             detail_log = ui.markdown("詳細はありません。")
-        primary_button("この名前で作成する", submit)
-        secondary_button("戻る", lambda: ui.navigate.to("/"))
+        with ui.row().classes("w-full items-center justify-between gap-3"):
+            secondary_button("戻る", lambda: ui.navigate.to("/"))
+            with ui.row().classes("justify-end"):
+                primary_button("この名前で作成する", submit)

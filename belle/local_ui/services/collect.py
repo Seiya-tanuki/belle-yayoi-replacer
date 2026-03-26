@@ -126,6 +126,13 @@ def _load_manifest_from_zip(zip_path: Path) -> dict[str, object]:
         return json.loads(zf.read("MANIFEST.json").decode("utf-8"))
 
 
+def _zip_message(base_message: str, zip_path: str) -> str:
+    zip_name = Path(str(zip_path)).name if zip_path else ""
+    if not zip_name:
+        return base_message
+    return f"{base_message} ファイル名: {zip_name}"
+
+
 def build_collect_command(
     *,
     client_id: str,
@@ -230,11 +237,11 @@ def run_collect(
         ok = False
     elif exact_match:
         status = "success"
-        message = "成果物ZIPを作成しました。"
+        message = _zip_message("成果物ZIPを作成しました。", zip_path)
         ok = True
     else:
         status = "warning"
-        message = "ZIPに今回以外の成果物が含まれている可能性があります。"
+        message = _zip_message("ZIPに今回以外の成果物が含まれている可能性があります。", zip_path)
         ok = True
 
     return CollectResult(

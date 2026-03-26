@@ -16,15 +16,18 @@ def build() -> None:
 
     state = get_state()
     selected = set(state.selected_lines)
-    button_holder = ui.row().classes("w-full justify-start")
+    button_holder = None
 
     def refresh_button() -> None:
+        assert button_holder is not None
         button_holder.clear()
         with button_holder:
             if selected:
                 primary_button("次へ", go_next)
             else:
-                ui.button("次へ").props("unelevated color=primary").classes("w-full sm:w-auto").disable()
+                ui.button("次へ").props("unelevated").classes(
+                    "w-full sm:w-auto bg-sky-600 text-white opacity-50"
+                ).disable()
 
     def toggle_line(line_id: str) -> None:
         if line_id in selected:
@@ -48,11 +51,16 @@ def build() -> None:
         with cards_column:
             for line_id in LINE_ORDER:
                 title, description = LINE_CHOICES[line_id]
-                with card_container(selected=line_id in selected).on(
+                is_selected = line_id in selected
+                with card_container(selected=is_selected).on(
                     "click", lambda _=None, line_id=line_id: toggle_line(line_id)
                 ):
-                    ui.label(title).classes("text-lg font-semibold")
-                    ui.label(description).classes("text-sm text-slate-600")
+                    ui.label(title).classes(
+                        "text-lg font-semibold text-white" if is_selected else "text-lg font-semibold"
+                    )
+                    ui.label(description).classes(
+                        "text-sm text-white" if is_selected else "text-sm text-slate-600"
+                    )
         refresh_button()
 
     with page_shell(
@@ -66,5 +74,7 @@ def build() -> None:
             return
 
         cards_column = ui.column().classes("w-full gap-3")
+        with ui.row().classes("w-full items-center justify-between gap-3"):
+            secondary_button("戻る", lambda: ui.navigate.to("/"))
+            button_holder = ui.row().classes("justify-end")
         refresh_page()
-        secondary_button("戻る", lambda: ui.navigate.to("/"))
