@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+LINE_ORDER = ("receipt", "bank_statement", "credit_card_statement")
+
 
 @dataclass
 class LocalUiState:
@@ -31,3 +33,8 @@ def reset_state() -> LocalUiState:
     global _STATE
     _STATE = create_initial_state()
     return _STATE
+
+
+def normalize_selected_lines(line_ids: list[str]) -> list[str]:
+    selected = {line_id for line_id in line_ids if line_id in LINE_ORDER}
+    return [line_id for line_id in LINE_ORDER if line_id in selected]
