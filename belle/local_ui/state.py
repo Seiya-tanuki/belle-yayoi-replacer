@@ -15,7 +15,7 @@ class LocalUiState:
     run_results: list[dict[str, str]] = field(default_factory=list)
     session_started_at_utc: str = ""
     session_finished_at_utc: str = ""
-    collect_result: dict[str, str] = field(default_factory=dict)
+    collect_result: dict[str, object] = field(default_factory=dict)
 
 
 def create_initial_state() -> LocalUiState:
