@@ -132,6 +132,46 @@ class LocalUiUploadsTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_validate_target_requires_one_file_when_missing_for_all_lines(self) -> None:
+        from belle.local_ui.services.uploads import TARGET_REQUIRED_ERROR, validate_line_uploads
+
+        repo_root = self.test_tmp_root / f"local_ui_upload_validate_target_missing_{uuid4().hex}"
+        try:
+            cases = {
+                "receipt": "clients/C1/lines/receipt/inputs/kari_shiwake",
+                "bank_statement": "clients/C1/lines/bank_statement/inputs/kari_shiwake",
+                "credit_card_statement": "clients/C1/lines/credit_card_statement/inputs/kari_shiwake",
+            }
+            for line_id, relpath in cases.items():
+                target_dir = repo_root / Path(relpath)
+                target_dir.mkdir(parents=True, exist_ok=True)
+                result = validate_line_uploads("C1", line_id, repo_root)
+                self.assertFalse(result.ok)
+                self.assertIn(TARGET_REQUIRED_ERROR, result.errors)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_validate_target_rejects_multiple_files_for_all_lines(self) -> None:
+        from belle.local_ui.services.uploads import TARGET_MULTIPLE_ERROR, validate_line_uploads
+
+        repo_root = self.test_tmp_root / f"local_ui_upload_validate_target_multi_{uuid4().hex}"
+        try:
+            cases = {
+                "receipt": "clients/C1/lines/receipt/inputs/kari_shiwake",
+                "bank_statement": "clients/C1/lines/bank_statement/inputs/kari_shiwake",
+                "credit_card_statement": "clients/C1/lines/credit_card_statement/inputs/kari_shiwake",
+            }
+            for line_id, relpath in cases.items():
+                target_dir = repo_root / Path(relpath)
+                target_dir.mkdir(parents=True, exist_ok=True)
+                (target_dir / "a.csv").write_text("a", encoding="utf-8")
+                (target_dir / "b.csv").write_text("b", encoding="utf-8")
+                result = validate_line_uploads("C1", line_id, repo_root)
+                self.assertFalse(result.ok)
+                self.assertIn(TARGET_MULTIPLE_ERROR, result.errors)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_validate_bank_training_allows_one_one(self) -> None:
         from belle.local_ui.services.uploads import save_uploaded_file, validate_line_uploads
 

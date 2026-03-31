@@ -106,6 +106,14 @@ class UploadValidationResult:
     errors: list[str]
 
 
+TARGET_REQUIRED_ERROR = "置換したいCSVを入れてください。"
+TARGET_MULTIPLE_ERROR = (
+    "置換対象のcsvは一度につき1件のみです。"
+    "複数ファイルをアップロードしてしまった場合は「選択したファイルをリセットする」ボタンをクリックして"
+    "一度ファイルを削除してから再度アップロードしてください"
+)
+
+
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
@@ -184,11 +192,17 @@ def validate_line_uploads(client_id: str, line_id: str, root: Path | None = None
     counts = {slot_key: len(list_slot_files(client_id, slot_key, root)) for slot_key in slot_keys_for_line(line_id)}
 
     if line_id == "receipt":
-        if counts["receipt.target"] != 1:
-            errors.append("置換したいCSVを入れてください。")
+        target_count = counts["receipt.target"]
+        if target_count == 0:
+            errors.append(TARGET_REQUIRED_ERROR)
+        elif target_count >= 2:
+            errors.append(TARGET_MULTIPLE_ERROR)
     elif line_id == "bank_statement":
-        if counts["bank_statement.target"] != 1:
-            errors.append("置換したいCSVを入れてください。")
+        target_count = counts["bank_statement.target"]
+        if target_count == 0:
+            errors.append(TARGET_REQUIRED_ERROR)
+        elif target_count >= 2:
+            errors.append(TARGET_MULTIPLE_ERROR)
         ocr_count = counts["bank_statement.training_ocr"]
         reference_count = counts["bank_statement.training_reference"]
         if (ocr_count, reference_count) not in {(0, 0), (1, 1)}:
@@ -197,8 +211,11 @@ def validate_line_uploads(client_id: str, line_id: str, root: Path | None = None
             else:
                 errors.append("学習用ファイルは2つそろえて入れてください。")
     elif line_id == "credit_card_statement":
-        if counts["credit_card_statement.target"] != 1:
-            errors.append("置換したいCSVを入れてください。")
+        target_count = counts["credit_card_statement.target"]
+        if target_count == 0:
+            errors.append(TARGET_REQUIRED_ERROR)
+        elif target_count >= 2:
+            errors.append(TARGET_MULTIPLE_ERROR)
     else:
         errors.append("先に処理種類を選んでください。")
 
