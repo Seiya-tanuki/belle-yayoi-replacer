@@ -28,7 +28,7 @@ def page_shell(step_label: str, title: str, subtitle: str) -> Iterator[None]:
                         ui.label("置換システム操作パネル").classes("text-2xl font-semibold")
                         ui.label(title).classes("text-3xl font-semibold")
                         if subtitle:
-                            ui.label(subtitle).classes("text-base text-slate-600")
+                            ui.label(subtitle).classes("text-base text-slate-600 whitespace-pre-line")
                     with ui.column().classes("w-full gap-2 sm:w-auto sm:items-end"):
                         if state.selected_client_id:
                             ui.label(f"対象クライアント : {state.selected_client_id}").classes(
