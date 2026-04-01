@@ -135,7 +135,7 @@ def build(line_id: str) -> None:
                             ui.button("空にする", on_click=clear_and_close).props("flat color=negative")
                     dialog.open()
 
-                ui.button("選択したファイルをリセットする", on_click=confirm_clear).props(
+                ui.button("ファイルをリセットする", on_click=confirm_clear).props(
                     "outline color=negative"
                 ).classes("w-full sm:w-auto")
         with ui.row().classes("w-full items-center justify-between gap-3"):

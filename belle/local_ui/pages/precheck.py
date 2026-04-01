@@ -28,8 +28,9 @@ def build() -> None:
                 ui.label(line_label(result.line_id)).classes("text-sm text-slate-500")
                 ui.label(result.status_label).classes("text-lg font-semibold")
                 ui.label(result.reason).classes("text-sm text-slate-600")
-                with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
-                    ui.markdown(f"```\n{result.stdout or result.stderr or 'ログはありません。'}\n```")
+                if result.status == "FAIL":
+                    with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
+                        ui.markdown(f"```\n{result.stdout or result.stderr or 'ログはありません。'}\n```")
 
         with ui.row().classes("w-full items-center justify-between gap-3"):
             secondary_button(

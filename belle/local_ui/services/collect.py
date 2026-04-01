@@ -15,7 +15,6 @@ from belle.ui_reason_codes import (
     COLLECT_FAIL_NO_RUNS_FOUND,
     COLLECT_FAIL_UNKNOWN,
     COLLECT_OK_EXACT,
-    COLLECT_WARN_EXTRA_RUNS_INCLUDED,
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
 )
@@ -151,11 +150,12 @@ def build_collect_command(
     session_started_at_utc: str,
     session_finished_at_utc: str,
     requested_run_refs: list[str] | None = None,
+    collect_today_all: bool = False,
     root: Path | None = None,
 ) -> list[str]:
     current_root = root or source_repo_root()
     line_ids = sorted({str(result.get("line_id") or "").strip() for result in run_results if result.get("line_id")})
-    line_arg = line_ids[0] if len(line_ids) == 1 else "all"
+    line_arg = "all" if collect_today_all else (line_ids[0] if len(line_ids) == 1 else "all")
     command = [
         sys.executable,
         str(collect_script_path(current_root)),
@@ -176,10 +176,15 @@ def build_collect_command(
             client_id,
             "--date",
             date_text,
-            "--time",
-            time_text,
         ]
     )
+    if not collect_today_all:
+        command.extend(
+            [
+                "--time",
+                time_text,
+            ]
+        )
     return command
 
 
@@ -191,13 +196,13 @@ def overall_result_title(run_results: list[dict[str, object]]) -> str:
         RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
         RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     }:
-        return "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）"
+        return "処理は完了しましたが確認が必要です"
 
     statuses = {str(result.get("status") or "") for result in run_results}
     if "failure" in statuses:
         return "処理に失敗しました"
     if "needs_review" in statuses:
-        return "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）"
+        return "処理は完了しましたが確認が必要です"
     return "処理が完了しました"
 
 
@@ -208,6 +213,7 @@ def run_collect(
     session_started_at_utc: str,
     session_finished_at_utc: str,
     requested_run_refs: list[str] | None = None,
+    collect_today_all: bool = False,
     root: Path | None = None,
 ) -> CollectResult:
     current_root = root or source_repo_root()
@@ -219,6 +225,7 @@ def run_collect(
         session_started_at_utc=session_started_at_utc,
         session_finished_at_utc=session_finished_at_utc,
         requested_run_refs=normalized_run_refs,
+        collect_today_all=collect_today_all,
         root=current_root,
     )
     proc = subprocess.run(
@@ -274,15 +281,10 @@ def run_collect(
         ui_reason_code = COLLECT_FAIL_MISSING_RUN_REFS
         message = "成果物ZIPを作成できませんでした。"
         ok = False
-    elif exact_match:
+    else:
         status = "success"
         ui_reason_code = COLLECT_OK_EXACT
         message = _zip_message("成果物ZIPを作成しました。", zip_path)
-        ok = True
-    else:
-        status = "warning"
-        ui_reason_code = COLLECT_WARN_EXTRA_RUNS_INCLUDED
-        message = _zip_message("ZIPに今回以外の成果物が含まれている可能性があります。", zip_path)
         ok = True
 
     return CollectResult(

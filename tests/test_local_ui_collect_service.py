@@ -93,6 +93,24 @@ class LocalUiCollectServiceTests(unittest.TestCase):
         self.assertNotIn("--date", command)
         self.assertNotIn("--time", command)
 
+    def test_build_collect_command_uses_today_all_mode_without_time_filter(self) -> None:
+        from belle.local_ui.services.collect import build_collect_command
+
+        command = build_collect_command(
+            client_id="C1",
+            run_results=[{"line_id": "receipt", "run_id": "20260326T010200Z_R1"}],
+            session_started_at_utc="2026-03-26T01:00:00Z",
+            session_finished_at_utc="2026-03-26T01:07:00Z",
+            collect_today_all=True,
+            root=Path("C:/repo"),
+        )
+        line_index = command.index("--line")
+        self.assertEqual("all", command[line_index + 1])
+        self.assertIn("--client", command)
+        self.assertIn("C1", command)
+        self.assertIn("--date", command)
+        self.assertNotIn("--time", command)
+
     def test_manifest_compare_exact_match(self) -> None:
         from belle.local_ui.services.collect import _manifest_included_run_refs
 
@@ -142,7 +160,7 @@ class LocalUiCollectServiceTests(unittest.TestCase):
                 client_id="C1",
                 run_results=[{"line_id": "receipt", "run_id": "20260326T010200Z_R1", "status": "success"}],
                 session_started_at_utc="2026-03-26T01:02:00Z",
-                session_finished_at_utc="2026-03-26T01:02:30Z",
+                session_finished_at_utc="2026-03-26T01:06:00Z",
                 root=repo_root,
             )
 
@@ -155,12 +173,57 @@ class LocalUiCollectServiceTests(unittest.TestCase):
                 manifest_obj = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
             self.assertEqual("receipt", manifest_obj["line_id"])
 
+    def test_run_collect_with_extra_runs_is_still_success(self) -> None:
+        from belle.local_ui.services.collect import run_collect, source_repo_root
+
+        real_repo_root = source_repo_root()
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            (repo_root / "clients" / "TEMPLATE").mkdir(parents=True, exist_ok=True)
+            wanted_run = (
+                repo_root
+                / "clients"
+                / "C1"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260326T010200Z_R1"
+            )
+            extra_run = (
+                repo_root
+                / "clients"
+                / "C1"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260326T010500Z_R2"
+            )
+            for run_dir, marker in [(wanted_run, b"R1"), (extra_run, b"R2")]:
+                _write_bytes(run_dir / f"x_replaced_{run_dir.name}.csv", marker)
+                _write_bytes(run_dir / f"x_01_{run_dir.name}_review_report.csv", marker)
+                _write_bytes(run_dir / "run_manifest.json", b"{\"run\":\"RID\"}\n")
+            _copy_collect_script(real_repo_root, repo_root)
+
+            result = run_collect(
+                client_id="C1",
+                run_results=[{"line_id": "receipt", "run_id": "20260326T010200Z_R1", "status": "success"}],
+                session_started_at_utc="2026-03-26T01:02:00Z",
+                session_finished_at_utc="2026-03-26T01:02:30Z",
+                root=repo_root,
+            )
+
+            self.assertTrue(result.ok, msg=result.stdout + result.stderr)
+            self.assertEqual("success", result.status)
+            self.assertEqual("COLLECT_OK_EXACT", result.ui_reason_code)
+
     def test_overall_result_title_maps_success_needs_review_failure(self) -> None:
         from belle.local_ui.services.collect import overall_result_title
 
         self.assertEqual("処理が完了しました", overall_result_title([{"status": "success"}]))
         self.assertEqual(
-            "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）",
+            "処理は完了しましたが確認が必要です",
             overall_result_title([{"status": "needs_review"}]),
         )
         self.assertEqual("処理に失敗しました", overall_result_title([{"status": "failure"}]))
@@ -169,7 +232,7 @@ class LocalUiCollectServiceTests(unittest.TestCase):
         from belle.local_ui.services.collect import overall_result_title
 
         self.assertEqual(
-            "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）",
+            "処理は完了しましたが確認が必要です",
             overall_result_title(
                 [
                     {
