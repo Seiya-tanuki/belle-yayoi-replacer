@@ -16,6 +16,8 @@ from belle.ui_reason_codes import (
     COLLECT_FAIL_UNKNOWN,
     COLLECT_OK_EXACT,
     COLLECT_WARN_EXTRA_RUNS_INCLUDED,
+    RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
 )
 
 JST = timezone(timedelta(hours=9))
@@ -170,11 +172,20 @@ def build_collect_command(
 
 
 def overall_result_title(run_results: list[dict[str, object]]) -> str:
+    reason_codes = {str(result.get("ui_reason_code") or "").strip() for result in run_results if result.get("ui_reason_code")}
+    if any(code.startswith("RUN_FAIL_") for code in reason_codes):
+        return "処理に失敗しました"
+    if reason_codes & {
+        RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+        RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+    }:
+        return "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）"
+
     statuses = {str(result.get("status") or "") for result in run_results}
     if "failure" in statuses:
-        return "処理を完了できませんでした"
+        return "処理に失敗しました"
     if "needs_review" in statuses:
-        return "処理は完了しましたが、確認が必要です"
+        return "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）"
     return "処理が完了しました"
 
 

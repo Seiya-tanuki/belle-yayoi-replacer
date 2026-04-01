@@ -5,6 +5,10 @@ from pathlib import Path
 from belle.local_ui.services.collect import overall_result_title, run_collect, serialize_collect_result
 from belle.local_ui.state import get_state, line_label, reset_state
 from belle.local_ui.theme import page_shell, primary_button, secondary_button
+from belle.ui_reason_codes import (
+    RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+)
 
 
 def collect_zip_path(collect_result: dict[str, object] | None) -> Path | None:
@@ -12,6 +16,35 @@ def collect_zip_path(collect_result: dict[str, object] | None) -> Path | None:
     if not zip_path:
         return None
     return Path(zip_path)
+
+
+def detail_markdown_for_result(result: dict[str, object]) -> str:
+    ui_reason_code = str(result.get("ui_reason_code") or "").strip()
+    if ui_reason_code == RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED:
+        return (
+            "注意事項:\n"
+            "カードを推定する十分な根拠が得られず、補助科目が置換されませんでした。\n\n"
+            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
+            "RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED が発生しました。原因と対処法を教えてください。"
+        )
+    if ui_reason_code == RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED:
+        return (
+            "注意事項:\n"
+            "銀行を推定する十分な根拠が得られず、補助科目が置換されませんでした。\n\n"
+            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
+            "RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED が発生しました。原因と対処法を教えてください。"
+        )
+    if str(result.get("status") or "") == "failure":
+        prompt = f"{ui_reason_code or 'RUN_FAIL_UNKNOWN'} が発生しました。原因と対処法を教えてください。"
+        return (
+            "注意事項:\n"
+            "処理時にエラーが発生しました。\n\n"
+            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
+            f"{prompt}"
+        )
+
+    detail_text = str(result.get("stdout") or result.get("stderr") or "ログはありません。")
+    return f"```\n{detail_text}\n```"
 
 
 def build() -> None:
@@ -49,10 +82,11 @@ def build() -> None:
             with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
                 ui.label(line_label(str(result.get("line_id") or ""))).classes("text-sm text-slate-500")
                 ui.label(str(result.get("status_label") or "")).classes("text-lg font-semibold")
-                with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
-                    ui.markdown(f"```\n{result.get('stdout') or result.get('stderr') or 'ログはありません。'}\n```")
+                if str(result.get("status") or "") != "success":
+                    with ui.expansion("詳細を見る", value=False).classes("w-full"):
+                        ui.markdown(detail_markdown_for_result(result))
         if state.collect_result:
-            with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
+            with ui.expansion("詳細を見る", value=False).classes("w-full"):
                 ui.markdown(
                     "```\n"
                     f"{state.collect_result.get('stdout') or state.collect_result.get('stderr') or 'ログはありません。'}\n"

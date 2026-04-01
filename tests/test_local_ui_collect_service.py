@@ -140,8 +140,37 @@ class LocalUiCollectServiceTests(unittest.TestCase):
         from belle.local_ui.services.collect import overall_result_title
 
         self.assertEqual("処理が完了しました", overall_result_title([{"status": "success"}]))
-        self.assertEqual("処理は完了しましたが、確認が必要です", overall_result_title([{"status": "needs_review"}]))
-        self.assertEqual("処理を完了できませんでした", overall_result_title([{"status": "failure"}]))
+        self.assertEqual(
+            "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）",
+            overall_result_title([{"status": "needs_review"}]),
+        )
+        self.assertEqual("処理に失敗しました", overall_result_title([{"status": "failure"}]))
+
+    def test_overall_result_title_prefers_reason_codes_when_present(self) -> None:
+        from belle.local_ui.services.collect import overall_result_title
+
+        self.assertEqual(
+            "処理は完了しましたが確認が必要です。（詳細を見るボタンをクリック）",
+            overall_result_title(
+                [
+                    {
+                        "status": "success",
+                        "ui_reason_code": "RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED",
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(
+            "処理に失敗しました",
+            overall_result_title(
+                [
+                    {
+                        "status": "success",
+                        "ui_reason_code": "RUN_FAIL_CARD_CONFIG_MISSING",
+                    }
+                ]
+            ),
+        )
 
 
 if __name__ == "__main__":
