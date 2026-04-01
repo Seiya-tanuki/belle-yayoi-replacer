@@ -129,6 +129,7 @@ class LocalUiCollectServiceTests(unittest.TestCase):
 
             self.assertTrue(result.ok, msg=result.stdout + result.stderr)
             self.assertTrue(result.exact_match)
+            self.assertEqual("COLLECT_OK_EXACT", result.ui_reason_code)
             self.assertTrue(Path(result.zip_path).exists())
             self.assertIn(Path(result.zip_path).name, result.message)
             with zipfile.ZipFile(result.zip_path, mode="r") as zf:

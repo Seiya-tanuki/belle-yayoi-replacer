@@ -29,6 +29,7 @@ from belle.paths import (
 )
 from belle.replacer import replace_yayoi_csv
 from belle.runner_io import update_latest_run_id, write_text_atomic
+from belle.ui_reason_codes import RUN_OK
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
 
@@ -224,6 +225,8 @@ def run_receipt(
             "expected_count": len(lexicon_category_keys),
             "warnings": category_overrides_warnings,
         },
+        "ui_reason_code": RUN_OK,
+        "ui_reason_detail": {"line_id": LINE_ID_RECEIPT},
         "outputs": [],
     }
 

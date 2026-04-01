@@ -29,6 +29,11 @@ except ImportError:  # pragma: no cover - compatibility guard
     replace_bank_yayoi_csv = None
 
 from belle.ingest import ingest_single_file
+from belle.ui_reason_codes import (
+    RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_OK,
+    build_ui_reason_event,
+)
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
 
@@ -297,6 +302,12 @@ def run_bank(
         "strict_stop_applied": strict_stop,
         "exit_status": exit_status,
         "reasons": reasons,
+        "ui_reason_code": RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED if strict_stop else RUN_OK,
+        "ui_reason_detail": {
+            "line_id": LINE_ID_BANK,
+            "strict_stop_applied": strict_stop,
+            "reasons": reasons,
+        },
         "outputs": [bank_output_manifest],
     }
     run_manifest_path = run_dir / "run_manifest.json"
@@ -321,6 +332,13 @@ def run_bank(
     if warnings:
         print("[WARN] " + " | ".join(str(v) for v in warnings))
     if strict_stop:
+        print(
+            build_ui_reason_event(
+                RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+                line_id=LINE_ID_BANK,
+                detail={"strict_stop_applied": True, "reasons": reasons},
+            )
+        )
         print(
             "[ERROR] strict-stop: Contract A failed "
             "(bank_sub_fill_required_failed=True)."

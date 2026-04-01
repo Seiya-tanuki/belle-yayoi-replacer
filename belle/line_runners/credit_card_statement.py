@@ -28,6 +28,11 @@ from belle.paths import (
     make_run_dir,
 )
 from belle.runner_io import update_latest_run_id, write_text_atomic
+from belle.ui_reason_codes import (
+    RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_OK,
+    build_ui_reason_event,
+)
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
 
@@ -238,6 +243,12 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         "strict_stop_applied": strict_stop,
         "exit_status": exit_status,
         "reasons": reasons,
+        "ui_reason_code": RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED if strict_stop else RUN_OK,
+        "ui_reason_detail": {
+            "line_id": LINE_ID_CARD,
+            "strict_stop_applied": strict_stop,
+            "reasons": reasons,
+        },
     }
     if warnings:
         run_manifest["warnings"] = warnings
@@ -257,6 +268,13 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         print("[WARN] " + " | ".join(warnings))
 
     if strict_stop:
+        print(
+            build_ui_reason_event(
+                RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+                line_id=LINE_ID_CARD,
+                detail={"strict_stop_applied": True, "reasons": reasons},
+            )
+        )
         print(
             "[ERROR] strict-stop: Contract A failed "
             "(payable_sub_fill_required_failed=True)."

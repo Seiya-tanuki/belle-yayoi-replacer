@@ -10,6 +10,13 @@ import zipfile
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from belle.ui_reason_codes import (
+    COLLECT_FAIL_MISSING_RUN_REFS,
+    COLLECT_FAIL_NO_RUNS_FOUND,
+    COLLECT_FAIL_UNKNOWN,
+    COLLECT_OK_EXACT,
+    COLLECT_WARN_EXTRA_RUNS_INCLUDED,
+)
 
 JST = timezone(timedelta(hours=9))
 RUN_ID_PREFIX_RE = re.compile(r"^(?P<stamp>\d{8}T\d{6}Z)")
@@ -19,6 +26,8 @@ RUN_ID_PREFIX_RE = re.compile(r"^(?P<stamp>\d{8}T\d{6}Z)")
 class CollectResult:
     ok: bool
     status: str
+    ui_reason_code: str
+    ui_reason_detail: dict[str, object]
     message: str
     zip_path: str
     latest_path: str
@@ -210,6 +219,8 @@ def run_collect(
         return CollectResult(
             ok=False,
             status="error",
+            ui_reason_code=COLLECT_FAIL_NO_RUNS_FOUND if "no runs found" in f"{stdout}\n{stderr}" else COLLECT_FAIL_UNKNOWN,
+            ui_reason_detail={},
             message="成果物ZIPを作成できませんでした。",
             zip_path=zip_path,
             latest_path=latest_path,
@@ -233,20 +244,29 @@ def run_collect(
 
     if missing_run_refs:
         status = "error"
+        ui_reason_code = COLLECT_FAIL_MISSING_RUN_REFS
         message = "成果物ZIPを作成できませんでした。"
         ok = False
     elif exact_match:
         status = "success"
+        ui_reason_code = COLLECT_OK_EXACT
         message = _zip_message("成果物ZIPを作成しました。", zip_path)
         ok = True
     else:
         status = "warning"
+        ui_reason_code = COLLECT_WARN_EXTRA_RUNS_INCLUDED
         message = _zip_message("ZIPに今回以外の成果物が含まれている可能性があります。", zip_path)
         ok = True
 
     return CollectResult(
         ok=ok,
         status=status,
+        ui_reason_code=ui_reason_code,
+        ui_reason_detail={
+            "exact_match": exact_match,
+            "extra_run_refs": extra_run_refs,
+            "missing_run_refs": missing_run_refs,
+        },
         message=message,
         zip_path=zip_path,
         latest_path=latest_path,

@@ -18,6 +18,12 @@ from belle.line_runners import (
     run_card,
     run_receipt,
 )
+from belle.ui_reason_codes import (
+    RUN_OK,
+    build_ui_reason_event,
+    precheck_reason_code_for,
+    run_failure_reason_code_for,
+)
 
 LINE_ID_CARD = "credit_card_statement"
 LINE_ORDER = ["receipt", "bank_statement", LINE_ID_CARD]
@@ -42,6 +48,13 @@ def _print_plan(client_id: str, requested_line: str, plans: list[LinePlan]) -> N
         print(
             f"- {plan.line_id}: {plan.status} ({plan.reason}) "
             f"target=[{_format_target_files(plan.target_files)}]"
+        )
+        print(
+            build_ui_reason_event(
+                precheck_reason_code_for(plan.line_id, plan.status, plan.reason),
+                line_id=plan.line_id,
+                detail={"phase": "plan", "status": plan.status, "reason": plan.reason},
+            )
         )
 
 
@@ -132,6 +145,14 @@ def main() -> int:
 
     fail_plans = [p for p in plans if p.status == "FAIL"]
     if fail_plans:
+        for plan in fail_plans:
+            print(
+                build_ui_reason_event(
+                    run_failure_reason_code_for(plan.line_id, plan.reason),
+                    line_id=plan.line_id,
+                    detail={"phase": "plan_gate", "status": plan.status, "reason": plan.reason},
+                )
+            )
         print("[ERROR] PLAN contains FAIL. Fix inputs/config and rerun (use --dry-run to only inspect).")
         return 1
 
@@ -180,8 +201,22 @@ def main() -> int:
                 )
             else:
                 outcomes[line_id] = run_card(repo_root, client_id)
+            print(
+                build_ui_reason_event(
+                    RUN_OK,
+                    line_id=line_id,
+                    detail={"phase": "run", "status": "success"},
+                )
+            )
         except Exception as exc:
             print(f"[ERROR] {line_id} run failed: {exc}")
+            print(
+                build_ui_reason_event(
+                    run_failure_reason_code_for(line_id, str(exc)),
+                    line_id=line_id,
+                    detail={"phase": "run", "status": "failure", "error": str(exc)},
+                )
+            )
             return 1
 
     print(f"[OK] done client={client_id}")

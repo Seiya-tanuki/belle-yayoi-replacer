@@ -46,12 +46,16 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("準備OK", results[0].status_label)
         self.assertEqual("今回は対象ファイルがありません", results[1].status_label)
         self.assertEqual("このままでは進めません", results[2].status_label)
+        self.assertEqual("PRECHECK_READY", results[0].ui_reason_code)
+        self.assertEqual("PRECHECK_SKIP_NO_TARGET", results[1].ui_reason_code)
+        self.assertEqual("PRECHECK_FAIL_CARD_CONFIG_MISSING", results[2].ui_reason_code)
 
     def test_parse_run_output_extracts_run_metadata(self) -> None:
         from belle.local_ui.services.replacer import parse_run_output
 
         stdout = "\n".join(
             [
+                '[UI_REASON] {"code": "RUN_OK", "detail": {"phase": "run", "status": "success"}, "line_id": "receipt"}',
                 "[OK] client=C1 run_id=RID123 inputs=1 outputs=1",
                 "[OK] run_dir=C:/repo/clients/C1/lines/receipt/outputs/runs/RID123",
                 "[OK] run_manifest=C:/repo/clients/C1/lines/receipt/outputs/runs/RID123/run_manifest.json",
@@ -65,13 +69,28 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("RID123", result.run_id)
         self.assertIn("run_manifest.json", result.run_manifest)
         self.assertEqual("0.125", result.changed_ratio)
+        self.assertEqual("RUN_OK", result.ui_reason_code)
 
     def test_parse_run_output_exit_two_is_needs_review(self) -> None:
         from belle.local_ui.services.replacer import parse_run_output
 
-        result = parse_run_output("[OK] client=C1 run_id=RID456 inputs=1 outputs=1", line_id="receipt", returncode=2)
+        result = parse_run_output("[OK] client=C1 run_id=RID456 inputs=1 outputs=1", line_id="bank_statement", returncode=2)
         self.assertEqual("needs_review", result.status)
         self.assertEqual("処理は完了しましたが、確認が必要です", result.status_label)
+        self.assertEqual("RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED", result.ui_reason_code)
+
+    def test_parse_run_output_failure_uses_structured_reason_when_present(self) -> None:
+        from belle.local_ui.services.replacer import parse_run_output
+
+        stdout = "\n".join(
+            [
+                "[ERROR] credit_card_statement run failed: missing_cc_config: expected=C:/repo/x.json",
+                '[UI_REASON] {"code": "RUN_FAIL_CARD_CONFIG_MISSING", "detail": {"error": "missing_cc_config: expected=C:/repo/x.json", "phase": "run", "status": "failure"}, "line_id": "credit_card_statement"}',
+            ]
+        )
+        result = parse_run_output(stdout, line_id="credit_card_statement", returncode=1)
+        self.assertEqual("failure", result.status)
+        self.assertEqual("RUN_FAIL_CARD_CONFIG_MISSING", result.ui_reason_code)
 
     def test_build_replacer_command_includes_expected_flags(self) -> None:
         from belle.local_ui.services.replacer import build_replacer_command

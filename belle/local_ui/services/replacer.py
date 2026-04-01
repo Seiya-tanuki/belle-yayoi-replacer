@@ -9,6 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from belle.local_ui.state import LINE_ORDER, normalize_selected_lines
+from belle.ui_reason_codes import (
+    RUN_OK,
+    parse_ui_reason_from_text,
+    precheck_reason_code_for,
+    run_failure_reason_code_for,
+    run_needs_review_reason_code_for,
+)
 
 STATUS_LABELS = {
     "RUN": "準備OK",
@@ -32,6 +39,8 @@ class PrecheckResult:
     line_id: str
     status: str
     status_label: str
+    ui_reason_code: str
+    ui_reason_detail: dict[str, object]
     reason: str
     target_files: list[str]
     returncode: int
@@ -44,6 +53,8 @@ class RunResult:
     line_id: str
     status: str
     status_label: str
+    ui_reason_code: str
+    ui_reason_detail: dict[str, object]
     returncode: int
     stdout: str
     stderr: str
@@ -123,6 +134,8 @@ def parse_plan_output(stdout: str, *, returncode: int, stderr: str = "") -> list
                 line_id=match.group("line_id"),
                 status=raw_status,
                 status_label=STATUS_LABELS[raw_status],
+                ui_reason_code=precheck_reason_code_for(match.group("line_id"), raw_status, match.group("reason")),
+                ui_reason_detail={"phase": "plan", "status": raw_status, "reason": match.group("reason")},
                 reason=match.group("reason"),
                 target_files=target_files,
                 returncode=returncode,
@@ -150,17 +163,28 @@ def parse_run_output(stdout: str, *, line_id: str, returncode: int, stderr: str 
         elif "changed_ratio=" in stripped:
             changed_ratio = stripped.split("changed_ratio=", 1)[1].split()[0]
 
+    parsed_reason = parse_ui_reason_from_text(stdout, line_id=line_id) or parse_ui_reason_from_text(stderr, line_id=line_id)
     if returncode == 0:
         status = "success"
+        fallback_code = RUN_OK
     elif returncode == 2:
         status = "needs_review"
+        fallback_code = run_needs_review_reason_code_for(line_id)
     else:
         status = "failure"
+        fallback_code = run_failure_reason_code_for(line_id, f"{stdout}\n{stderr}")
+
+    if parsed_reason is not None:
+        ui_reason_code, ui_reason_detail = parsed_reason
+    else:
+        ui_reason_code, ui_reason_detail = fallback_code, {}
 
     return RunResult(
         line_id=line_id,
         status=status,
         status_label=EXECUTION_LABELS[status],
+        ui_reason_code=ui_reason_code,
+        ui_reason_detail=ui_reason_detail,
         returncode=returncode,
         stdout=stdout,
         stderr=stderr,
@@ -199,9 +223,9 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def serialize_precheck_results(results: list[PrecheckResult]) -> list[dict[str, str | int | list[str]]]:
+def serialize_precheck_results(results: list[PrecheckResult]) -> list[dict[str, object]]:
     return [asdict(result) for result in results]
 
 
-def serialize_run_results(results: list[RunResult]) -> list[dict[str, str | int]]:
+def serialize_run_results(results: list[RunResult]) -> list[dict[str, object]]:
     return [asdict(result) for result in results]
