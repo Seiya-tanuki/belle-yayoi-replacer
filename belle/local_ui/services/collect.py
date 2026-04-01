@@ -150,25 +150,37 @@ def build_collect_command(
     run_results: list[dict[str, object]],
     session_started_at_utc: str,
     session_finished_at_utc: str,
+    requested_run_refs: list[str] | None = None,
     root: Path | None = None,
 ) -> list[str]:
     current_root = root or source_repo_root()
     line_ids = sorted({str(result.get("line_id") or "").strip() for result in run_results if result.get("line_id")})
     line_arg = line_ids[0] if len(line_ids) == 1 else "all"
-    date_text, time_text = _derive_date_and_time(run_results, session_started_at_utc, session_finished_at_utc)
-    return [
+    command = [
         sys.executable,
         str(collect_script_path(current_root)),
-        "--client",
-        client_id,
         "--line",
         line_arg,
-        "--date",
-        date_text,
-        "--time",
-        time_text,
         "--yes",
     ]
+    normalized_run_refs = [str(run_ref or "").strip() for run_ref in (requested_run_refs or []) if str(run_ref or "").strip()]
+    if normalized_run_refs:
+        for run_ref in normalized_run_refs:
+            command.extend(["--run-ref", run_ref])
+        return command
+
+    date_text, time_text = _derive_date_and_time(run_results, session_started_at_utc, session_finished_at_utc)
+    command.extend(
+        [
+            "--client",
+            client_id,
+            "--date",
+            date_text,
+            "--time",
+            time_text,
+        ]
+    )
+    return command
 
 
 def overall_result_title(run_results: list[dict[str, object]]) -> str:
@@ -195,14 +207,18 @@ def run_collect(
     run_results: list[dict[str, object]],
     session_started_at_utc: str,
     session_finished_at_utc: str,
+    requested_run_refs: list[str] | None = None,
     root: Path | None = None,
 ) -> CollectResult:
     current_root = root or source_repo_root()
+    normalized_run_refs = [str(run_ref or "").strip() for run_ref in (requested_run_refs or []) if str(run_ref or "").strip()]
+    comparison_run_refs = normalized_run_refs or _session_run_refs(client_id, run_results)
     command = build_collect_command(
         client_id=client_id,
         run_results=run_results,
         session_started_at_utc=session_started_at_utc,
         session_finished_at_utc=session_finished_at_utc,
+        requested_run_refs=normalized_run_refs,
         root=current_root,
     )
     proc = subprocess.run(
@@ -239,14 +255,14 @@ def run_collect(
             stderr=stderr,
             exact_match=False,
             included_run_refs=[],
-            session_run_refs=_session_run_refs(client_id, run_results),
+            session_run_refs=comparison_run_refs,
             extra_run_refs=[],
             missing_run_refs=[],
         )
 
     manifest_obj = _load_manifest_from_zip(Path(zip_path))
     included_run_refs = _manifest_included_run_refs(manifest_obj)
-    session_run_refs = _session_run_refs(client_id, run_results)
+    session_run_refs = comparison_run_refs
     included_set = set(included_run_refs)
     session_set = set(session_run_refs)
     extra_run_refs = sorted(included_set - session_set)

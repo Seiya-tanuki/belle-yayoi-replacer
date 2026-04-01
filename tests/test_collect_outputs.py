@@ -33,6 +33,11 @@ class CollectOutputsTests(unittest.TestCase):
         args = module._parse_args(["--yes"])
         self.assertEqual("all", args.line)
 
+    def test_collect_outputs_accepts_run_ref_arg(self) -> None:
+        module = _load_collect_module()
+        args = module._parse_args(["--run-ref", "C1:RID1", "--yes"])
+        self.assertEqual(["C1:RID1"], args.run_refs)
+
     def test_collect_outputs_default_all_includes_multiple_lines(self) -> None:
         module = _load_collect_module()
         test_tmp_root = Path(__file__).resolve().parents[1] / ".tmp"
@@ -249,6 +254,77 @@ class CollectOutputsTests(unittest.TestCase):
             self.assertEqual(1, rc)
             collect_dir = repo_root / "exports" / "collect"
             self.assertFalse(collect_dir.exists())
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_collect_outputs_run_ref_mode_collects_exact_run(self) -> None:
+        module = _load_collect_module()
+        test_tmp_root = Path(__file__).resolve().parents[1] / ".tmp"
+        test_tmp_root.mkdir(parents=True, exist_ok=True)
+        repo_root = test_tmp_root / f"collect_outputs_run_ref_exact_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            (repo_root / "clients" / "TEMPLATE").mkdir(parents=True, exist_ok=True)
+            wanted_run = (
+                repo_root
+                / "clients"
+                / "C1"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260215T010203Z_WANTED"
+            )
+            extra_run = (
+                repo_root
+                / "clients"
+                / "C1"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260215T010500Z_EXTRA"
+            )
+
+            _write_bytes(wanted_run / "wanted_replaced_20260215T010203Z_WANTED.csv", b"WANTED-CSV")
+            _write_bytes(wanted_run / "wanted_01_20260215T010203Z_WANTED_review_report.csv", b"WANTED-REPORT")
+            _write_bytes(wanted_run / "run_manifest.json", b"{\"run\":\"WANTED\"}\n")
+
+            _write_bytes(extra_run / "extra_replaced_20260215T010500Z_EXTRA.csv", b"EXTRA-CSV")
+            _write_bytes(extra_run / "extra_01_20260215T010500Z_EXTRA_review_report.csv", b"EXTRA-REPORT")
+            _write_bytes(extra_run / "run_manifest.json", b"{\"run\":\"EXTRA\"}\n")
+
+            rc = module.main(
+                [
+                    "--run-ref",
+                    "C1:20260215T010203Z_WANTED",
+                    "--yes",
+                ],
+                repo_root=repo_root,
+            )
+            self.assertEqual(0, rc)
+
+            collect_dir = repo_root / "exports" / "collect"
+            zip_paths = sorted(collect_dir.glob("collect_*.zip"))
+            self.assertEqual(1, len(zip_paths))
+
+            with zipfile.ZipFile(zip_paths[0], mode="r") as zf:
+                names = sorted(zf.namelist())
+                self.assertIn(
+                    "receipt/csv/C1__20260215T010203Z_WANTED__wanted_replaced_20260215T010203Z_WANTED.csv",
+                    names,
+                )
+                self.assertFalse(any("20260215T010500Z_EXTRA" in name for name in names))
+                manifest_obj = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
+                self.assertEqual("run_refs", manifest_obj["filters"]["mode"])
+                self.assertEqual(
+                    ["C1:20260215T010203Z_WANTED"],
+                    manifest_obj["filters"]["run_refs"],
+                )
+                self.assertEqual(
+                    ["C1:20260215T010203Z_WANTED"],
+                    manifest_obj["summary"]["lines"]["receipt"]["included_run_ids"],
+                )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

@@ -74,6 +74,25 @@ class LocalUiCollectServiceTests(unittest.TestCase):
         time_index = command.index("--time")
         self.assertEqual("10:00-10:07", command[time_index + 1])
 
+    def test_build_collect_command_uses_run_refs_when_present(self) -> None:
+        from belle.local_ui.services.collect import build_collect_command
+
+        command = build_collect_command(
+            client_id="C1",
+            run_results=[
+                {"line_id": "receipt", "run_id": "20260326T010200Z_R1"},
+                {"line_id": "bank_statement", "run_id": "20260326T010500Z_B1"},
+            ],
+            session_started_at_utc="2026-03-26T01:00:00Z",
+            session_finished_at_utc="2026-03-26T01:07:00Z",
+            requested_run_refs=["C1:20260326T010200Z_R1", "C1:20260326T010500Z_B1"],
+            root=Path("C:/repo"),
+        )
+        self.assertIn("--run-ref", command)
+        self.assertNotIn("--client", command)
+        self.assertNotIn("--date", command)
+        self.assertNotIn("--time", command)
+
     def test_manifest_compare_exact_match(self) -> None:
         from belle.local_ui.services.collect import _manifest_included_run_refs
 
