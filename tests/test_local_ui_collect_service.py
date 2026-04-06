@@ -111,6 +111,23 @@ class LocalUiCollectServiceTests(unittest.TestCase):
         self.assertIn("--date", command)
         self.assertNotIn("--time", command)
 
+    def test_build_collect_command_uses_today_all_clients_mode_without_client_or_time_filter(self) -> None:
+        from belle.local_ui.services.collect import build_collect_command
+
+        command = build_collect_command(
+            client_id="C1",
+            run_results=[{"line_id": "receipt", "run_id": "20260326T010200Z_R1"}],
+            session_started_at_utc="2026-03-26T01:00:00Z",
+            session_finished_at_utc="2026-03-26T01:07:00Z",
+            collect_today_all_clients=True,
+            root=Path("C:/repo"),
+        )
+        line_index = command.index("--line")
+        self.assertEqual("all", command[line_index + 1])
+        self.assertNotIn("--client", command)
+        self.assertIn("--date", command)
+        self.assertNotIn("--time", command)
+
     def test_manifest_compare_exact_match(self) -> None:
         from belle.local_ui.services.collect import _manifest_included_run_refs
 

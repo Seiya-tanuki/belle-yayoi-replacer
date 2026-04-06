@@ -127,6 +127,7 @@ def build() -> None:
             requested_run_refs: list[str] | None = None,
             *,
             collect_today_all: bool = False,
+            collect_today_all_clients: bool = False,
         ) -> None:
             result = run_collect(
                 client_id=state.selected_client_id,
@@ -135,6 +136,7 @@ def build() -> None:
                 session_finished_at_utc=state.session_finished_at_utc,
                 requested_run_refs=requested_run_refs,
                 collect_today_all=collect_today_all,
+                collect_today_all_clients=collect_today_all_clients,
             )
             state.collect_result = serialize_collect_result(result)
             update_collect_message()
@@ -150,8 +152,12 @@ def build() -> None:
                 with ui.row().classes("w-full justify-end gap-2 flex-wrap"):
                     primary_button("今回の分のみ", lambda: (dialog.close(), collect_zip(current_run_refs)))
                     secondary_button(
-                        "今日の処理全て",
+                        "この顧客の今日の分",
                         lambda: (dialog.close(), collect_zip(collect_today_all=True)),
+                    )
+                    secondary_button(
+                        "全顧客の今日の分",
+                        lambda: (dialog.close(), collect_zip(collect_today_all_clients=True)),
                     )
             dialog.open()
 

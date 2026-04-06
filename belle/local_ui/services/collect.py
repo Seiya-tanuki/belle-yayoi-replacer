@@ -151,11 +151,12 @@ def build_collect_command(
     session_finished_at_utc: str,
     requested_run_refs: list[str] | None = None,
     collect_today_all: bool = False,
+    collect_today_all_clients: bool = False,
     root: Path | None = None,
 ) -> list[str]:
     current_root = root or source_repo_root()
     line_ids = sorted({str(result.get("line_id") or "").strip() for result in run_results if result.get("line_id")})
-    line_arg = "all" if collect_today_all else (line_ids[0] if len(line_ids) == 1 else "all")
+    line_arg = "all" if (collect_today_all or collect_today_all_clients) else (line_ids[0] if len(line_ids) == 1 else "all")
     command = [
         sys.executable,
         str(collect_script_path(current_root)),
@@ -170,15 +171,20 @@ def build_collect_command(
         return command
 
     date_text, time_text = _derive_date_and_time(run_results, session_started_at_utc, session_finished_at_utc)
+    if not collect_today_all_clients:
+        command.extend(
+            [
+                "--client",
+                client_id,
+            ]
+        )
     command.extend(
         [
-            "--client",
-            client_id,
             "--date",
             date_text,
         ]
     )
-    if not collect_today_all:
+    if not (collect_today_all or collect_today_all_clients):
         command.extend(
             [
                 "--time",
@@ -214,6 +220,7 @@ def run_collect(
     session_finished_at_utc: str,
     requested_run_refs: list[str] | None = None,
     collect_today_all: bool = False,
+    collect_today_all_clients: bool = False,
     root: Path | None = None,
 ) -> CollectResult:
     current_root = root or source_repo_root()
@@ -226,6 +233,7 @@ def run_collect(
         session_finished_at_utc=session_finished_at_utc,
         requested_run_refs=normalized_run_refs,
         collect_today_all=collect_today_all,
+        collect_today_all_clients=collect_today_all_clients,
         root=current_root,
     )
     proc = subprocess.run(
