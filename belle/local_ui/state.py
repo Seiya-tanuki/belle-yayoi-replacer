@@ -16,10 +16,11 @@ class LocalUiState:
     selected_lines: list[str] = field(default_factory=list)
     current_line_index: int = 0
     uploads: dict[str, list[str]] = field(default_factory=dict)
-    precheck_results: list[dict[str, str]] = field(default_factory=list)
-    run_results: list[dict[str, str]] = field(default_factory=list)
+    precheck_results: list[dict[str, object]] = field(default_factory=list)
+    run_results: list[dict[str, object]] = field(default_factory=list)
     session_started_at_utc: str = ""
     session_finished_at_utc: str = ""
+    session_fatal: dict[str, object] = field(default_factory=dict)
     collect_result: dict[str, object] = field(default_factory=dict)
 
 

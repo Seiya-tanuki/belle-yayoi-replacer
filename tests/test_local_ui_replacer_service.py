@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
 
@@ -92,6 +93,19 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("failure", result.status)
         self.assertEqual("RUN_FAIL_CARD_CONFIG_MISSING", result.ui_reason_code)
 
+    def test_parse_plan_output_none_is_handled_without_crash(self) -> None:
+        from belle.local_ui.services.replacer import parse_plan_output
+
+        results = parse_plan_output(None, returncode=1)
+        self.assertEqual([], results)
+
+    def test_parse_run_output_none_is_handled_without_crash(self) -> None:
+        from belle.local_ui.services.replacer import parse_run_output
+
+        result = parse_run_output(None, line_id="receipt", returncode=1)
+        self.assertEqual("failure", result.status)
+        self.assertEqual("RUN_FAIL_UNKNOWN", result.ui_reason_code)
+
     def test_build_replacer_command_includes_expected_flags(self) -> None:
         from belle.local_ui.services.replacer import build_replacer_command
 
@@ -136,6 +150,70 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
             self.assertEqual("receipt", results[0].line_id)
             self.assertEqual("RUN", results[0].status)
             self.assertEqual(0, results[0].returncode)
+
+    def test_run_precheck_for_lines_raises_session_fatal_when_output_missing(self) -> None:
+        from belle.local_ui.services import replacer as replacer_service
+
+        proc = subprocess.CompletedProcess(args=["python"], returncode=1, stdout=None, stderr="")
+        with mock.patch.object(replacer_service, "_run_command", return_value=proc):
+            with self.assertRaises(replacer_service.SessionFatalError) as ctx:
+                replacer_service.run_precheck_for_lines("C1", ["receipt"], root=Path("C:/repo"))
+        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", ctx.exception.ui_reason_code)
+        self.assertEqual("precheck", ctx.exception.detail["phase"])
+        self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
+        self.assertTrue(ctx.exception.detail["stdout_was_none"])
+
+    def test_run_selected_lines_raises_session_fatal_when_success_markers_missing(self) -> None:
+        from belle.local_ui.services import replacer as replacer_service
+
+        proc = subprocess.CompletedProcess(args=["python"], returncode=0, stdout="[OK] done client=C1\n", stderr="")
+        with mock.patch.object(replacer_service, "_run_command", return_value=proc):
+            with self.assertRaises(replacer_service.SessionFatalError) as ctx:
+                replacer_service.run_selected_lines("C1", ["receipt"], root=Path("C:/repo"))
+        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", ctx.exception.ui_reason_code)
+        self.assertEqual("run", ctx.exception.detail["phase"])
+        self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
+
+    def test_build_session_fatal_results_expand_to_all_selected_lines(self) -> None:
+        from belle.local_ui.services.replacer import (
+            SessionFatalError,
+            build_session_fatal_precheck_results,
+            build_session_fatal_run_results,
+            session_fatal_payload,
+        )
+
+        error = SessionFatalError(
+            phase="run",
+            line_id="bank_statement",
+            command=["python", "script.py"],
+            returncode=1,
+            stdout=None,
+            stderr="",
+            raw_error="run output did not contain required success markers",
+        )
+        precheck_results = build_session_fatal_precheck_results(
+            ["credit_card_statement", "receipt", "bank_statement"],
+            error=error,
+        )
+        run_results = build_session_fatal_run_results(
+            ["credit_card_statement", "receipt", "bank_statement"],
+            error=error,
+        )
+        payload = session_fatal_payload(error)
+
+        self.assertEqual(
+            ["receipt", "bank_statement", "credit_card_statement"],
+            [result.line_id for result in precheck_results],
+        )
+        self.assertTrue(all(result.status == "FAIL" for result in precheck_results))
+        self.assertTrue(all(result.ui_reason_code == "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID" for result in precheck_results))
+        self.assertEqual(
+            ["receipt", "bank_statement", "credit_card_statement"],
+            [result.line_id for result in run_results],
+        )
+        self.assertTrue(all(result.status == "failure" for result in run_results))
+        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", payload["ui_reason_code"])
+        self.assertEqual("run", payload["detail"]["phase"])
 
 
 if __name__ == "__main__":

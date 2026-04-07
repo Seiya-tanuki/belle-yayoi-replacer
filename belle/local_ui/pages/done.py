@@ -3,11 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from belle.local_ui.services.collect import overall_result_title, run_collect, serialize_collect_result
+from belle.local_ui.services.replacer import SESSION_FATAL_DETAIL_TEXT
 from belle.local_ui.state import get_state, line_label, reset_state
 from belle.local_ui.theme import page_shell, primary_button, secondary_button
 from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+    SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID,
 )
 
 NEEDS_REVIEW_SECTION_SUFFIX = "（詳細を見るボタンをクリック）"
@@ -41,6 +43,13 @@ def markdown_code_block(text: str) -> str:
 
 def detail_markdown_for_result(result: dict[str, object]) -> str:
     ui_reason_code = str(result.get("ui_reason_code") or "").strip()
+    if ui_reason_code == SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID:
+        return (
+            "注意事項:\n"
+            f"{SESSION_FATAL_DETAIL_TEXT}\n\n"
+            "発生したエラー:\n"
+            f"{markdown_code_block(ui_reason_code)}"
+        )
     if ui_reason_code == RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED:
         return (
             "注意事項:\n"
@@ -84,6 +93,7 @@ def build() -> None:
     title = overall_result_title(state.run_results)
 
     with page_shell("手順 6 / 6", title, "今回の結果を確認し、必要なら成果物ZIPを作ります。"):
+        has_session_fatal = bool(state.session_fatal)
         collect_message = ui.label("").classes("text-sm")
         collect_message.visible = False
         collect_download_hint = ui.label(
@@ -93,7 +103,7 @@ def build() -> None:
 
         def update_collect_message() -> None:
             result = state.collect_result
-            if not result:
+            if has_session_fatal or not result:
                 collect_message.visible = False
                 collect_download_hint.visible = False
                 return
@@ -171,6 +181,8 @@ def build() -> None:
             with ui.row().classes("w-full items-center justify-between gap-3"):
                 secondary_button("最初に戻る", lambda: (reset_state(), ui.navigate.to("/")))
                 with ui.row().classes("justify-end"):
+                    if has_session_fatal:
+                        return
                     if collect_zip_path(state.collect_result) is not None:
                         primary_button("成果物ZIPをダウンロード", download_zip)
                     else:

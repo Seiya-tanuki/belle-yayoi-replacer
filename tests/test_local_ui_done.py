@@ -104,6 +104,16 @@ class LocalUiDonePageTests(unittest.TestCase):
         self.assertIn("発生したエラー:", text)
         self.assertIn("```text\nCOLLECT_FAIL_UNKNOWN\n```", text)
 
+    def test_detail_markdown_for_session_fatal_uses_restart_guidance(self) -> None:
+        from belle.local_ui.pages.done import detail_markdown_for_result
+
+        text = detail_markdown_for_result(
+            {"status": "failure", "ui_reason_code": "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID"}
+        )
+        self.assertIn("想定外の問題が発生したため、今回の処理は完了できませんでした。", text)
+        self.assertIn("システムを一度終了し、UIを再起動してから最初からやり直してください。", text)
+        self.assertIn("```text\nSESSION_FATAL_SUBPROCESS_OUTPUT_INVALID\n```", text)
+
 
 if __name__ == "__main__":
     unittest.main()

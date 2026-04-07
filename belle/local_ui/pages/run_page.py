@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from belle.local_ui.services.replacer import run_selected_lines, serialize_run_results, utc_now_iso
+from belle.local_ui.services.replacer import (
+    SessionFatalError,
+    build_session_fatal_run_results,
+    run_selected_lines,
+    serialize_run_results,
+    session_fatal_payload,
+    utc_now_iso,
+)
 from belle.local_ui.state import get_state
 from belle.local_ui.theme import page_shell
 
@@ -20,7 +27,12 @@ def build() -> None:
         def execute() -> None:
             state.session_started_at_utc = utc_now_iso()
             progress_label.set_text("置換を実行しています")
-            results = run_selected_lines(state.selected_client_id, state.selected_lines)
+            state.session_fatal = {}
+            try:
+                results = run_selected_lines(state.selected_client_id, state.selected_lines)
+            except SessionFatalError as exc:
+                state.session_fatal = session_fatal_payload(exc)
+                results = build_session_fatal_run_results(state.selected_lines, error=exc)
             state.run_results = serialize_run_results(results)
             state.session_finished_at_utc = utc_now_iso()
             ui.navigate.to("/flow/done")

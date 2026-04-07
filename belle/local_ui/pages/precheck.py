@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from belle.local_ui.services.replacer import run_precheck_for_lines, serialize_precheck_results
+from belle.local_ui.services.replacer import (
+    SessionFatalError,
+    build_session_fatal_precheck_results,
+    run_precheck_for_lines,
+    serialize_precheck_results,
+    session_fatal_payload,
+)
 from belle.local_ui.state import get_state, line_label
 from belle.local_ui.theme import card_container, page_shell, primary_button, secondary_button
 
@@ -19,7 +25,12 @@ def build() -> None:
             secondary_button("ファイルを直す", lambda: ui.navigate.to("/flow/types"))
             return
 
-        results = run_precheck_for_lines(state.selected_client_id, state.selected_lines)
+        state.session_fatal = {}
+        try:
+            results = run_precheck_for_lines(state.selected_client_id, state.selected_lines)
+        except SessionFatalError as exc:
+            state.session_fatal = session_fatal_payload(exc)
+            results = build_session_fatal_precheck_results(state.selected_lines, error=exc)
         state.precheck_results = serialize_precheck_results(results)
         has_fail = any(result.status == "FAIL" or result.returncode != 0 for result in results)
 
