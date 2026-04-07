@@ -111,7 +111,11 @@ class LocalUiDonePageTests(unittest.TestCase):
             {"status": "failure", "ui_reason_code": "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID"}
         )
         self.assertIn("想定外の問題が発生したため、今回の処理は完了できませんでした。", text)
-        self.assertIn("システムを一度終了し、UIを再起動してから最初からやり直してください。", text)
+        self.assertIn(
+            "コマンドプロンプト（システム起動時に表示されるテキストだけの黒い画面）を右上のバツボタンを押して終了してください。",
+            text,
+        )
+        self.assertIn("さらにこのブラウザも終了し、その後改めてデスクトップからシステムを起動してください。", text)
         self.assertIn("```text\nSESSION_FATAL_SUBPROCESS_OUTPUT_INVALID\n```", text)
 
 
