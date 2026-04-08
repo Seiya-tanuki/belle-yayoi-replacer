@@ -43,7 +43,13 @@ For credit_card_statement line:
   - 2+ => FAIL
 - Runtime strict-stop may exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`
 
-`clients/<CLIENT_ID>/config/` is reserved for future shared config.
+Shared client config:
+
+- `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
+  - Shared Yayoi tax postprocess config
+  - Phase 1 adds the config contract only
+  - Runtime wiring is intentionally deferred to a later phase
+  - Missing config currently resolves to the default disabled behavior for the shared foundation module
 
 See spec/FILE_LAYOUT.md.
 

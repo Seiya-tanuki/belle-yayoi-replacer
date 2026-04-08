@@ -13,7 +13,8 @@ All runtime data must be isolated by client and line.
 
 ```text
 clients/<CLIENT_ID>/
-  config/                              # optional future shared config (can be empty)
+  config/
+    yayoi_tax_config.json             # shared tax postprocess config (Phase 1 contract only; runtime wiring later)
   lines/
     <line_id>/
       config/
@@ -114,8 +115,15 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 2. `defaults/receipt/category_defaults.json`
 3. `defaults/credit_card_statement/category_defaults.json`
 4. `rulesets/receipt/replacer_config_v1_15.json`
-5. `lexicon/receipt/pending/.gitkeep`
-6. `lexicon/receipt/pending/locks/.gitkeep`
+5. `clients/TEMPLATE/config/yayoi_tax_config.json`
+6. `lexicon/receipt/pending/.gitkeep`
+7. `lexicon/receipt/pending/locks/.gitkeep`
+
+## Shared client config
+
+1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json` is the shared client config path for Yayoi tax postprocess.
+2. Phase 1 adds only the shared config contract and foundation module.
+3. Runtime wiring for actual replacer/runner execution is deferred to a later phase.
 
 ## Runtime-managed assets (ignored)
 
