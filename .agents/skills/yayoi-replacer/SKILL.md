@@ -37,6 +37,17 @@ Deterministic replacement skill for Yayoi import CSVs.
 12. `credit_card_statement` is implemented/runnable.
 13. `credit_card_statement` target must satisfy Contract A (one statement per target file).
 
+## Shared tax postprocess config
+1. Shared config path:
+   - `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
+2. Runtime tax amount auto-fill is controlled by this shared config.
+3. Missing shared config defaults to disabled / no-op.
+4. Current v1 auto-fill scope is intentionally narrow:
+   - `bookkeeping_mode = tax_excluded`
+   - tax amount cell is blank
+   - tax division is parseable as `inner`
+   - `rounding_mode = floor`
+
 ## Operator protocol (mandatory)
 Codex/operator は以下の手順を固定で実施すること。
 

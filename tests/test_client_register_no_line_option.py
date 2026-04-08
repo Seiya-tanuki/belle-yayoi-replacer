@@ -134,9 +134,11 @@ class ClientRegisterNoLineOptionTests(unittest.TestCase):
             self.assertEqual(0, rc, msg=output)
 
             client_root = repo_root / "clients" / "C_ALL_LINES"
+            self.assertTrue((client_root / "config" / "yayoi_tax_config.json").exists())
             self.assertTrue((client_root / "lines" / "receipt").is_dir())
             self.assertTrue((client_root / "lines" / "bank_statement").is_dir())
             self.assertTrue((client_root / "lines" / "credit_card_statement").is_dir())
+            self.assertEqual(1, output.count("- shared: clients/<CLIENT_ID>/config/yayoi_tax_config.json"))
 
             bank_root = client_root / "lines" / "bank_statement"
             self.assertFalse((bank_root / "inputs" / "ledger_ref").exists())

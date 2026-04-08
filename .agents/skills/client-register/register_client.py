@@ -16,6 +16,7 @@ FORBIDDEN_CHARS = set('\\/:*?"<>|')
 RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
 REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
 CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
+SHARED_YAYOI_TAX_CONFIG_REL_PATH = Path("config") / "yayoi_tax_config.json"
 
 BANK_LINE_CONFIG_MINIMAL = {
     "schema": "belle.bank_line_config.v0",
@@ -304,6 +305,13 @@ def _initialize_staged_client(
         if not line_root.exists() or not line_root.is_dir():
             raise RegistrationError(f"{line_id} line directory is missing after registration.")
 
+    shared_tax_config_path = staging_dir / SHARED_YAYOI_TAX_CONFIG_REL_PATH
+    if not shared_tax_config_path.is_file():
+        raise RegistrationError(
+            "Shared Yayoi tax config is missing after staging.",
+            f"Expected staged path: clients/{client_id}/config/yayoi_tax_config.json",
+        )
+
 
 def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path) -> None:
     if destination.exists():
@@ -315,6 +323,7 @@ def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path
 
 
 def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
+    print("- shared: clients/<CLIENT_ID>/config/yayoi_tax_config.json")
     if "receipt" in selected_lines:
         print("- receipt: clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/")
         print("- receipt: clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/")

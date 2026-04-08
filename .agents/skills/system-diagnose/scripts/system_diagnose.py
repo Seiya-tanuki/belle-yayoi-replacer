@@ -27,6 +27,10 @@ _SUPPORTED_LINE_IDS_WITH_ALL = _SUPPORTED_LINE_IDS + ("all",)
 _REPORT_RENDER_ONLY_ENV = "BELLE_SYSTEM_DIAGNOSE_RENDER_ONLY"
 _REPORT_BEGIN_MARKER = "<<<SYSTEM_DIAGNOSE_REPORT_BEGIN>>>"
 _REPORT_END_MARKER = "<<<SYSTEM_DIAGNOSE_REPORT_END>>>"
+_YAYOI_TAX_CONFIG_SCHEMA = "belle.yayoi_tax_config.v1"
+_YAYOI_TAX_CONFIG_VERSION = "1.0"
+_SUPPORTED_TAX_BOOKKEEPING_MODES = {"tax_excluded", "tax_included"}
+_SUPPORTED_TAX_ROUNDING_MODES = {"floor"}
 
 
 @dataclass
@@ -254,6 +258,98 @@ def _count_ingested_entries(manifest_path: Path) -> tuple[int, str | None]:
         if unique_ordered:
             return len(unique_ordered), None
     return len(ingested), None
+
+
+def _shared_tax_config_path(repo_root: Path, client_id: str) -> Path:
+    return repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json"
+
+
+def _discover_non_template_clients(repo_root: Path) -> List[tuple[str, Path]]:
+    clients_dir = repo_root / "clients"
+    if not clients_dir.exists():
+        return []
+    found: List[tuple[str, Path]] = []
+    for client_dir in sorted(clients_dir.iterdir(), key=lambda p: p.name):
+        if not client_dir.is_dir() or client_dir.name == "TEMPLATE":
+            continue
+        found.append((client_dir.name, client_dir))
+    return found
+
+
+def _fallback_load_yayoi_tax_postprocess_config(repo_root: Path, client_id: str):
+    cfg_path = _shared_tax_config_path(repo_root, client_id)
+    if not cfg_path.exists():
+        return {
+            "enabled": False,
+            "bookkeeping_mode": "tax_excluded",
+            "rounding_mode": "floor",
+        }
+
+    try:
+        raw = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse yayoi_tax_config.json: {cfg_path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"yayoi_tax_config.json must be a JSON object: {cfg_path}")
+
+    allowed_keys = {"schema", "version", "enabled", "bookkeeping_mode", "rounding_mode"}
+    actual_keys = set(raw.keys())
+    missing_keys = sorted(allowed_keys - actual_keys)
+    extra_keys = sorted(actual_keys - allowed_keys)
+    if missing_keys:
+        raise ValueError(f"yayoi_tax_config.json missing required keys: {', '.join(missing_keys)}: {cfg_path}")
+    if extra_keys:
+        raise ValueError(f"yayoi_tax_config.json contains unsupported keys: {', '.join(extra_keys)}: {cfg_path}")
+
+    schema = str(raw.get("schema") or "").strip()
+    if schema != _YAYOI_TAX_CONFIG_SCHEMA:
+        raise ValueError(f"yayoi_tax_config.json schema must be {_YAYOI_TAX_CONFIG_SCHEMA!r}: {cfg_path}")
+    version = str(raw.get("version") or "").strip()
+    if version != _YAYOI_TAX_CONFIG_VERSION:
+        raise ValueError(f"yayoi_tax_config.json version must be {_YAYOI_TAX_CONFIG_VERSION!r}: {cfg_path}")
+
+    enabled = raw.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ValueError(f"yayoi_tax_config.json enabled must be a boolean: {cfg_path}")
+
+    bookkeeping_mode = str(raw.get("bookkeeping_mode") or "").strip()
+    if bookkeeping_mode not in _SUPPORTED_TAX_BOOKKEEPING_MODES:
+        supported = ", ".join(sorted(_SUPPORTED_TAX_BOOKKEEPING_MODES))
+        raise ValueError(f"yayoi_tax_config.json bookkeeping_mode must be one of [{supported}]: {cfg_path}")
+
+    rounding_mode = str(raw.get("rounding_mode") or "").strip()
+    if rounding_mode not in _SUPPORTED_TAX_ROUNDING_MODES:
+        supported = ", ".join(sorted(_SUPPORTED_TAX_ROUNDING_MODES))
+        raise ValueError(f"yayoi_tax_config.json rounding_mode must be one of [{supported}]: {cfg_path}")
+
+    return {
+        "enabled": enabled,
+        "bookkeeping_mode": bookkeeping_mode,
+        "rounding_mode": rounding_mode,
+    }
+
+
+def _load_yayoi_tax_postprocess_config(repo_root: Path, client_id: str):
+    try:
+        from belle.tax_postprocess import load_yayoi_tax_postprocess_config
+    except ImportError:
+        return _fallback_load_yayoi_tax_postprocess_config(repo_root, client_id)
+    return load_yayoi_tax_postprocess_config(repo_root, client_id)
+
+
+def _format_shared_tax_config_state(client_id: str, config_obj) -> str:
+    if isinstance(config_obj, dict):
+        enabled = bool(config_obj.get("enabled"))
+        bookkeeping_mode = str(config_obj.get("bookkeeping_mode") or "")
+        rounding_mode = str(config_obj.get("rounding_mode") or "")
+    else:
+        enabled = bool(getattr(config_obj, "enabled"))
+        bookkeeping_mode = str(getattr(config_obj, "bookkeeping_mode"))
+        rounding_mode = str(getattr(config_obj, "rounding_mode"))
+    return (
+        f"{client_id}(enabled={enabled}, bookkeeping_mode={bookkeeping_mode}, "
+        f"rounding_mode={rounding_mode})"
+    )
 
 
 def _discover_bank_line_clients(repo_root: Path) -> List[tuple[str, Path]]:
@@ -839,6 +935,103 @@ def main() -> int:
             f"checked path: {path.relative_to(repo_root)}",
             "Restore required repository files/directories from source control.",
         )
+
+    template_tax_config_path = _shared_tax_config_path(repo_root, "TEMPLATE")
+    add_hard(
+        "C41",
+        "clients/TEMPLATE/config/yayoi_tax_config.json exists",
+        template_tax_config_path.is_file(),
+        f"checked path: {template_tax_config_path.relative_to(repo_root).as_posix()}",
+        "Restore clients/TEMPLATE/config/yayoi_tax_config.json from source control.",
+    )
+    if template_tax_config_path.is_file():
+        try:
+            template_tax_config = _load_yayoi_tax_postprocess_config(repo_root, "TEMPLATE")
+            c42_passed = True
+            c42_evidence = _format_shared_tax_config_state("TEMPLATE", template_tax_config)
+        except Exception as exc:
+            c42_passed = False
+            c42_evidence = str(exc)
+    else:
+        c42_passed = False
+        c42_evidence = "missing path: clients/TEMPLATE/config/yayoi_tax_config.json"
+    add_hard(
+        "C42",
+        "clients/TEMPLATE/config/yayoi_tax_config.json is valid under the shared tax config contract",
+        c42_passed,
+        c42_evidence,
+        "Fix clients/TEMPLATE/config/yayoi_tax_config.json to match the shared tax config contract.",
+    )
+
+    non_template_clients = _discover_non_template_clients(repo_root)
+    missing_shared_tax_configs: List[str] = []
+    valid_shared_tax_configs: List[str] = []
+    invalid_shared_tax_configs: List[str] = []
+    for client_id, _ in non_template_clients:
+        client_tax_config_path = _shared_tax_config_path(repo_root, client_id)
+        if not client_tax_config_path.is_file():
+            missing_shared_tax_configs.append(client_id)
+            continue
+        try:
+            client_tax_config = _load_yayoi_tax_postprocess_config(repo_root, client_id)
+            valid_shared_tax_configs.append(_format_shared_tax_config_state(client_id, client_tax_config))
+        except Exception as exc:
+            invalid_shared_tax_configs.append(f"{client_id}: {exc}")
+
+    if not non_template_clients:
+        c43_passed = True
+        c43_evidence = "N/A: no non-TEMPLATE clients found"
+    elif invalid_shared_tax_configs:
+        c43_passed = False
+        c43_parts: List[str] = []
+        if valid_shared_tax_configs:
+            valid_preview = "; ".join(valid_shared_tax_configs[:10])
+            if len(valid_shared_tax_configs) > 10:
+                valid_preview += f"; ... (+{len(valid_shared_tax_configs) - 10} more)"
+            c43_parts.append(f"valid: {valid_preview}")
+        invalid_preview = "; ".join(invalid_shared_tax_configs[:10])
+        if len(invalid_shared_tax_configs) > 10:
+            invalid_preview += f"; ... (+{len(invalid_shared_tax_configs) - 10} more)"
+        c43_parts.append(f"invalid: {invalid_preview}")
+        c43_evidence = " | ".join(c43_parts)
+    elif valid_shared_tax_configs:
+        c43_passed = True
+        valid_preview = "; ".join(valid_shared_tax_configs[:10])
+        if len(valid_shared_tax_configs) > 10:
+            valid_preview += f"; ... (+{len(valid_shared_tax_configs) - 10} more)"
+        c43_evidence = f"valid: {valid_preview}"
+    else:
+        c43_passed = True
+        c43_evidence = "N/A: no present shared tax config among non-TEMPLATE clients"
+    add_hard(
+        "C43",
+        "shared Yayoi tax config is valid for non-TEMPLATE clients when present",
+        c43_passed,
+        c43_evidence,
+        "Fix invalid clients/<CLIENT_ID>/config/yayoi_tax_config.json files or restore them from the template.",
+    )
+
+    if not non_template_clients:
+        s10_passed = True
+        s10_evidence = "N/A: no non-TEMPLATE clients found"
+    elif not missing_shared_tax_configs:
+        s10_passed = True
+        s10_evidence = f"present for all {len(non_template_clients)} non-TEMPLATE client(s)"
+    else:
+        s10_passed = False
+        missing_preview = ", ".join(missing_shared_tax_configs[:10])
+        if len(missing_shared_tax_configs) > 10:
+            missing_preview += ", ..."
+        s10_evidence = (
+            f"missing shared tax config for {len(missing_shared_tax_configs)} client(s): {missing_preview}"
+        )
+    add_soft(
+        "S10",
+        "shared Yayoi tax config presence for non-TEMPLATE clients (warn-only when missing)",
+        s10_passed,
+        s10_evidence,
+        "Provision clients/<CLIENT_ID>/config/yayoi_tax_config.json from clients/TEMPLATE/config/ when needed.",
+    )
 
     if line_id == "receipt":
         detected_cfg, cfg_evidence = _detect_replacer_config(repo_root, line_id)

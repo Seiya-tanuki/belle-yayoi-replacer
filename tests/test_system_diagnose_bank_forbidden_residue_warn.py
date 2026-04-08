@@ -14,6 +14,22 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: bool = False) -> None:
+    _write_text(
+        repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json",
+        json.dumps(
+            {
+                "schema": "belle.yayoi_tax_config.v1",
+                "version": "1.0",
+                "enabled": enabled,
+                "bookkeeping_mode": "tax_excluded",
+                "rounding_mode": "floor",
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
 class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
     def test_bank_statement_warns_for_forbidden_residue_but_stays_go(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
@@ -78,6 +94,7 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                 bank_template_root / "config" / "bank_line_config.json",
                 json.dumps({"schema": "belle.bank_line_config.v0", "version": "0.1"}, ensure_ascii=False),
             )
+            _write_valid_shared_tax_config(temp_root, "TEMPLATE", enabled=False)
 
             _write_text(temp_root / "belle" / "__init__.py", "")
             _write_text(
@@ -152,6 +169,7 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                 line_root / "artifacts" / "cache" / "client_cache.json",
                 json.dumps({"updated_at": "2026-02-20T00:00:00Z"}, ensure_ascii=False),
             )
+            _write_valid_shared_tax_config(temp_root, "C_WARN", enabled=False)
 
             # Forbidden residue directories are intentionally created (empty) and must trigger WARN only.
             (line_root / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)

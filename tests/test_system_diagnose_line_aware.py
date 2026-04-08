@@ -35,6 +35,22 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: bool = False) -> None:
+    _write_text(
+        repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json",
+        json.dumps(
+            {
+                "schema": "belle.yayoi_tax_config.v1",
+                "version": "1.0",
+                "enabled": enabled,
+                "bookkeeping_mode": "tax_excluded",
+                "rounding_mode": "floor",
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
 def _load_system_diagnose_module(real_repo_root: Path):
     script_path = (
         real_repo_root
@@ -62,6 +78,7 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
         parents=True,
         exist_ok=True,
     )
+    _write_valid_shared_tax_config(repo_root, "TEMPLATE", enabled=False)
     if line_id == "bank_statement":
         bank_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
         for rel in [
@@ -102,6 +119,7 @@ def _prepare_bank_client(
     ocr_file_count: int,
     with_config: bool = True,
     with_cache: bool = False,
+    with_shared_tax_config: bool = True,
 ) -> None:
     line_root = repo_root / "clients" / client_id / "lines" / "bank_statement"
     ocr_dir = line_root / "inputs" / "training" / "ocr_kari_shiwake"
@@ -128,6 +146,8 @@ def _prepare_bank_client(
             line_root / "artifacts" / "cache" / "client_cache.json",
             json.dumps({"updated_at": "2026-02-20T00:00:00Z"}, ensure_ascii=False),
         )
+    if with_shared_tax_config:
+        _write_valid_shared_tax_config(repo_root, client_id)
 
 
 def _make_fake_run_command(module):
@@ -228,6 +248,8 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
 
             self.assertEqual(0, rc, msg=output)
             report = _read_latest_report(repo_root)
+            self.assertIn("C41 clients/TEMPLATE/config/yayoi_tax_config.json exists", report)
+            self.assertIn("C42 clients/TEMPLATE/config/yayoi_tax_config.json is valid", report)
             self.assertNotIn("lexicon/bank_statement/lexicon.json exists", report)
             self.assertNotIn("defaults/bank_statement/category_defaults.json exists", report)
             self.assertNotIn("rulesets/bank_statement/replacer_config_v1_15.json", report)
@@ -273,6 +295,78 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
             report = _read_latest_report(repo_root)
             self.assertIn("C1 lexicon/lexicon.json exists", report)
             self.assertIn("| C1 lexicon/lexicon.json exists | FAIL |", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_missing_existing_client_shared_tax_config_is_warn_only(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_shared_tax_missing_warn_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            (repo_root / "clients" / "C_MISSING_SHARED").mkdir(parents=True, exist_ok=True)
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| S10 shared Yayoi tax config presence for non-TEMPLATE clients (warn-only when missing) | FAIL |",
+                report,
+            )
+            self.assertIn("missing shared tax config for 1 client(s): C_MISSING_SHARED", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_invalid_present_shared_tax_config_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_shared_tax_invalid_fail_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            _write_text(
+                repo_root / "clients" / "C_INVALID" / "config" / "yayoi_tax_config.json",
+                json.dumps(
+                    {
+                        "schema": "belle.yayoi_tax_config.v1",
+                        "version": "1.0",
+                        "enabled": True,
+                        "bookkeeping_mode": "broken_mode",
+                        "rounding_mode": "floor",
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C43 shared Yayoi tax config is valid for non-TEMPLATE clients when present | FAIL |",
+                report,
+            )
+            self.assertIn("C_INVALID:", report)
+            self.assertIn("bookkeeping_mode", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_valid_present_shared_tax_config_evidence_lists_modes(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_shared_tax_valid_evidence_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            _write_valid_shared_tax_config(repo_root, "C_VALID", enabled=True)
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "valid: C_VALID(enabled=True, bookkeeping_mode=tax_excluded, rounding_mode=floor)",
+                report,
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

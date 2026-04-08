@@ -17,6 +17,22 @@ The current taxonomy is the reconstructed 69-category operational/posting taxono
 3. `credit_card_statement`: replace placeholder account and payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; inference uses summary and does not use memo.
 4. Keep everything offline (no network dependency).
 
+## Shared tax postprocess config
+
+Shared client config path:
+1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
+2. This shared config controls runtime tax amount auto-fill.
+
+Current default behavior:
+1. Missing config resolves to disabled / no-op.
+2. New clients inherit the shared config from `clients/TEMPLATE/config/yayoi_tax_config.json`.
+
+Current v1 runtime scope:
+1. `bookkeeping_mode = tax_excluded`
+2. tax amount cell is blank
+3. tax division is parseable as `inner`
+4. `rounding_mode = floor`
+
 ## Active skills
 
 1. `$client-register`

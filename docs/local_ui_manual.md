@@ -22,6 +22,7 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - Editing lexicon or pending queues
 - Editing runtime config files
+- Editing `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
 - Editing review CSV outputs
 - Replacing CLI workflows for maintenance tasks
 
@@ -39,4 +40,5 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - The UI assumes local execution on `127.0.0.1`.
 - NiceGUI import is shimmed for current Python 3.14 behavior via `belle/local_ui/nicegui_compat.py`.
+- The local UI does not edit `clients/<CLIENT_ID>/config/yayoi_tax_config.json`; operators manage that shared tax config outside the UI.
 - `exports/` remains outside Git tracking; operational progress files live there by bundle design.

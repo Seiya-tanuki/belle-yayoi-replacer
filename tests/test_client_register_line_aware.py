@@ -156,6 +156,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             client_root = repo_root / "clients" / "C_BANK_LINE_AWARE"
             bank_root = client_root / "lines" / "bank_statement"
 
+            self.assertTrue((client_root / "config" / "yayoi_tax_config.json").exists())
             self.assertTrue((bank_root / "config" / "bank_line_config.json").exists())
             self.assertTrue((bank_root / "inputs" / "training" / "ocr_kari_shiwake").is_dir())
             self.assertTrue((bank_root / "inputs" / "training" / "reference_yayoi").is_dir())
@@ -172,6 +173,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertTrue(
                 (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
             )
+            self.assertEqual(1, output.count("- shared: clients/<CLIENT_ID>/config/yayoi_tax_config.json"))
             self.assertEqual(["C_BANK_LINE_AWARE", "TEMPLATE"], _client_dir_names(repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
@@ -324,6 +326,30 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertEqual(2, rc, msg=output)
             self.assertIn("Failed to initialize bank_line_config.json.", output)
             self.assertFalse((repo_root / "clients" / "C_BANK_ROLLBACK").exists())
+            self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_registration_fails_when_shared_tax_config_is_missing_after_staging(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_missing_shared_tax_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            (repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json").unlink()
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_MISSING_SHARED_TAX",
+                line="receipt",
+            )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Shared Yayoi tax config is missing after staging.", output)
+            self.assertIn("Expected staged path: clients/C_MISSING_SHARED_TAX/config/yayoi_tax_config.json", output)
+            self.assertFalse((repo_root / "clients" / "C_MISSING_SHARED_TAX").exists())
             self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
