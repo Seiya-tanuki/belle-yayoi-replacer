@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import locale
 import os
 import re
 import subprocess
@@ -167,7 +168,8 @@ def _run_command(command: list[str], *, cwd: Path) -> subprocess.CompletedProces
         env=_command_env(),
         capture_output=True,
         text=True,
-        encoding="utf-8",
+        encoding=locale.getpreferredencoding(False),
+        errors="replace",
         timeout=120,
     )
 

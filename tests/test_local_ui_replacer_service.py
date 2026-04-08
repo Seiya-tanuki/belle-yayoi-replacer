@@ -151,6 +151,30 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
             self.assertEqual("RUN", results[0].status)
             self.assertEqual(0, results[0].returncode)
 
+    def test_run_precheck_for_lines_accepts_non_ascii_client_id(self) -> None:
+        from belle.local_ui.services.replacer import run_precheck_for_lines, source_repo_root
+
+        client_id = "神話"
+        real_repo_root = source_repo_root()
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            _prepare_receipt_repo(temp_repo_root, client_id)
+            _write_yayoi_row(
+                temp_repo_root / "clients" / client_id / "lines" / "receipt" / "inputs" / "kari_shiwake" / "target.csv",
+                summary="NON ASCII CLIENT",
+            )
+            script_src = real_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            script_dst = temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            script_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(script_src, script_dst)
+
+            results = run_precheck_for_lines(client_id, ["receipt"], root=temp_repo_root)
+            self.assertEqual(1, len(results))
+            self.assertEqual("receipt", results[0].line_id)
+            self.assertEqual("RUN", results[0].status)
+            self.assertEqual(0, results[0].returncode)
+            self.assertIn("client=神話", results[0].stdout)
+
     def test_run_precheck_for_lines_raises_session_fatal_when_output_missing(self) -> None:
         from belle.local_ui.services import replacer as replacer_service
 
