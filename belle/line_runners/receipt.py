@@ -29,6 +29,10 @@ from belle.paths import (
 )
 from belle.replacer import replace_yayoi_csv
 from belle.runner_io import update_latest_run_id, write_text_atomic
+from belle.tax_postprocess import (
+    get_yayoi_tax_config_path,
+    load_yayoi_tax_postprocess_config,
+)
 from belle.ui_reason_codes import RUN_OK
 
 from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
@@ -151,6 +155,8 @@ def run_receipt(
 
     defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
     config = json.loads(config_path.read_text(encoding="utf-8"))
+    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
+    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 
     try:
         tm, tm_summary = ensure_client_cache_updated(
@@ -225,6 +231,12 @@ def run_receipt(
             "expected_count": len(lexicon_category_keys),
             "warnings": category_overrides_warnings,
         },
+        "yayoi_tax_config": {
+            "path": str(yayoi_tax_config_path),
+            "enabled": bool(yayoi_tax_config.enabled),
+            "bookkeeping_mode": str(yayoi_tax_config.bookkeeping_mode),
+            "rounding_mode": str(yayoi_tax_config.rounding_mode),
+        },
         "ui_reason_code": RUN_OK,
         "ui_reason_detail": {"line_id": LINE_ID_RECEIPT},
         "outputs": [],
@@ -249,6 +261,7 @@ def run_receipt(
         config=config,
         run_dir=run_dir,
         artifact_prefix=artifact_prefix,
+        yayoi_tax_config=yayoi_tax_config,
     )
     run_manifest["outputs"].append(mf)
 

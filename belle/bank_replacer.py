@@ -29,15 +29,24 @@ from .bank_pairing import (
 )
 from belle.fs_utils import sha256_file_chunked
 from .paths import get_input_manifest_path, get_review_report_path
+from .tax_postprocess import (
+    TaxPostprocessSideResult,
+    YayoiTaxPostprocessConfig,
+    apply_yayoi_tax_postprocess,
+    build_tax_postprocess_manifest,
+    default_yayoi_tax_postprocess_config,
+)
 from .yayoi_text import safe_cell_text
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_AMOUNT,
     COL_CREDIT_SUBACCOUNT,
+    COL_CREDIT_TAX_AMOUNT,
     COL_CREDIT_TAX_DIVISION,
     COL_DEBIT_ACCOUNT,
     COL_DEBIT_AMOUNT,
     COL_DEBIT_SUBACCOUNT,
+    COL_DEBIT_TAX_AMOUNT,
     COL_DEBIT_TAX_DIVISION,
     COL_SUMMARY,
 )
@@ -148,6 +157,41 @@ def confidence(strength: float, p_majority: float, sample_total: int) -> float:
 
 def _safe_text(tokens: Sequence[bytes], idx: int, encoding: str) -> str:
     return safe_cell_text(tokens, idx, encoding)
+
+
+def _clone_row_tokens(rows: Sequence[Sequence[bytes]]) -> List[List[bytes]]:
+    return [list(tokens) for tokens in rows]
+
+
+def _row_changed(original_tokens: List[bytes], final_tokens: List[bytes]) -> bool:
+    return list(original_tokens) != list(final_tokens)
+
+
+def _tax_result_map(summary) -> Dict[Tuple[int, str], TaxPostprocessSideResult]:
+    return {(result.row_index_1b, result.side): result for result in summary.side_results}
+
+
+def _tax_review_cells(
+    *,
+    row_index_1b: int,
+    encoding: str,
+    pre_tax_tokens: List[bytes],
+    final_tokens: List[bytes],
+    side_results: Dict[Tuple[int, str], TaxPostprocessSideResult],
+) -> List[str]:
+    values: List[str] = []
+    for side, tax_amount_idx in (("debit", COL_DEBIT_TAX_AMOUNT), ("credit", COL_CREDIT_TAX_AMOUNT)):
+        result = side_results[(row_index_1b, side)]
+        values.extend(
+            [
+                _safe_text(pre_tax_tokens, tax_amount_idx, encoding),
+                _safe_text(final_tokens, tax_amount_idx, encoding),
+                result.status,
+                "" if result.rate_percent is None else str(result.rate_percent),
+                result.calc_mode,
+            ]
+        )
+    return values
 
 
 def _normalize_name_for_match(text: str) -> str:
@@ -944,8 +988,10 @@ def replace_bank_yayoi_csv(
     config: Dict[str, Any],
     run_dir: Path,
     artifact_prefix: Optional[str] = None,
+    yayoi_tax_config: Optional[YayoiTaxPostprocessConfig] = None,
 ) -> Dict[str, Any]:
     csv_obj = read_yayoi_csv(in_path)
+    original_row_tokens = _clone_row_tokens([row.tokens for row in csv_obj.rows])
     cache = load_bank_cache(cache_path)
     thresholds = _resolve_thresholds(config, cache)
     file_bank_sub_inference = infer_file_bank_subaccount(
@@ -961,7 +1007,6 @@ def replace_bank_yayoi_csv(
     )
 
     decisions: List[BankRowDecision] = []
-    changed_count = 0
     evidence_counts: Dict[str, int] = {}
     bank_side_subaccount_changed_count = 0
     bank_side_subaccount_evidence_counts: Dict[str, int] = {}
@@ -1008,7 +1053,6 @@ def replace_bank_yayoi_csv(
             filled_rows_total += 1
 
         if list(row.tokens) != new_tokens:
-            changed_count += 1
             row.tokens = new_tokens
         decisions.append(decision)
         evidence_counts[decision.evidence_type] = evidence_counts.get(decision.evidence_type, 0) + 1
@@ -1022,6 +1066,18 @@ def replace_bank_yayoi_csv(
             bank_side_subaccount_evidence_counts[evidence_bucket] = (
                 bank_side_subaccount_evidence_counts.get(evidence_bucket, 0) + 1
             )
+
+    pre_tax_row_tokens = _clone_row_tokens([row.tokens for row in csv_obj.rows])
+    tax_summary = apply_yayoi_tax_postprocess(
+        csv_obj,
+        yayoi_tax_config or default_yayoi_tax_postprocess_config(),
+    )
+    tax_side_results = _tax_result_map(tax_summary)
+    changed_count = 0
+    for original_tokens, row, decision in zip(original_row_tokens, csv_obj.rows, decisions):
+        decision.changed = _row_changed(original_tokens, row.tokens)
+        if decision.changed:
+            changed_count += 1
 
     write_yayoi_csv(csv_obj, out_path)
 
@@ -1071,11 +1127,21 @@ def replace_bank_yayoi_csv(
         "bank_sub_sample_total",
         "bank_sub_p_majority",
         "bank_sub_top_count",
+        "debit_tax_amount_before",
+        "debit_tax_amount_after",
+        "debit_tax_fill_status",
+        "debit_tax_rate",
+        "debit_tax_calc_mode",
+        "credit_tax_amount_before",
+        "credit_tax_amount_after",
+        "credit_tax_fill_status",
+        "credit_tax_rate",
+        "credit_tax_calc_mode",
     ]
     with report_path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv_lib.writer(f, dialect="excel", lineterminator="\r\n", quoting=csv_lib.QUOTE_MINIMAL)
         writer.writerow(header)
-        for d in decisions:
+        for d, pre_tax_tokens, row in zip(decisions, pre_tax_row_tokens, csv_obj.rows):
             writer.writerow(
                 [
                     str(d.row_index_1b),
@@ -1115,6 +1181,13 @@ def replace_bank_yayoi_csv(
                     str(d.bank_sub_sample_total),
                     f"{d.bank_sub_p_majority:.6f}",
                     str(d.bank_sub_top_count),
+                    *_tax_review_cells(
+                        row_index_1b=d.row_index_1b,
+                        encoding=csv_obj.encoding,
+                        pre_tax_tokens=pre_tax_tokens,
+                        final_tokens=row.tokens,
+                        side_results=tax_side_results,
+                    ),
                 ]
             )
 
@@ -1155,6 +1228,7 @@ def replace_bank_yayoi_csv(
         "filled_rows_total": int(filled_rows_total),
         "bank_sub_fill_required_failed": bool(bank_sub_fill_required_failed),
         "decision_thresholds": thresholds,
+        "tax_postprocess": build_tax_postprocess_manifest(tax_summary),
         "reports": {
             "review_report_csv": str(report_path),
             "manifest_json": str(manifest_path),

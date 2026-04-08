@@ -11,6 +11,14 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from belle.fs_utils import sha256_file_chunked
 
+from .tax_postprocess import (
+    TaxPostprocessSideResult,
+    YayoiTaxPostprocessConfig,
+    apply_yayoi_tax_postprocess,
+    build_tax_postprocess_manifest,
+    default_yayoi_tax_postprocess_config,
+)
+from .yayoi_columns import COL_CREDIT_TAX_AMOUNT, COL_DEBIT_TAX_AMOUNT
 from .yayoi_csv import read_yayoi_csv, write_yayoi_csv, token_to_text, text_to_token, YayoiCSV
 from .text import extract_t_number, vendor_key_from_summary
 from .lexicon import Lexicon, match_summary
@@ -48,6 +56,41 @@ def _confidence(strength: float, p_majority: float, sample_total: int) -> float:
     sample_factor = min(1.0, math.log(sample_total + 1, 10) / math.log(50, 10))
     conf = strength * (0.7 * p_majority + 0.3 * sample_factor)
     return max(0.0, min(1.0, conf))
+
+
+def _clone_row_tokens(csv_obj: YayoiCSV) -> List[List[bytes]]:
+    return [list(row.tokens) for row in csv_obj.rows]
+
+
+def _row_changed(original_tokens: List[bytes], final_tokens: List[bytes]) -> bool:
+    return list(original_tokens) != list(final_tokens)
+
+
+def _tax_result_map(summary) -> Dict[Tuple[int, str], TaxPostprocessSideResult]:
+    return {(result.row_index_1b, result.side): result for result in summary.side_results}
+
+
+def _tax_review_cells(
+    *,
+    row_index_1b: int,
+    encoding: str,
+    pre_tax_tokens: List[bytes],
+    final_tokens: List[bytes],
+    side_results: Dict[Tuple[int, str], TaxPostprocessSideResult],
+) -> List[str]:
+    values: List[str] = []
+    for side, tax_amount_idx in (("debit", COL_DEBIT_TAX_AMOUNT), ("credit", COL_CREDIT_TAX_AMOUNT)):
+        result = side_results[(row_index_1b, side)]
+        values.extend(
+            [
+                token_to_text(pre_tax_tokens[tax_amount_idx], encoding),
+                token_to_text(final_tokens[tax_amount_idx], encoding),
+                result.status,
+                "" if result.rate_percent is None else str(result.rate_percent),
+                result.calc_mode,
+            ]
+        )
+    return values
 
 
 def decide_row(
@@ -313,6 +356,7 @@ def replace_yayoi_csv(
     config: Dict[str, Any],
     run_dir: Path,
     artifact_prefix: Optional[str] = None,
+    yayoi_tax_config: Optional[YayoiTaxPostprocessConfig] = None,
 ) -> Dict[str, Any]:
     """
     Replace debit account for a single input CSV.
@@ -325,8 +369,8 @@ def replace_yayoi_csv(
     Returns manifest dict.
     """
     csv = read_yayoi_csv(in_path)
+    original_row_tokens = _clone_row_tokens(csv)
     decisions: List[RowDecision] = []
-    changed_count = 0
     evidence_counter: Dict[str, int] = {}
 
     for i, row in enumerate(csv.rows, start=1):
@@ -346,9 +390,20 @@ def replace_yayoi_csv(
         evidence_counter[dec.evidence_type] = evidence_counter.get(dec.evidence_type, 0) + 1
 
         if debit_after != debit_before:
-            changed_count += 1
             # Replace token (preserve quoting style from original token)
             row.tokens[4] = text_to_token(debit_after, csv.encoding, template_token=row.tokens[4])
+
+    pre_tax_row_tokens = _clone_row_tokens(csv)
+    tax_summary = apply_yayoi_tax_postprocess(
+        csv,
+        yayoi_tax_config or default_yayoi_tax_postprocess_config(),
+    )
+    tax_side_results = _tax_result_map(tax_summary)
+    changed_count = 0
+    for original_tokens, row, decision in zip(original_row_tokens, csv.rows, decisions):
+        decision.changed = _row_changed(original_tokens, row.tokens)
+        if decision.changed:
+            changed_count += 1
 
     # Write CSV
     write_yayoi_csv(csv, out_path)
@@ -378,11 +433,21 @@ def replace_yayoi_csv(
         "matched_needle",
         "is_learned_signal",
         "reasons",
+        "debit_tax_amount_before",
+        "debit_tax_amount_after",
+        "debit_tax_fill_status",
+        "debit_tax_rate",
+        "debit_tax_calc_mode",
+        "credit_tax_amount_before",
+        "credit_tax_amount_after",
+        "credit_tax_fill_status",
+        "credit_tax_rate",
+        "credit_tax_calc_mode",
     ]
     with report_path.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv_lib.writer(f, dialect="excel", lineterminator="\r\n", quoting=csv_lib.QUOTE_MINIMAL)
         writer.writerow(header)
-        for d in decisions:
+        for d, pre_tax_tokens, row in zip(decisions, pre_tax_row_tokens, csv.rows):
             writer.writerow(
                 [
                     str(d.row_index_1b),
@@ -401,6 +466,13 @@ def replace_yayoi_csv(
                     d.matched_needle or "",
                     "1" if d.is_learned_signal else "0",
                     " | ".join(d.reasons),
+                    *_tax_review_cells(
+                        row_index_1b=d.row_index_1b,
+                        encoding=csv.encoding,
+                        pre_tax_tokens=pre_tax_tokens,
+                        final_tokens=row.tokens,
+                        side_results=tax_side_results,
+                    ),
                 ]
             )
 
@@ -430,6 +502,7 @@ def replace_yayoi_csv(
             "rows_with_category": int(rows_with_category),
             "rows_using_t_routes": int(rows_using_t_routes),
         },
+        "tax_postprocess": build_tax_postprocess_manifest(tax_summary),
     }
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     manifest["reports"]["manifest_json"] = str(manifest_path)

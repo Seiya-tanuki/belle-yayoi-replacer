@@ -255,6 +255,7 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 config,
                 run_dir: Path,
                 artifact_prefix: str | None = None,
+                yayoi_tax_config=None,
             ):
                 del lex
                 del client_cache
@@ -262,6 +263,7 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 del config
                 del run_dir
                 del artifact_prefix
+                del yayoi_tax_config
                 replaced_inputs.append(in_path)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_bytes(b"")
@@ -384,6 +386,7 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 config,
                 run_dir: Path,
                 artifact_prefix: str | None = None,
+                yayoi_tax_config=None,
             ):
                 del lex
                 del client_cache
@@ -391,6 +394,7 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 del config
                 del run_dir
                 del artifact_prefix
+                del yayoi_tax_config
                 replaced_inputs.append(in_path)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 out_path.write_bytes(b"")

@@ -6,7 +6,7 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from .paths import get_client_config_dir
 from .yayoi_columns import (
@@ -267,6 +267,21 @@ def apply_yayoi_tax_postprocess(
 
     summary.total_rows_changed = len(changed_rows)
     return summary
+
+
+def build_tax_postprocess_manifest(summary: TaxPostprocessSummary) -> Dict[str, Any]:
+    return {
+        "enabled": bool(summary.enabled),
+        "bookkeeping_mode": str(summary.bookkeeping_mode),
+        "rounding_mode": str(summary.rounding_mode),
+        "rows_changed": int(summary.total_rows_changed),
+        "debit_filled_count": int(summary.debit_filled_count),
+        "credit_filled_count": int(summary.credit_filled_count),
+        "status_counts": {
+            "debit": dict(summary.debit_status_counts),
+            "credit": dict(summary.credit_status_counts),
+        },
+    }
 
 
 def _apply_side(

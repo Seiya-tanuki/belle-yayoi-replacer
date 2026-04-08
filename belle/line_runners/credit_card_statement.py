@@ -28,6 +28,10 @@ from belle.paths import (
     make_run_dir,
 )
 from belle.runner_io import update_latest_run_id, write_text_atomic
+from belle.tax_postprocess import (
+    get_yayoi_tax_config_path,
+    load_yayoi_tax_postprocess_config,
+)
 from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
@@ -160,6 +164,8 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     run_id, run_dir = make_run_dir(repo_root, client_id, line_id=LINE_ID_CARD)
     latest_path = get_latest_path(repo_root, client_id, line_id=LINE_ID_CARD)
     config = load_credit_card_line_config(repo_root, client_id)
+    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
+    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
     cache_path = Path(
         str(cache_update_summary.get("cache_path") or get_client_cache_path(repo_root, client_id, line_id=LINE_ID_CARD))
     )
@@ -199,6 +205,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         artifact_prefix=artifact_prefix,
         lex=lex,
         defaults=effective_defaults,
+        yayoi_tax_config=yayoi_tax_config,
     )
 
     reports_obj = replacer_manifest.get("reports") if isinstance(replacer_manifest, dict) else {}
@@ -232,6 +239,12 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
             "stored_path": str(kari_ingest.stored_path),
             "sha256": kari_ingest.sha256,
             "status": kari_ingest.status,
+        },
+        "yayoi_tax_config": {
+            "path": str(yayoi_tax_config_path),
+            "enabled": bool(yayoi_tax_config.enabled),
+            "bookkeeping_mode": str(yayoi_tax_config.bookkeeping_mode),
+            "rounding_mode": str(yayoi_tax_config.rounding_mode),
         },
         "category_overrides": {
             "path": str(overrides_path),

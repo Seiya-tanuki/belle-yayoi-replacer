@@ -7,8 +7,12 @@ This module defines a shared postprocess/finalizer layer intended for all implem
 2. `bank_statement`
 3. `credit_card_statement`
 
-Phase 1 adds only the shared foundation logic and shared client config contract.
-Phase 1 does not wire this logic into any live replacer, line runner, review report, manifest, or CSV output path yet.
+The shared finalizer is wired into the live runtime for all implemented lines above.
+It runs after line-specific replacement/inference is complete and before:
+1. CSV write
+2. review report write
+3. replacer manifest write
+4. runner manifest write
 
 ## Shared Config
 
@@ -26,7 +30,11 @@ Current config contract:
 4. `bookkeeping_mode: "tax_excluded" | "tax_included"`
 5. `rounding_mode: "floor"`
 
-## Phase 1 Supported Auto-Fill Scope
+Runner manifest observability:
+1. Each line runner includes a `yayoi_tax_config` block.
+2. That block includes config path plus the resolved `enabled`, `bookkeeping_mode`, and `rounding_mode`.
+
+## Runtime Support Scope (v1)
 
 Supported v1 auto-fill is intentionally narrow:
 1. bookkeeping mode is `tax_excluded`
@@ -36,7 +44,7 @@ Supported v1 auto-fill is intentionally narrow:
 5. amount is parseable as an integer
 
 Existing tax amount cells are always preserved.
-Phase 1 must never overwrite an existing tax amount value.
+The runtime must never overwrite an existing tax amount value.
 
 Unsupported calc modes in v1:
 1. `outer`
@@ -44,7 +52,7 @@ Unsupported calc modes in v1:
 3. `inclusive`
 4. all other non-target / non-parseable modes
 
-Those modes are not auto-filled in v1.
+Those modes are no-op / non-auto-filled in v1.
 
 ## Tax Division Parsing
 
@@ -75,7 +83,7 @@ Examples:
 
 ## Phase 1 Calculation
 
-Phase 1 supports integer calculation for `inner` mode only.
+V1 runtime supports integer calculation for `inner` mode only.
 
 Rounding:
 1. `floor` only
@@ -85,7 +93,27 @@ Formula:
 
 Floating-point arithmetic must not be used.
 
-## Future Integration
+## Runtime Observability
 
-Runtime integration is deferred to a later phase.
-That later phase is expected to wire the shared postprocess before CSV write and before review/report/manifest emission.
+Review reports append the following tax-amount audit columns in this exact order:
+1. `debit_tax_amount_before`
+2. `debit_tax_amount_after`
+3. `debit_tax_fill_status`
+4. `debit_tax_rate`
+5. `debit_tax_calc_mode`
+6. `credit_tax_amount_before`
+7. `credit_tax_amount_after`
+8. `credit_tax_fill_status`
+9. `credit_tax_rate`
+10. `credit_tax_calc_mode`
+
+Replacer manifests include a top-level `tax_postprocess` block that summarizes:
+1. resolved enablement and modes
+2. tax-postprocess row changes
+3. filled counts by side
+4. per-side status counts
+
+Changed-count contract:
+1. final row `changed` flags are recomputed from original input row vs final output row
+2. `changed_count` uses that same recomputed final truth
+3. tax-only row changes are therefore visible in review/manifests

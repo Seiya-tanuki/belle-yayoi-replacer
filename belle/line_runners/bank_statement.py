@@ -16,6 +16,10 @@ from belle.paths import (
     make_run_dir,
 )
 from belle.runner_io import update_latest_run_id, write_json_atomic, write_text_atomic
+from belle.tax_postprocess import (
+    get_yayoi_tax_config_path,
+    load_yayoi_tax_postprocess_config,
+)
 
 try:
     from belle.build_bank_cache import ensure_bank_client_cache_updated, load_bank_line_config
@@ -228,6 +232,8 @@ def run_bank(
         bank_config = _load_bank_runtime_config(repo_root, client_id)
     except Exception as exc:
         raise RuntimeError(f"bank_line_config 読み込みに失敗しました: {exc}") from exc
+    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
+    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 
     run_id, run_dir = make_run_dir(repo_root, client_id, line_id=client_layout_line_id)
     latest_path = get_latest_path(repo_root, client_id, line_id=client_layout_line_id)
@@ -258,6 +264,7 @@ def run_bank(
         config=bank_config,
         run_dir=run_dir,
         artifact_prefix=artifact_prefix,
+        yayoi_tax_config=yayoi_tax_config,
     )
     reports_obj = bank_output_manifest.get("reports") if isinstance(bank_output_manifest, dict) else {}
     if not isinstance(reports_obj, dict):
@@ -297,6 +304,12 @@ def run_bank(
                 "stored_name": kari_ingest.stored_name,
                 "sha256": kari_ingest.sha256,
             }
+        },
+        "yayoi_tax_config": {
+            "path": str(yayoi_tax_config_path),
+            "enabled": bool(yayoi_tax_config.enabled),
+            "bookkeeping_mode": str(yayoi_tax_config.bookkeeping_mode),
+            "rounding_mode": str(yayoi_tax_config.rounding_mode),
         },
         "replacer_manifest_path": replacer_manifest_path,
         "strict_stop_applied": strict_stop,
