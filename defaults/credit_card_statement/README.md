@@ -1,6 +1,7 @@
 # credit_card_statement defaults
 
-This line is implemented.
-Store line-specific default mappings for credit-card replacement here.
+Shared category fallback rules for `credit_card_statement`.
 
-- category defaults: `category_defaults.json`
+- Target side is the placeholder side.
+- `category_defaults.json` uses `target_account` and `target_tax_division`.
+- Phase A stores `target_tax_division` in the shared contract only; credit-card tax learning and placeholder-side tax-division write logic are deferred.

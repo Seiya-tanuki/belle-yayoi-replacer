@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 
 from belle.defaults import (
-    CATEGORY_OVERRIDES_SCHEMA_V1,
+    CATEGORY_OVERRIDES_SCHEMA_V2,
+    CategoryOverride,
     UTF8_BOM,
     CategoryDefaults,
     DefaultRule,
@@ -23,9 +24,9 @@ def _write_json(path: Path, payload: dict) -> None:
 class CategoryOverridesBestEffortTests(unittest.TestCase):
     def test_missing_keys_allowed_returns_partial_and_warning(self) -> None:
         payload = {
-            "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
             "overrides": {
-                "known_a": {"debit_account": "科目A"},
+                "known_a": {"target_account": "科目A", "target_tax_division": ""},
             },
         }
         with tempfile.TemporaryDirectory() as td:
@@ -34,7 +35,10 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
 
             resolved, warnings = try_load_category_overrides(path, ["known_a", "known_b"])
 
-        self.assertEqual({"known_a": "科目A"}, resolved)
+        self.assertEqual(
+            {"known_a": CategoryOverride(target_account="科目A", target_tax_division="")},
+            resolved,
+        )
         self.assertTrue(any(w.startswith("category_overrides_missing_keys:") for w in warnings))
         self.assertTrue(
             any("count=1" in w and "sample=[" in w for w in warnings if w.startswith("category_overrides_missing_keys:"))
@@ -42,10 +46,10 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
 
     def test_extra_keys_are_ignored_and_warned(self) -> None:
         payload = {
-            "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
             "overrides": {
-                "known_a": {"debit_account": "科目A"},
-                "extra_key": {"debit_account": "科目X"},
+                "known_a": {"target_account": "科目A", "target_tax_division": ""},
+                "extra_key": {"target_account": "科目X", "target_tax_division": ""},
             },
         }
         with tempfile.TemporaryDirectory() as td:
@@ -54,14 +58,17 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
 
             resolved, warnings = try_load_category_overrides(path, ["known_a"])
 
-        self.assertEqual({"known_a": "科目A"}, resolved)
+        self.assertEqual(
+            {"known_a": CategoryOverride(target_account="科目A", target_tax_division="")},
+            resolved,
+        )
         self.assertTrue(any(w.startswith("category_overrides_extra_keys:") for w in warnings))
 
-    def test_invalid_debit_account_is_ignored_and_warned(self) -> None:
+    def test_invalid_target_account_is_ignored_and_warned(self) -> None:
         payload = {
-            "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
             "overrides": {
-                "known_a": {"debit_account": ""},
+                "known_a": {"target_account": "", "target_tax_division": ""},
             },
         }
         with tempfile.TemporaryDirectory() as td:
@@ -72,6 +79,46 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
 
         self.assertEqual({}, resolved)
         self.assertTrue(any(w.startswith("category_overrides_value_invalid:") for w in warnings))
+
+    def test_missing_target_tax_division_is_warned_and_ignored(self) -> None:
+        payload = {
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
+            "overrides": {
+                "known_a": {"target_account": "科目A"},
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "category_overrides.json"
+            _write_json(path, payload)
+
+            resolved, warnings = try_load_category_overrides(path, ["known_a"])
+
+        self.assertEqual({}, resolved)
+        self.assertTrue(any(w.startswith("category_overrides_row_missing_keys:") for w in warnings))
+        self.assertTrue(any(w.startswith("category_overrides_value_invalid:") for w in warnings))
+
+    def test_extra_row_keys_are_warned_and_ignored(self) -> None:
+        payload = {
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
+            "overrides": {
+                "known_a": {
+                    "target_account": "科目A",
+                    "target_tax_division": "",
+                    "ignored": "x",
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "category_overrides.json"
+            _write_json(path, payload)
+
+            resolved, warnings = try_load_category_overrides(path, ["known_a"])
+
+        self.assertEqual(
+            {"known_a": CategoryOverride(target_account="科目A", target_tax_division="")},
+            resolved,
+        )
+        self.assertTrue(any(w.startswith("category_overrides_row_extra_keys:") for w in warnings))
 
     def test_schema_mismatch_returns_warning_without_raise(self) -> None:
         payload = {
@@ -99,8 +146,8 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
 
     def test_bom_is_removed_and_warning_is_emitted(self) -> None:
         payload = {
-            "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
-            "overrides": {"known_a": {"debit_account": "科目A"}},
+            "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
+            "overrides": {"known_a": {"target_account": "科目A", "target_tax_division": ""}},
         }
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "category_overrides.json"
@@ -110,24 +157,29 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
             resolved, warnings = try_load_category_overrides(path, ["known_a"])
             rewritten = path.read_bytes()
 
-        self.assertEqual({"known_a": "科目A"}, resolved)
+        self.assertEqual(
+            {"known_a": CategoryOverride(target_account="科目A", target_tax_division="")},
+            resolved,
+        )
         self.assertFalse(rewritten.startswith(UTF8_BOM))
         self.assertTrue(any(w.startswith("category_overrides_bom_removed:") for w in warnings))
 
     def test_generate_full_uses_global_fallback_for_missing_defaults(self) -> None:
         defaults = CategoryDefaults(
-            schema="belle.category_defaults.v1",
+            schema="belle.category_defaults.v2",
             version="test",
             defaults={
                 "known_a": DefaultRule(
-                    debit_account="科目A",
+                    target_account="科目A",
+                    target_tax_division="",
                     confidence=0.7,
                     priority="MED",
                     reason_code="category_default",
                 )
             },
             global_fallback=DefaultRule(
-                debit_account="仮払金",
+                target_account="仮払金",
+                target_tax_division="",
                 confidence=0.35,
                 priority="HIGH",
                 reason_code="global_fallback",
@@ -144,8 +196,10 @@ class CategoryOverridesBestEffortTests(unittest.TestCase):
             payload = json.loads(path.read_text(encoding="utf-8"))
 
         overrides = payload.get("overrides") or {}
-        self.assertEqual("科目A", (overrides.get("known_a") or {}).get("debit_account"))
-        self.assertEqual("仮払金", (overrides.get("missing_b") or {}).get("debit_account"))
+        self.assertEqual("科目A", (overrides.get("known_a") or {}).get("target_account"))
+        self.assertEqual("", (overrides.get("known_a") or {}).get("target_tax_division"))
+        self.assertEqual("仮払金", (overrides.get("missing_b") or {}).get("target_account"))
+        self.assertEqual("", (overrides.get("missing_b") or {}).get("target_tax_division"))
 
 
 if __name__ == "__main__":

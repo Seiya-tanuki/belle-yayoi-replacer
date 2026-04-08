@@ -74,6 +74,13 @@ def _write_shared_assets(repo_root: Path) -> tuple[Path, Path]:
                         "precision_hint": 0.99,
                         "deprecated": False,
                         "negative_terms": {"n0": [], "n1": []},
+                        "default_rule": {
+                            "target_account": ACCOUNT_TRAVEL,
+                            "target_tax_division": "",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        },
                     }
                 ],
                 "term_rows": [
@@ -91,18 +98,20 @@ def _write_shared_assets(repo_root: Path) -> tuple[Path, Path]:
     defaults_path.write_text(
         json.dumps(
             {
-                "schema": "belle.category_defaults.v1",
+                "schema": "belle.category_defaults.v2",
                 "version": "test",
                 "defaults": {
                     CATEGORY_KEY_SHOPC: {
-                        "debit_account": ACCOUNT_TRAVEL,
+                        "target_account": ACCOUNT_TRAVEL,
+                        "target_tax_division": "",
                         "confidence": 0.7,
                         "priority": "MED",
                         "reason_code": "category_default",
                     }
                 },
                 "global_fallback": {
-                    "debit_account": PLACEHOLDER_ACCOUNT,
+                    "target_account": PLACEHOLDER_ACCOUNT,
+                    "target_tax_division": "",
                     "confidence": 0.35,
                     "priority": "HIGH",
                     "reason_code": "global_fallback",

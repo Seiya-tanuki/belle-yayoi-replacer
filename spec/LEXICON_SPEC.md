@@ -54,6 +54,17 @@ Runtime-essential matching/routing fields are `id`, `key`, `label`, `negative_te
 `precision_hint`. `label_ja`, `kind`, `deprecated`, `default_rule`, and `source_ref` are
 supporting metadata used for display, defaults generation, audit, or authoring support.
 
+### `default_rule` supporting metadata
+`default_rule` mirrors the shared target-side fallback contract used by
+`defaults/<line_id>/category_defaults.json`:
+- `target_account`: non-empty string
+- `target_tax_division`: string, may be empty
+- `confidence`: float
+- `priority`: `"HIGH"|"MED"|"LOW"`
+- `reason_code`: string
+
+Phase A updates this metadata shape only. Lexicon matching behavior, category IDs/keys, and term rows remain unchanged.
+
 ### term_rows (explicit keyword table)
 Each row is:
 `[field, needle, category_id, weight, type]`

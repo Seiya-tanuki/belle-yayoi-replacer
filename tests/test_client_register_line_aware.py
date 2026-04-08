@@ -38,18 +38,20 @@ def _prepare_shared_assets(repo_root: Path) -> None:
     _write_json(
         repo_root / "defaults" / "receipt" / "category_defaults.json",
         {
-            "schema": "belle.category_defaults.v1",
+            "schema": "belle.category_defaults.v2",
             "version": "0.1",
             "defaults": {
                 "misc": {
-                    "debit_account": "雑費",
+                    "target_account": "雑費",
+                    "target_tax_division": "",
                     "confidence": 0.7,
                     "priority": "MED",
                     "reason_code": "category_default",
                 }
             },
             "global_fallback": {
-                "debit_account": "仮払金",
+                "target_account": "仮払金",
+                "target_tax_division": "",
                 "confidence": 0.35,
                 "priority": "HIGH",
                 "reason_code": "global_fallback",
@@ -59,18 +61,20 @@ def _prepare_shared_assets(repo_root: Path) -> None:
     _write_json(
         repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
         {
-            "schema": "belle.category_defaults.v1",
+            "schema": "belle.category_defaults.v2",
             "version": "0.1",
             "defaults": {
                 "misc": {
-                    "debit_account": "髮題ｲｻ",
+                    "target_account": "髮題ｲｻ",
+                    "target_tax_division": "",
                     "confidence": 0.7,
                     "priority": "MED",
                     "reason_code": "category_default",
                 }
             },
             "global_fallback": {
-                "debit_account": "莉ｮ謇暮≡",
+                "target_account": "莉ｮ謇暮≡",
+                "target_tax_division": "",
                 "confidence": 0.35,
                 "priority": "HIGH",
                 "reason_code": "global_fallback",

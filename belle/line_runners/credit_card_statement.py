@@ -183,11 +183,11 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
             global_defaults=global_defaults,
             lexicon_category_keys=lexicon_category_keys,
         )
-    override_debit_accounts, category_overrides_warnings = try_load_category_overrides(
+    overrides_by_category, category_overrides_warnings = try_load_category_overrides(
         path=overrides_path,
         lexicon_category_keys=lexicon_category_keys,
     )
-    effective_defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
+    effective_defaults = merge_effective_defaults(global_defaults, overrides_by_category)
 
     input_stem = Path(kari_ingest.original_name).stem or kari_ingest.stored_path.stem
     out_path = run_dir / f"{input_stem}_replaced_{run_id}.csv"
@@ -248,7 +248,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         },
         "category_overrides": {
             "path": str(overrides_path),
-            "applied_count": len(override_debit_accounts),
+            "applied_count": len(overrides_by_category),
             "expected_count": len(lexicon_category_keys),
             "warnings": category_overrides_warnings,
         },

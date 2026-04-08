@@ -81,11 +81,12 @@ def _empty_lexicon() -> Lexicon:
 
 def _receipt_defaults() -> CategoryDefaults:
     return CategoryDefaults(
-        schema="belle.category_defaults.v1",
+        schema="belle.category_defaults.v2",
         version="test",
         defaults={},
         global_fallback=DefaultRule(
-            debit_account=RECEIPT_ACCOUNT,
+            target_account=RECEIPT_ACCOUNT,
+            target_tax_division="",
             confidence=0.5,
             priority="HIGH",
             reason_code="global_fallback",
@@ -505,11 +506,12 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
             (repo_root / "defaults" / "credit_card_statement" / "category_defaults.json").write_text(
                 json.dumps(
                     {
-                        "schema": "belle.category_defaults.v1",
+                        "schema": "belle.category_defaults.v2",
                         "version": "test",
                         "defaults": {},
                         "global_fallback": {
-                            "debit_account": RECEIPT_ACCOUNT,
+                            "target_account": RECEIPT_ACCOUNT,
+                            "target_tax_division": "",
                             "confidence": 0.35,
                             "priority": "HIGH",
                             "reason_code": "global_fallback",

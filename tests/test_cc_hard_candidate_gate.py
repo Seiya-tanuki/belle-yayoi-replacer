@@ -68,11 +68,12 @@ def _write_min_shared_assets(repo_root: Path) -> None:
     defaults_path.write_text(
         json.dumps(
             {
-                "schema": "belle.category_defaults.v1",
+                "schema": "belle.category_defaults.v2",
                 "version": "test",
                 "defaults": {},
                 "global_fallback": {
-                    "debit_account": PLACEHOLDER_ACCOUNT,
+                    "target_account": PLACEHOLDER_ACCOUNT,
+                    "target_tax_division": "",
                     "confidence": 0.35,
                     "priority": "HIGH",
                     "reason_code": "global_fallback",

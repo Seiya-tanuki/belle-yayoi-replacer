@@ -719,9 +719,9 @@ def decide_cc_row(
             if matched_key and matched_key in defaults_opt.defaults:
                 rule = defaults_opt.defaults[matched_key]
                 target_col = COL_DEBIT_ACCOUNT if placeholder_side == "debit" else COL_CREDIT_ACCOUNT
-                _set_text(new_tokens, target_col, encoding, rule.debit_account)
+                _set_text(new_tokens, target_col, encoding, rule.target_account)
                 decision.evidence_type = "category_default"
-                decision.predicted_account = rule.debit_account
+                decision.predicted_account = rule.target_account
                 if match.quality == "ambiguous":
                     decision.reasons.append("category_match_ambiguous")
                 decision.reasons.append("category_default_applied")

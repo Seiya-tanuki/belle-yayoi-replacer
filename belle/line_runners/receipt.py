@@ -148,12 +148,12 @@ def run_receipt(
             lexicon_category_keys=lexicon_category_keys,
         )
 
-    override_debit_accounts, category_overrides_warnings = try_load_category_overrides(
+    overrides_by_category, category_overrides_warnings = try_load_category_overrides(
         path=overrides_path,
         lexicon_category_keys=lexicon_category_keys,
     )
 
-    defaults = merge_effective_defaults(global_defaults, override_debit_accounts)
+    defaults = merge_effective_defaults(global_defaults, overrides_by_category)
     config = json.loads(config_path.read_text(encoding="utf-8"))
     yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
     yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
@@ -227,7 +227,7 @@ def run_receipt(
         },
         "category_overrides": {
             "path": str(overrides_path),
-            "applied_count": len(override_debit_accounts),
+            "applied_count": len(overrides_by_category),
             "expected_count": len(lexicon_category_keys),
             "warnings": category_overrides_warnings,
         },

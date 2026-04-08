@@ -75,12 +75,16 @@ def _load_lexicon_keys(repo_root: Path) -> list[str]:
     return sorted(str(category["key"]) for category in payload.get("categories") or [])
 
 
-def _load_expected_override_map(repo_root: Path, line_id: str, lexicon_keys: list[str]) -> dict[str, str]:
+def _load_expected_override_map(repo_root: Path, line_id: str, lexicon_keys: list[str]) -> dict[str, dict[str, str]]:
     payload = json.loads((repo_root / "defaults" / line_id / "category_defaults.json").read_text(encoding="utf-8"))
     defaults = payload.get("defaults") or {}
-    fallback = str(((payload.get("global_fallback") or {}).get("debit_account")) or "")
+    fallback_account = str(((payload.get("global_fallback") or {}).get("target_account")) or "")
+    fallback_tax = str(((payload.get("global_fallback") or {}).get("target_tax_division")) or "")
     return {
-        key: str(((defaults.get(key) or {}).get("debit_account")) or fallback)
+        key: {
+            "target_account": str(((defaults.get(key) or {}).get("target_account")) or fallback_account),
+            "target_tax_division": str(((defaults.get(key) or {}).get("target_tax_division")) or fallback_tax),
+        }
         for key in lexicon_keys
     }
 
@@ -134,7 +138,7 @@ class CategoryOverridesGenerationContractTests(unittest.TestCase):
                 self.assertTrue(overrides_path.exists())
 
                 payload = json.loads(overrides_path.read_text(encoding="utf-8"))
-                self.assertEqual("belle.category_overrides.v1", payload.get("schema"))
+                self.assertEqual("belle.category_overrides.v2", payload.get("schema"))
 
                 overrides = payload.get("overrides")
                 self.assertIsInstance(overrides, dict)
@@ -142,14 +146,21 @@ class CategoryOverridesGenerationContractTests(unittest.TestCase):
                 self.assertSetEqual(set(lexicon_keys), {str(key) for key in overrides.keys()})
 
                 actual = {
-                    str(key): str((row or {}).get("debit_account"))
+                    str(key): {
+                        "target_account": str((row or {}).get("target_account")),
+                        "target_tax_division": str((row or {}).get("target_tax_division")),
+                    }
                     for key, row in overrides.items()
                 }
                 expected = _load_expected_override_map(repo_root, line_id, lexicon_keys)
                 self.assertEqual(expected, actual)
 
                 for key, debit_account in REPRESENTATIVE_DEBIT_ACCOUNTS.items():
-                    self.assertEqual(debit_account, actual.get(key), msg=f"line_id={line_id} key={key}")
+                    self.assertEqual(
+                        {"target_account": debit_account, "target_tax_division": ""},
+                        actual.get(key),
+                        msg=f"line_id={line_id} key={key}",
+                    )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

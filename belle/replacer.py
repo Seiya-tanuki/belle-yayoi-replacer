@@ -291,7 +291,7 @@ def decide_row(
     # (5) category default route
     if cat_key and cat_key in defaults.defaults:
         rule = defaults.defaults[cat_key]
-        debit_after = rule.debit_account
+        debit_after = rule.target_account
         confidence = float(conf_cfg.get("default_strength", rule.confidence))
         if m.is_learned_signal:
             confidence *= float(conf_cfg.get("learned_weight_multiplier", 0.85))
@@ -322,7 +322,7 @@ def decide_row(
 
     # (6) global fallback
     gf = defaults.global_fallback
-    debit_after = gf.debit_account
+    debit_after = gf.target_account
     confidence = float(conf_cfg.get("global_fallback_strength", gf.confidence))
     reasons = ["global_fallback_applied"]
     dec = RowDecision(

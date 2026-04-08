@@ -86,7 +86,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -110,7 +111,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "会議費",
+        "target_account": "会議費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -134,7 +136,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -158,7 +161,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -185,7 +189,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -209,7 +214,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -233,7 +239,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -257,7 +264,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -281,7 +289,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "新聞図書費",
+        "target_account": "新聞図書費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -305,7 +314,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -329,7 +339,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -353,7 +364,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -377,7 +389,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -401,7 +414,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -425,7 +439,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -449,7 +464,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -473,7 +489,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -497,7 +514,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -521,7 +539,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "新聞図書費",
+        "target_account": "新聞図書費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -545,7 +564,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "車両費",
+        "target_account": "車両費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -569,7 +589,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "車両費",
+        "target_account": "車両費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -593,7 +614,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -617,7 +639,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "仕入高",
+        "target_account": "仕入高",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -641,7 +664,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "地代家賃",
+        "target_account": "地代家賃",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -665,7 +689,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "通信費",
+        "target_account": "通信費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -689,7 +714,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "仮払金",
+        "target_account": "仮払金",
+        "target_tax_division": "",
         "confidence": 0.25,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -713,7 +739,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "仮払金",
+        "target_account": "仮払金",
+        "target_tax_division": "",
         "confidence": 0.25,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -737,7 +764,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -761,7 +789,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "保険料",
+        "target_account": "保険料",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -785,7 +814,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -809,7 +839,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "外注費",
+        "target_account": "外注費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -833,7 +864,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "広告宣伝費",
+        "target_account": "広告宣伝費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -857,7 +889,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "広告宣伝費",
+        "target_account": "広告宣伝費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -881,7 +914,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "消耗品費",
+        "target_account": "消耗品費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -905,7 +939,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "雑費",
+        "target_account": "雑費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -929,7 +964,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "通信費",
+        "target_account": "通信費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -953,7 +989,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "研修費",
+        "target_account": "研修費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -977,7 +1014,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "修繕費",
+        "target_account": "修繕費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1001,7 +1039,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "外注費",
+        "target_account": "外注費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1025,7 +1064,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "賃借料",
+        "target_account": "賃借料",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1049,7 +1089,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "リース料",
+        "target_account": "リース料",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1073,7 +1114,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "外注費",
+        "target_account": "外注費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1097,7 +1139,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "支払手数料",
+        "target_account": "支払手数料",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1121,7 +1164,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "雑費",
+        "target_account": "雑費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1145,7 +1189,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "外注費",
+        "target_account": "外注費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1169,7 +1214,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "外注費",
+        "target_account": "外注費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1193,7 +1239,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "管理諸費",
+        "target_account": "管理諸費",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1217,7 +1264,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "支払手数料",
+        "target_account": "支払手数料",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1241,7 +1289,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1265,7 +1314,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1289,7 +1339,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1313,7 +1364,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1337,7 +1389,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1361,7 +1414,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1385,7 +1439,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1409,7 +1464,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1433,7 +1489,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1457,7 +1514,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1481,7 +1539,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1505,7 +1564,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "旅費交通費",
+        "target_account": "旅費交通費",
+        "target_tax_division": "",
         "confidence": 0.6,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1529,7 +1589,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "通信費",
+        "target_account": "通信費",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -1553,7 +1614,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "租税公課",
+        "target_account": "租税公課",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -1577,7 +1639,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "租税公課",
+        "target_account": "租税公課",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -1601,7 +1664,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "法定福利費",
+        "target_account": "法定福利費",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -1625,7 +1689,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "水道光熱費",
+        "target_account": "水道光熱費",
+        "target_tax_division": "",
         "confidence": 0.68,
         "priority": "LOW",
         "reason_code": "category_default_policy"
@@ -1649,7 +1714,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "福利厚生費",
+        "target_account": "福利厚生費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1673,7 +1739,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "支払手数料",
+        "target_account": "支払手数料",
+        "target_tax_division": "",
         "confidence": 0.58,
         "priority": "MED",
         "reason_code": "category_default_policy"
@@ -1697,7 +1764,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "交際費",
+        "target_account": "交際費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"
@@ -1721,7 +1789,8 @@
         "n1": []
       },
       "default_rule": {
-        "debit_account": "諸会費",
+        "target_account": "諸会費",
+        "target_tax_division": "",
         "confidence": 0.45,
         "priority": "HIGH",
         "reason_code": "category_default_policy"

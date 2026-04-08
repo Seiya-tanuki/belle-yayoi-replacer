@@ -36,11 +36,12 @@ def _build_test_lexicon() -> Lexicon:
 
 def _build_test_defaults() -> CategoryDefaults:
     return CategoryDefaults(
-        schema="belle.category_defaults.v1",
+        schema="belle.category_defaults.v2",
         version="test",
         defaults={},
         global_fallback=DefaultRule(
-            debit_account="AFTER_DEBIT",
+            target_account="AFTER_DEBIT",
+            target_tax_division="",
             confidence=0.5,
             priority="HIGH",
             reason_code="global_fallback",

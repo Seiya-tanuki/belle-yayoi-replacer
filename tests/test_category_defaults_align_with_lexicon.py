@@ -41,7 +41,8 @@ class CategoryDefaultsAlignWithLexiconTests(unittest.TestCase):
 
             self.assertEqual(lexicon_keys, loaded_keys, msg=str(path))
             self.assertEqual(69, len(loaded_keys), msg=str(path))
-            self.assertEqual("仮払金", loaded.global_fallback.debit_account, msg=str(path))
+            self.assertEqual("仮払金", loaded.global_fallback.target_account, msg=str(path))
+            self.assertEqual("", loaded.global_fallback.target_tax_division, msg=str(path))
             self.assertEqual(0.35, loaded.global_fallback.confidence, msg=str(path))
             self.assertEqual("HIGH", loaded.global_fallback.priority, msg=str(path))
             self.assertEqual("global_fallback", loaded.global_fallback.reason_code, msg=str(path))
@@ -50,8 +51,10 @@ class CategoryDefaultsAlignWithLexiconTests(unittest.TestCase):
                 with self.subTest(path=str(path), category=key):
                     lexicon_rule = lexicon_rules[key]
                     loaded_rule = loaded.defaults[key]
-                    self.assertEqual(expected_account, lexicon_rule["debit_account"])
-                    self.assertEqual(lexicon_rule["debit_account"], loaded_rule.debit_account)
+                    self.assertEqual(expected_account, lexicon_rule["target_account"])
+                    self.assertEqual("", lexicon_rule["target_tax_division"])
+                    self.assertEqual(lexicon_rule["target_account"], loaded_rule.target_account)
+                    self.assertEqual(lexicon_rule["target_tax_division"], loaded_rule.target_tax_division)
                     self.assertEqual(float(lexicon_rule["confidence"]), loaded_rule.confidence)
                     self.assertEqual(str(lexicon_rule["priority"]), loaded_rule.priority)
                     self.assertEqual(str(lexicon_rule["reason_code"]), loaded_rule.reason_code)

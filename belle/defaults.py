@@ -4,20 +4,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, Iterable
+from typing import Any, Dict, Iterable
 
 import json
 
-CATEGORY_OVERRIDES_SCHEMA_V1 = "belle.category_overrides.v1"
+CATEGORY_DEFAULTS_SCHEMA_V2 = "belle.category_defaults.v2"
+CATEGORY_OVERRIDES_SCHEMA_V2 = "belle.category_overrides.v2"
 UTF8_BOM = b"\xEF\xBB\xBF"
+_VALID_PRIORITIES = {"HIGH", "MED", "LOW"}
+_OVERRIDE_ROW_KEYS = {"target_account", "target_tax_division"}
 
 
 @dataclass(frozen=True)
 class DefaultRule:
-    debit_account: str
+    target_account: str
+    target_tax_division: str
     confidence: float
     priority: str
     reason_code: str
+
+
+@dataclass(frozen=True)
+class CategoryOverride:
+    target_account: str
+    target_tax_division: str
 
 
 @dataclass
@@ -34,32 +44,102 @@ def _format_key_summary(keys: Iterable[str], *, limit: int = 20) -> str:
     return f"count={len(normalized)} sample={json.dumps(sample, ensure_ascii=False)}"
 
 
+def _require_object(value: Any, *, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object.")
+    return value
+
+
+def _require_string(
+    value: Any,
+    *,
+    label: str,
+    allow_empty: bool = False,
+) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a string.")
+    if not allow_empty and not value.strip():
+        raise ValueError(f"{label} must be a non-empty string.")
+    return value
+
+
+def _require_float(value: Any, *, label: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be a float.") from exc
+    if number < 0.0 or number > 1.0:
+        raise ValueError(f"{label} must be in range 0..1.")
+    return number
+
+
+def _require_priority(value: Any, *, label: str) -> str:
+    priority = _require_string(value, label=label)
+    if priority not in _VALID_PRIORITIES:
+        raise ValueError(
+            f"{label} must be one of {sorted(_VALID_PRIORITIES)}, got '{priority}'."
+        )
+    return priority
+
+
+def _parse_default_rule(value: Any, *, label: str) -> DefaultRule:
+    obj = _require_object(value, label=label)
+    return DefaultRule(
+        target_account=_require_string(obj.get("target_account"), label=f"{label}.target_account"),
+        target_tax_division=_require_string(
+            obj.get("target_tax_division"),
+            label=f"{label}.target_tax_division",
+            allow_empty=True,
+        ),
+        confidence=_require_float(obj.get("confidence"), label=f"{label}.confidence"),
+        priority=_require_priority(obj.get("priority"), label=f"{label}.priority"),
+        reason_code=_require_string(obj.get("reason_code"), label=f"{label}.reason_code"),
+    )
+
+
+def _default_global_fallback_rule() -> DefaultRule:
+    return DefaultRule(
+        target_account="仮払金",
+        target_tax_division="",
+        confidence=0.35,
+        priority="HIGH",
+        reason_code="global_fallback",
+    )
+
+
 def load_category_defaults(path: Path) -> CategoryDefaults:
     obj = json.loads(path.read_text(encoding="utf-8"))
-    defs: Dict[str, DefaultRule] = {}
-    for k, v in (obj.get("defaults") or {}).items():
-        defs[str(k)] = DefaultRule(
-            debit_account=str(v["debit_account"]),
-            confidence=float(v.get("confidence") or 0.5),
-            priority=str(v.get("priority") or "MED"),
-            reason_code=str(v.get("reason_code") or "category_default"),
+    if not isinstance(obj, dict):
+        raise ValueError("category_defaults top-level object must be a JSON object.")
+
+    schema = _require_string(obj.get("schema"), label="schema")
+    if schema != CATEGORY_DEFAULTS_SCHEMA_V2:
+        raise ValueError(
+            f"schema must be '{CATEGORY_DEFAULTS_SCHEMA_V2}', got '{schema}'."
         )
-    gf = obj.get("global_fallback") or {}
-    global_rule = DefaultRule(
-        debit_account=str(gf.get("debit_account") or "仮払金"),
-        confidence=float(gf.get("confidence") or 0.35),
-        priority=str(gf.get("priority") or "HIGH"),
-        reason_code=str(gf.get("reason_code") or "global_fallback"),
+
+    version = _require_string(obj.get("version"), label="version")
+    defaults_obj = _require_object(obj.get("defaults"), label="defaults")
+    defs: Dict[str, DefaultRule] = {}
+    for key, value in defaults_obj.items():
+        defs[str(key)] = _parse_default_rule(value, label=f"defaults['{key}']")
+
+    global_fallback_obj = obj.get("global_fallback")
+    global_rule = (
+        _default_global_fallback_rule()
+        if global_fallback_obj is None
+        else _parse_default_rule(global_fallback_obj, label="global_fallback")
     )
+
     return CategoryDefaults(
-        schema=str(obj.get("schema") or "belle.category_defaults.v1"),
-        version=str(obj.get("version") or ""),
+        schema=schema,
+        version=version,
         defaults=defs,
         global_fallback=global_rule,
     )
 
 
-def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) -> Dict[str, str]:
+def _read_json_without_bom(path: Path) -> tuple[dict[str, Any], bool]:
     raw_bytes = path.read_bytes()
     has_utf8_bom = raw_bytes.startswith(UTF8_BOM)
     parse_bytes = raw_bytes[len(UTF8_BOM):] if has_utf8_bom else raw_bytes
@@ -74,10 +154,42 @@ def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) ->
     if not isinstance(obj, dict):
         raise ValueError("Top-level object must be a JSON object.")
 
+    return obj, has_utf8_bom
+
+
+def _parse_override_row(value: Any, *, label: str) -> CategoryOverride:
+    row = _require_object(value, label=label)
+    actual_keys = {str(k) for k in row.keys()}
+    missing_keys = sorted(_OVERRIDE_ROW_KEYS - actual_keys)
+    extra_keys = sorted(actual_keys - _OVERRIDE_ROW_KEYS)
+    if missing_keys or extra_keys:
+        parts = []
+        if missing_keys:
+            parts.append(f"missing={missing_keys}")
+        if extra_keys:
+            parts.append(f"extra={extra_keys}")
+        raise ValueError(f"{label} keys mismatch: " + ", ".join(parts))
+
+    return CategoryOverride(
+        target_account=_require_string(row.get("target_account"), label=f"{label}.target_account"),
+        target_tax_division=_require_string(
+            row.get("target_tax_division"),
+            label=f"{label}.target_tax_division",
+            allow_empty=True,
+        ),
+    )
+
+
+def load_category_overrides(
+    path: Path,
+    lexicon_category_keys: Iterable[str],
+) -> Dict[str, CategoryOverride]:
+    obj, has_utf8_bom = _read_json_without_bom(path)
+
     schema = str(obj.get("schema") or "")
-    if schema != CATEGORY_OVERRIDES_SCHEMA_V1:
+    if schema != CATEGORY_OVERRIDES_SCHEMA_V2:
         raise ValueError(
-            f"schema must be '{CATEGORY_OVERRIDES_SCHEMA_V1}', got '{schema or '(empty)'}'."
+            f"schema must be '{CATEGORY_OVERRIDES_SCHEMA_V2}', got '{schema or '(empty)'}'."
         )
 
     overrides = obj.get("overrides")
@@ -96,19 +208,12 @@ def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) ->
             parts.append(f"extra={extra}")
         raise ValueError("overrides keys mismatch: " + ", ".join(parts))
 
-    resolved: Dict[str, str] = {}
+    resolved: Dict[str, CategoryOverride] = {}
     for key in sorted(expected_keys):
-        row = overrides.get(key)
-        if not isinstance(row, dict):
-            raise ValueError(f"overrides['{key}'] must be an object.")
-        debit = row.get("debit_account")
-        if not isinstance(debit, str) or not debit.strip():
-            raise ValueError(f"overrides['{key}'].debit_account must be a non-empty string.")
-        resolved[key] = debit
+        resolved[key] = _parse_override_row(overrides.get(key), label=f"overrides['{key}']")
 
     if has_utf8_bom:
-        # Tiny unit-style check: BOM + valid JSON should parse, validate, then write back bytes[3:].
-        path.write_bytes(parse_bytes)
+        path.write_bytes(path.read_bytes()[len(UTF8_BOM):])
         print(f"[WARN] UTF-8 BOM detected and removed: {path}")
 
     return resolved
@@ -117,7 +222,7 @@ def load_category_overrides(path: Path, lexicon_category_keys: Iterable[str]) ->
 def try_load_category_overrides(
     path: Path,
     lexicon_category_keys: Iterable[str],
-) -> tuple[dict[str, str], list[str]]:
+) -> tuple[dict[str, CategoryOverride], list[str]]:
     warnings: list[str] = []
     if not path.exists():
         return {}, [f"category_overrides_missing_file: path={path}"]
@@ -153,10 +258,10 @@ def try_load_category_overrides(
         return {}, warnings
 
     schema = str(obj.get("schema") or "")
-    if schema != CATEGORY_OVERRIDES_SCHEMA_V1:
+    if schema != CATEGORY_OVERRIDES_SCHEMA_V2:
         warnings.append(
             "category_overrides_schema_invalid: "
-            f"path={path} expected={CATEGORY_OVERRIDES_SCHEMA_V1} actual={schema or '(empty)'}"
+            f"path={path} expected={CATEGORY_OVERRIDES_SCHEMA_V2} actual={schema or '(empty)'}"
         )
         return {}, warnings
 
@@ -183,21 +288,53 @@ def try_load_category_overrides(
             f"path={path} {_format_key_summary(missing_keys)}"
         )
 
-    resolved: dict[str, str] = {}
+    resolved: dict[str, CategoryOverride] = {}
     invalid_rows: list[str] = []
     invalid_values: list[str] = []
+    missing_row_fields: list[str] = []
+    extra_row_fields: list[str] = []
 
     for key in sorted(expected_keys):
         row = overrides.get(key)
         if not isinstance(row, dict):
             invalid_rows.append(key)
             continue
-        debit = row.get("debit_account")
-        if not isinstance(debit, str) or not debit.strip():
+
+        row_keys = {str(k) for k in row.keys()}
+        missing_required = sorted(_OVERRIDE_ROW_KEYS - row_keys)
+        extra = sorted(row_keys - _OVERRIDE_ROW_KEYS)
+        if missing_required:
+            missing_row_fields.append(key)
+        if extra:
+            extra_row_fields.append(key)
+
+        target_account = row.get("target_account")
+        target_tax_division = row.get("target_tax_division")
+        if not isinstance(target_account, str) or not target_account.strip():
             invalid_values.append(key)
             continue
-        resolved[key] = debit
+        if not isinstance(target_tax_division, str):
+            invalid_values.append(key)
+            continue
+        if missing_required:
+            invalid_values.append(key)
+            continue
 
+        resolved[key] = CategoryOverride(
+            target_account=target_account,
+            target_tax_division=target_tax_division,
+        )
+
+    if missing_row_fields:
+        warnings.append(
+            "category_overrides_row_missing_keys: "
+            f"path={path} {_format_key_summary(missing_row_fields)}"
+        )
+    if extra_row_fields:
+        warnings.append(
+            "category_overrides_row_extra_keys: "
+            f"path={path} {_format_key_summary(extra_row_fields)}"
+        )
     if invalid_rows:
         warnings.append(
             "category_overrides_row_invalid: "
@@ -224,24 +361,23 @@ def generate_full_category_overrides(
         print(
             "[WARN] category_overrides_generate_missing_defaults: "
             f"{_format_key_summary(missing_defaults)} "
-            f"fallback={global_defaults.global_fallback.debit_account}"
+            f"fallback={global_defaults.global_fallback.target_account}"
         )
 
     overrides = {}
     for key in keys:
         rule = global_defaults.defaults.get(key)
-        debit_account = (
-            rule.debit_account
-            if rule is not None
-            else global_defaults.global_fallback.debit_account
-        )
-        overrides[key] = {"debit_account": debit_account}
+        effective_rule = rule if rule is not None else global_defaults.global_fallback
+        overrides[key] = {
+            "target_account": effective_rule.target_account,
+            "target_tax_division": effective_rule.target_tax_division,
+        }
 
     payload = {
-        "schema": CATEGORY_OVERRIDES_SCHEMA_V1,
+        "schema": CATEGORY_OVERRIDES_SCHEMA_V2,
         "client_id": str(client_id),
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "note_ja": "Edit ONLY debit_account string values. Do not change keys/structure.",
+        "note_ja": "target_account と target_tax_division の文字列値のみ編集してください。キーや構造は変更しないでください。",
         "overrides": overrides,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,15 +386,23 @@ def generate_full_category_overrides(
 
 def merge_effective_defaults(
     global_defaults: CategoryDefaults,
-    override_debit_accounts: Dict[str, str],
+    overrides_by_category: Dict[str, CategoryOverride],
 ) -> CategoryDefaults:
     merged_defaults: Dict[str, DefaultRule] = {}
     for key, rule in global_defaults.defaults.items():
-        debit = override_debit_accounts.get(key, rule.debit_account)
-        if not isinstance(debit, str) or not debit.strip():
-            raise ValueError(f"Invalid override debit_account for category '{key}'.")
+        override = overrides_by_category.get(key)
+        target_account = rule.target_account
+        target_tax_division = rule.target_tax_division
+        if override is not None:
+            target_account = override.target_account
+            target_tax_division = override.target_tax_division
+        if not isinstance(target_account, str) or not target_account.strip():
+            raise ValueError(f"Invalid override target_account for category '{key}'.")
+        if not isinstance(target_tax_division, str):
+            raise ValueError(f"Invalid override target_tax_division for category '{key}'.")
         merged_defaults[key] = DefaultRule(
-            debit_account=debit,
+            target_account=target_account,
+            target_tax_division=target_tax_division,
             confidence=rule.confidence,
             priority=rule.priority,
             reason_code=rule.reason_code,
