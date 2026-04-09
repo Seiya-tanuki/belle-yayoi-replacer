@@ -204,7 +204,7 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
                 self.assertFalse(legacy_cache_path.exists(), msg=output)
 
                 cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-                self.assertEqual("belle.client_cache.v1", cache_obj.get("schema"))
+                self.assertEqual("belle.client_cache.v2", cache_obj.get("schema"))
                 self.assertTrue(cache_obj.get("append_only"))
 
                 applied = cache_obj.get("applied_ledger_ref_sha256") or {}
@@ -221,6 +221,16 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
                 self.assertTrue(
                     set(t_numbers_by_category["T1234567890123"]).issubset(current_category_keys),
                     msg=output,
+                )
+                self.assertEqual(
+                    {
+                        "t_numbers_by_category_and_account": {},
+                        "t_numbers_by_account": {},
+                        "vendor_keys_by_account": {},
+                        "categories_by_account": {},
+                        "global_by_account": {},
+                    },
+                    cache_obj.get("tax_stats") or {},
                 )
 
                 telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))

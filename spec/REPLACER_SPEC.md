@@ -8,8 +8,12 @@ For credit-card replacement behavior, see `spec/CREDIT_CARD_REPLACER_SPEC.md`.
 
 ## Goal
 
-Replace ONLY the debit account field (5th column) in Yayoi 25-column import CSV.
-Never change any other field. Preserve formatting behavior and CSV contract.
+For `receipt`, replace only:
+1. debit account field (5th column)
+2. debit-side tax division field (8th column)
+
+All other replacement logic must remain out of scope.
+The shared tax postprocess may then fill tax amount cells after receipt tax-division replacement.
 
 ## Line implementation status (current)
 
@@ -41,14 +45,15 @@ This contract in this file is for `receipt` line behavior.
 
 1. Only summary (17th column) may be used for inference.
 2. Debit account (5th) is read-only for before value and replaced in output.
-3. Memo (22nd) must not be used.
+3. Debit tax division (8th) is read-only for before value and may be replaced in output.
+4. Memo (22nd) must not be used.
 
 ## Defaults overlay (runtime)
 
 1. Load global defaults from `defaults/<line_id>/category_defaults.json`.
 2. Load per-client overrides from `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`.
 3. Build `effective_defaults = merge(global_defaults, client_overrides)`:
-   1. Override only `debit_account` per `category_key`.
+   1. Override `target_account` and `target_tax_division` per `category_key`.
    2. Keep global `confidence`, `priority`, and `reason_code` unchanged.
 4. If overrides file is missing, generate a full-expanded file and continue.
 5. If overrides file exists, load it best-effort:
@@ -70,6 +75,25 @@ For each row, compute suggestion in this order:
 5. category route (client evidence, gated)
 6. category default route
 7. global fallback
+
+## Receipt tax-division decision order
+
+After the debit account has been decided for the row, compute debit-side tax division in this order:
+1. `t_number + category + target_account`
+2. `t_number + target_account`
+3. `vendor_key + target_account`
+4. `category + target_account`
+5. `global + target_account`
+6. category default / override `target_tax_division` when non-empty
+7. global fallback `target_tax_division` when non-empty
+8. unresolved / no-op
+
+Rules:
+1. Learned tax routes are conditioned on the chosen debit account and must not cross-pollute across accounts.
+2. Static fallback routes must not blank an existing tax division cell when `target_tax_division == ""`.
+3. Receipt tax-division replacement runs before the shared tax postprocess.
+4. Receipt target side remains the debit side.
+5. No backward compatibility or migration support is provided for older receipt client_cache schema in this phase.
 
 ## Outputs
 

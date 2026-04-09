@@ -10,19 +10,26 @@ This module implements the "client_cache is a cache" design:
 - client_cache.json grows by applying only not-yet-applied batches.
 
 The replacer MUST call the ensure/update function before using client_cache,
-so that T-number and T×category evidence are always up to date.
+so that receipt account and tax-division evidence are always up to date.
 """
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from .lines import is_line_implemented, validate_line_id
+from .yayoi_columns import COL_DEBIT_ACCOUNT, COL_DEBIT_TAX_DIVISION, COL_SUMMARY
 from .yayoi_csv import read_yayoi_csv, token_to_text
 from .text import extract_t_number, vendor_key_from_summary
 from .lexicon import Lexicon, match_summary
-from .client_cache import ClientCache, StatsEntry
+from .client_cache import (
+    CLIENT_CACHE_SCHEMA_V2,
+    CLIENT_CACHE_VERSION_V2,
+    ClientCache,
+    StatsEntry,
+    TaxStatsEntry,
+)
 from .stats_utils import ensure_stats_entry
 from .ingest import ingest_csv_dir
 from .paths import (
@@ -58,25 +65,61 @@ def _get_dummy_summary(config: Dict[str, Any]) -> str:
     return (config.get("csv_contract") or {}).get("dummy_summary_exact") or "##DUMMY_OCR_UNREADABLE##"
 
 
-def _thresholds_from_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    thr = config.get("thresholds") or {}
+def _account_thresholds_from_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    thresholds = config.get("thresholds") or {}
     return {
         "t_number": {
-            "min_count": int(thr.get("t_number_min_count", 3)),
-            "min_p_majority": float(thr.get("t_number_p_majority_min", 0.70)),
+            "min_count": int(thresholds.get("t_number_min_count", 3)),
+            "min_p_majority": float(thresholds.get("t_number_p_majority_min", 0.70)),
         },
         "t_number_x_category": {
-            "min_count": int(thr.get("t_number_x_category_min_count", 2)),
-            "min_p_majority": float(thr.get("t_number_x_category_p_majority_min", 0.75)),
+            "min_count": int(thresholds.get("t_number_x_category_min_count", 2)),
+            "min_p_majority": float(thresholds.get("t_number_x_category_p_majority_min", 0.75)),
         },
         "vendor_key": {
-            "min_count": int(thr.get("vendor_key_min_count", 3)),
-            "min_p_majority": float(thr.get("vendor_key_p_majority_min", 0.70)),
+            "min_count": int(thresholds.get("vendor_key_min_count", 3)),
+            "min_p_majority": float(thresholds.get("vendor_key_p_majority_min", 0.70)),
         },
         "category": {
-            "min_count": int(thr.get("category_min_count", 3)),
-            "min_p_majority": float(thr.get("category_p_majority_min", 0.70)),
+            "min_count": int(thresholds.get("category_min_count", 3)),
+            "min_p_majority": float(thresholds.get("category_p_majority_min", 0.70)),
         },
+    }
+
+
+def _tax_thresholds_from_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    raw = config.get("tax_division_thresholds")
+    section = raw if isinstance(raw, dict) else {}
+    return {
+        "t_number_x_category_target_account": {
+            "min_count": int((section.get("t_number_x_category_target_account") or {}).get("min_count", 2)),
+            "min_p_majority": float(
+                (section.get("t_number_x_category_target_account") or {}).get("min_p_majority", 0.75)
+            ),
+        },
+        "t_number_target_account": {
+            "min_count": int((section.get("t_number_target_account") or {}).get("min_count", 3)),
+            "min_p_majority": float((section.get("t_number_target_account") or {}).get("min_p_majority", 0.70)),
+        },
+        "vendor_key_target_account": {
+            "min_count": int((section.get("vendor_key_target_account") or {}).get("min_count", 3)),
+            "min_p_majority": float((section.get("vendor_key_target_account") or {}).get("min_p_majority", 0.70)),
+        },
+        "category_target_account": {
+            "min_count": int((section.get("category_target_account") or {}).get("min_count", 3)),
+            "min_p_majority": float((section.get("category_target_account") or {}).get("min_p_majority", 0.70)),
+        },
+        "global_target_account": {
+            "min_count": int((section.get("global_target_account") or {}).get("min_count", 3)),
+            "min_p_majority": float((section.get("global_target_account") or {}).get("min_p_majority", 0.70)),
+        },
+    }
+
+
+def _decision_thresholds_from_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "account": _account_thresholds_from_config(config),
+        "tax_division": _tax_thresholds_from_config(config),
     }
 
 
@@ -92,6 +135,35 @@ def _ensure_nested_stats(d: Dict[str, Dict[str, StatsEntry]], k1: str, k2: str) 
     return d[k1][k2]
 
 
+def _ensure_tax_stats_entry(d: Dict[str, TaxStatsEntry], key: str) -> TaxStatsEntry:
+    if key not in d:
+        d[key] = TaxStatsEntry.empty()
+    return d[key]
+
+
+def _ensure_nested_tax_stats(d: Dict[str, Dict[str, TaxStatsEntry]], k1: str, k2: str) -> TaxStatsEntry:
+    if k1 not in d:
+        d[k1] = {}
+    if k2 not in d[k1]:
+        d[k1][k2] = TaxStatsEntry.empty()
+    return d[k1][k2]
+
+
+def _ensure_t_category_account_tax_stats(
+    d: Dict[str, Dict[str, Dict[str, TaxStatsEntry]]],
+    t_number: str,
+    category_key: str,
+    debit_account: str,
+) -> TaxStatsEntry:
+    if t_number not in d:
+        d[t_number] = {}
+    if category_key not in d[t_number]:
+        d[t_number][category_key] = {}
+    if debit_account not in d[t_number][category_key]:
+        d[t_number][category_key][debit_account] = TaxStatsEntry.empty()
+    return d[t_number][category_key][debit_account]
+
+
 def apply_ledger_ref_file_append_only(
     *,
     tm: ClientCache,
@@ -100,48 +172,68 @@ def apply_ledger_ref_file_append_only(
     dummy_summary_exact: str,
 ) -> Tuple[int, int]:
     """
-    Apply a single ledger_ref CSV (append-only): adds counts into tm distributions.
+    Apply a single ledger_ref CSV (append-only): adds counts into client distributions.
 
     Returns (row_total, row_used).
     """
-    csv = read_yayoi_csv(ledger_ref_csv)
+    csv_obj = read_yayoi_csv(ledger_ref_csv)
     row_total = 0
     row_used = 0
 
-    for row in csv.rows:
+    for row in csv_obj.rows:
         row_total += 1
-        summary = token_to_text(row.tokens[16], csv.encoding)  # 摘要 (17th col)
-        debit = token_to_text(row.tokens[4], csv.encoding)     # 借方勘定科目 (5th col)
+        summary = token_to_text(row.tokens[COL_SUMMARY], csv_obj.encoding)
+        debit_account = token_to_text(row.tokens[COL_DEBIT_ACCOUNT], csv_obj.encoding)
 
         if not summary or summary == dummy_summary_exact:
             continue
-        if not debit:
+        if not debit_account:
             continue
 
         row_used += 1
+        tm.global_stats.add_account(debit_account)
 
-        # global distribution
-        tm.global_stats.add_account(debit)
+        t_number = extract_t_number(summary)
+        if t_number:
+            _ensure_stats_entry(tm.t_numbers, t_number).add_account(debit_account)
 
-        # T-number
-        tnum = extract_t_number(summary)
-        if tnum:
-            _ensure_stats_entry(tm.t_numbers, tnum).add_account(debit)
+        vendor_key = vendor_key_from_summary(summary)
+        if vendor_key:
+            _ensure_stats_entry(tm.vendor_keys, vendor_key).add_account(debit_account)
 
-        # vendor key
-        vkey = vendor_key_from_summary(summary)
-        if vkey:
-            _ensure_stats_entry(tm.vendor_keys, vkey).add_account(debit)
+        match = match_summary(lex, summary)
+        category_key = match.category_key
+        if category_key:
+            _ensure_stats_entry(tm.categories, category_key).add_account(debit_account)
 
-        # category (from lexicon)
-        m = match_summary(lex, summary)
-        cat_key = m.category_key
-        if cat_key:
-            _ensure_stats_entry(tm.categories, cat_key).add_account(debit)
+        if t_number and category_key:
+            _ensure_nested_stats(tm.t_numbers_by_category, t_number, category_key).add_account(debit_account)
 
-        # T-number × category
-        if tnum and cat_key:
-            _ensure_nested_stats(tm.t_numbers_by_category, tnum, cat_key).add_account(debit)
+        debit_tax_division = token_to_text(row.tokens[COL_DEBIT_TAX_DIVISION], csv_obj.encoding).strip()
+        if not debit_tax_division:
+            continue
+
+        _ensure_tax_stats_entry(tm.tax_global_by_account, debit_account).add_tax_division(debit_tax_division)
+
+        if t_number:
+            _ensure_nested_tax_stats(tm.tax_t_numbers_by_account, t_number, debit_account).add_tax_division(
+                debit_tax_division
+            )
+        if vendor_key:
+            _ensure_nested_tax_stats(tm.tax_vendor_keys_by_account, vendor_key, debit_account).add_tax_division(
+                debit_tax_division
+            )
+        if category_key:
+            _ensure_nested_tax_stats(tm.tax_categories_by_account, category_key, debit_account).add_tax_division(
+                debit_tax_division
+            )
+        if t_number and category_key:
+            _ensure_t_category_account_tax_stats(
+                tm.tax_t_numbers_by_category_and_account,
+                t_number,
+                category_key,
+                debit_account,
+            ).add_tax_division(debit_tax_division)
 
     return row_total, row_used
 
@@ -174,11 +266,9 @@ def ensure_client_cache_updated(
     ingest_manifest_path = get_ledger_ref_ingested_path(repo_root, client_id, line_id=line_id)
 
     warnings: List[str] = []
-    dummy = _get_dummy_summary(config)
-    thresholds = _thresholds_from_config(config)
+    dummy_summary_exact = _get_dummy_summary(config)
+    decision_thresholds = _decision_thresholds_from_config(config)
 
-    # Ingest (rename + manifest)
-    # Accept both .csv and .txt for ledger_ref inputs.
     manifest, new_shas_csv, dup_shas_csv = ingest_csv_dir(
         dir_path=ledger_ref_inbox_dir,
         store_dir=ledger_ref_store_dir,
@@ -202,15 +292,12 @@ def ensure_client_cache_updated(
     new_shas = new_shas_csv + new_shas_txt
     dup_shas = dup_shas_csv + dup_shas_txt
 
-    # Load/create client_cache
     if client_cache_path.exists():
         tm = ClientCache.load(client_cache_path)
-        # keep thresholds auditable but do not break compatibility
-        tm.decision_thresholds = tm.decision_thresholds or thresholds
+        tm.decision_thresholds = tm.decision_thresholds or decision_thresholds
     else:
-        tm = ClientCache.empty(client_id, thresholds=thresholds)
+        tm = ClientCache.empty(client_id, thresholds=decision_thresholds)
 
-    # Apply only not-yet-applied ingested shas (append-only)
     applied_new: List[str] = []
     rows_total_added = 0
     rows_used_added = 0
@@ -222,45 +309,45 @@ def ensure_client_cache_updated(
         if sha in (tm.applied_ledger_ref_sha256 or {}):
             continue
         entry = ingested.get(sha) or {}
-        p = resolve_ledger_ref_stored_path(repo_root, client_id, entry, line_id=line_id)
-        if p is None:
+        stored_path = resolve_ledger_ref_stored_path(repo_root, client_id, entry, line_id=line_id)
+        if stored_path is None:
             warnings.append(f"missing_stored_path: sha={sha}")
             continue
-        if not p.exists():
-            warnings.append(f"missing_ingested_file: sha={sha} expected={p}")
+        if not stored_path.exists():
+            warnings.append(f"missing_ingested_file: sha={sha} expected={stored_path}")
             continue
 
-        stored_name = str(entry.get("stored_name") or p.name)
+        stored_name = str(entry.get("stored_name") or stored_path.name)
         stored_relpath = str(entry.get("stored_relpath") or "").strip()
         if not stored_relpath:
             try:
-                stored_relpath = p.relative_to(client_dir).as_posix()
+                stored_relpath = stored_path.relative_to(client_dir).as_posix()
             except ValueError:
                 stored_relpath = stored_name
 
-        rt, ru = apply_ledger_ref_file_append_only(
+        rows_total, rows_used = apply_ledger_ref_file_append_only(
             tm=tm,
-            ledger_ref_csv=p,
+            ledger_ref_csv=stored_path,
             lex=lex,
-            dummy_summary_exact=dummy,
+            dummy_summary_exact=dummy_summary_exact,
         )
-        rows_total_added += int(rt)
-        rows_used_added += int(ru)
+        rows_total_added += int(rows_total)
+        rows_used_added += int(rows_used)
         tm.applied_ledger_ref_sha256[str(sha)] = {
             "applied_at": _now_utc_iso(),
             "stored_name": stored_name,
             "stored_relpath": stored_relpath,
-            "rows_total": int(rt),
-            "rows_used": int(ru),
+            "rows_total": int(rows_total),
+            "rows_used": int(rows_used),
         }
         applied_new.append(str(sha))
 
     tm.updated_at = _now_utc_iso()
-    tm.version = "1.15"
-    tm.schema = "belle.client_cache.v1"
+    tm.version = CLIENT_CACHE_VERSION_V2
+    tm.schema = CLIENT_CACHE_SCHEMA_V2
     tm.append_only = True
     if not tm.decision_thresholds:
-        tm.decision_thresholds = thresholds
+        tm.decision_thresholds = decision_thresholds
 
     tm.save(client_cache_path)
 
@@ -279,4 +366,3 @@ def ensure_client_cache_updated(
     )
 
     return tm, summary
-

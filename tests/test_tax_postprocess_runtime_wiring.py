@@ -59,6 +59,16 @@ TAX_REVIEW_COLUMNS = [
     "credit_tax_rate",
     "credit_tax_calc_mode",
 ]
+RECEIPT_TAX_DIVISION_COLUMNS = [
+    "debit_tax_division_before",
+    "debit_tax_division_after",
+    "debit_tax_division_changed",
+    "tax_evidence_type",
+    "tax_confidence",
+    "tax_sample_total",
+    "tax_p_majority",
+    "tax_reasons",
+]
 
 
 def _enabled_tax_config() -> YayoiTaxPostprocessConfig:
@@ -285,12 +295,17 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
 
             self.assertEqual("55", rows[0][COL_DEBIT_TAX_AMOUNT])
             self.assertEqual(1, int(replacer_manifest["changed_count"]))
+            self.assertEqual(
+                RECEIPT_TAX_DIVISION_COLUMNS,
+                fieldnames[-len(TAX_REVIEW_COLUMNS) - len(RECEIPT_TAX_DIVISION_COLUMNS) : -len(TAX_REVIEW_COLUMNS)],
+            )
             self.assertEqual(TAX_REVIEW_COLUMNS, fieldnames[-len(TAX_REVIEW_COLUMNS) :])
             self.assertEqual("1", review_rows[0]["changed"])
             self.assertEqual("55", review_rows[0]["debit_tax_amount_after"])
             self.assertEqual(STATUS_APPLIED_INNER_FLOOR, review_rows[0]["debit_tax_fill_status"])
             self.assertEqual("10", review_rows[0]["debit_tax_rate"])
             self.assertEqual("inner", review_rows[0]["debit_tax_calc_mode"])
+            self.assertIn("tax_division_replacement", replacer_manifest)
             self.assertEqual(True, bool((replacer_manifest.get("tax_postprocess") or {}).get("enabled")))
             self.assertEqual(1, int((replacer_manifest.get("tax_postprocess") or {}).get("rows_changed") or 0))
 

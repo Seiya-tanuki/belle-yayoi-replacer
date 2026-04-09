@@ -1,4 +1,4 @@
-# CLIENT_CACHE_SPEC (receipt line client_cache, belle.client_cache.v1)
+# CLIENT_CACHE_SPEC (receipt line client_cache, belle.client_cache.v2)
 
 ## Scope
 
@@ -20,6 +20,13 @@ It provides empirical debit-account distributions keyed by:
 3. **vendor_key** extracted from summary (splitters + legal-form stripping)
 4. **category** inferred from lexicon using summary
 5. **global** debit-account distribution (all rows)
+
+It also provides receipt debit-side tax-division distributions conditioned on the chosen debit account:
+1. `t_number + category + target_account`
+2. `t_number + target_account`
+3. `vendor_key + target_account`
+4. `category + target_account`
+5. `global + target_account`
 
 The replacer uses client_cache only when evidence is strong enough (gated by thresholds); otherwise it falls back to `defaults/<line_id>/category_defaults.json`.
 
@@ -51,14 +58,15 @@ After successful ingest, `inputs/ledger_ref/` should be empty (except placeholde
 ## Schema (high level)
 
 Top-level keys:
-1. `schema`: `belle.client_cache.v1`
+1. `schema`: `belle.client_cache.v2`
 2. `version`
 3. `client_id`
 4. `created_at`, `updated_at`
 5. `append_only`: bool
 6. `applied_ledger_ref_sha256`: `{ sha256 -> { applied_at, stored_name, stored_relpath, rows_total, rows_used } }`
 7. `decision_thresholds`: copy of thresholds for audit
-8. `stats`: distribution maps
+8. `stats`: debit-account distribution maps
+9. `tax_stats`: debit-side tax-division distribution maps conditioned on debit account
 
 ### stats maps
 
@@ -76,11 +84,33 @@ Maps:
 4. `categories`: `{ "<CATEGORY_KEY>": StatsEntry }`
 5. `global`: StatsEntry
 
+### tax_stats maps
+
+Each tax stats entry stores:
+1. `sample_total`
+2. `top_tax_division`
+3. `top_count`
+4. `p_majority`
+5. `tax_division_counts`
+
+Maps:
+1. `t_numbers_by_category_and_account`: `{ "T123...": { "<CATEGORY_KEY>": { "<DEBIT_ACCOUNT>": TaxStatsEntry } } }`
+2. `t_numbers_by_account`: `{ "T123...": { "<DEBIT_ACCOUNT>": TaxStatsEntry } }`
+3. `vendor_keys_by_account`: `{ "<VENDOR_KEY>": { "<DEBIT_ACCOUNT>": TaxStatsEntry } }`
+4. `categories_by_account`: `{ "<CATEGORY_KEY>": { "<DEBIT_ACCOUNT>": TaxStatsEntry } }`
+5. `global_by_account`: `{ "<DEBIT_ACCOUNT>": TaxStatsEntry }`
+
 ## Important invariants
 
-1. Only summary (17th column) and debit account (5th column) are used.
-2. Memo (22nd column) MUST NOT be used.
-3. Dummy summaries (`##DUMMY_OCR_UNREADABLE##`) are excluded from stats.
+1. Account learning uses only summary (17th column) and debit account (5th column).
+2. Tax learning uses only summary (17th column), debit account (5th column), and debit tax division (8th column).
+3. Tax learning is skipped when summary is blank/dummy, debit account is blank, or debit tax division is blank.
+4. Memo (22nd column) MUST NOT be used.
+5. Dummy summaries (`##DUMMY_OCR_UNREADABLE##`) are excluded from stats.
+
+## Compatibility note
+
+This phase does not provide backward-compatibility or migration support for older receipt client_cache schema versions.
 
 ## Legacy compatibility (receipt only, deprecated)
 

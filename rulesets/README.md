@@ -9,3 +9,4 @@ Notes:
 - v1_15 adds gated routes for:
   1) T-number × category
   2) T-number
+- The same tracked receipt ruleset now also contains dedicated `tax_division_thresholds` and `tax_division_confidence` sections for receipt debit-side tax routing.

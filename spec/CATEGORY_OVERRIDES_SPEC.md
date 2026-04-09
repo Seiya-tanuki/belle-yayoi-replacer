@@ -44,7 +44,8 @@ Top-level keys:
 3. Do not change schema/version fields.
 4. `target_account` must be a non-empty string.
 5. `target_tax_division` must be a string and may be blank.
-6. Phase A resets only the shared contract. Tax learning and runtime tax-division replacement are deferred.
+6. `receipt` may use non-empty `target_tax_division` as a fallback route after learned receipt tax evidence.
+7. `credit_card_statement` still treats `target_tax_division` as stored overlay data only in this phase.
 
 ## Runtime validation semantics (best-effort)
 
@@ -79,7 +80,8 @@ Top-level keys:
 
 1. `receipt` reads the merged rule's `target_account` as the debit-side fallback account.
 2. `credit_card_statement` reads the merged rule's `target_account` as the placeholder-side fallback account.
-3. `target_tax_division` is stored now for later phases but is not written to Yayoi CSV in Phase A.
+3. `receipt` reads `target_tax_division` as a debit-side tax-division fallback only when the value is non-empty.
+4. `credit_card_statement` still stores `target_tax_division` for a later phase.
 
 ## Warnings and manifest
 
