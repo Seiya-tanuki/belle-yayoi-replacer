@@ -29,15 +29,21 @@ from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_SUBACCOUNT,
     COL_CREDIT_TAX_AMOUNT,
+    COL_CREDIT_TAX_DIVISION,
     COL_DEBIT_ACCOUNT,
     COL_DEBIT_SUBACCOUNT,
     COL_DEBIT_TAX_AMOUNT,
+    COL_DEBIT_TAX_DIVISION,
     COL_SUMMARY,
 )
 from .yayoi_csv import read_yayoi_csv, write_yayoi_csv
 
 _NONE_EVIDENCE = "none"
 _FILE_INFERRED_EVIDENCE = "file_inferred"
+_ROUTE_TAX_EXACT = "merchant_key_target_account_exact"
+_ROUTE_TAX_PARTIAL = "merchant_key_target_account_partial"
+_ROUTE_TAX_CATEGORY_DEFAULT = "category_default"
+_ROUTE_TAX_GLOBAL_FALLBACK = "global_fallback"
 _PLACEHOLDER_DEFAULT = "\u4eee\u6255\u91d1"
 _PAYABLE_DEFAULT = "\u672a\u6255\u91d1"
 _SPACES_RE = re.compile(r"[ \u3000]+")
@@ -70,6 +76,7 @@ class CCRowDecision:
     p_majority: float
     top_count: int
     predicted_account: str
+    account_partial_match_used: bool
     payable_sub_before: str
     payable_sub_after: str
     payable_sub_changed: bool
@@ -88,6 +95,31 @@ class CCRowDecision:
     lexicon_quality: str
     matched_needle: str
     is_learned_signal: bool
+    target_tax_side: str
+    target_tax_division_before: str
+    target_tax_division_after: str
+    target_tax_division_changed: bool
+    tax_evidence_type: str
+    tax_lookup_key: str
+    tax_confidence: float
+    tax_sample_total: int
+    tax_p_majority: float
+    tax_reasons: List[str]
+
+
+@dataclass
+class CCTaxDecision:
+    target_tax_side: str
+    target_tax_division_before: str
+    target_tax_division_after: str
+    changed: bool
+    evidence_type: str
+    lookup_key: str
+    confidence: float
+    sample_total: int
+    p_majority: float
+    top_count: int
+    reasons: List[str]
 
 
 def sha256_file(path: Path) -> str:
@@ -227,6 +259,30 @@ def _resolve_file_level_thresholds(config: Dict[str, Any], cache: CCClientCache)
     }
 
 
+def _resolve_tax_division_thresholds(config: Dict[str, Any], cache: CCClientCache) -> Dict[str, Dict[str, float]]:
+    raw = (
+        config.get("tax_division_thresholds")
+        if isinstance(config.get("tax_division_thresholds"), dict)
+        else {}
+    )
+    if not raw:
+        cache_thresholds = cache.decision_thresholds if isinstance(cache.decision_thresholds, dict) else {}
+        if isinstance(cache_thresholds.get("tax_division_thresholds"), dict):
+            raw = cache_thresholds.get("tax_division_thresholds") or {}
+    exact_raw = raw.get(_ROUTE_TAX_EXACT) if isinstance(raw.get(_ROUTE_TAX_EXACT), dict) else {}
+    partial_raw = raw.get(_ROUTE_TAX_PARTIAL) if isinstance(raw.get(_ROUTE_TAX_PARTIAL), dict) else {}
+    return {
+        _ROUTE_TAX_EXACT: {
+            "min_count": float(_as_int(exact_raw.get("min_count"), 3)),
+            "min_p_majority": float(_as_float(exact_raw.get("min_p_majority"), 0.9)),
+        },
+        _ROUTE_TAX_PARTIAL: {
+            "min_count": float(_as_int(partial_raw.get("min_count"), 3)),
+            "min_p_majority": float(_as_float(partial_raw.get("min_p_majority"), 0.9)),
+        },
+    }
+
+
 def _resolve_partial_match_settings(config: Dict[str, Any], cache: CCClientCache) -> Dict[str, Any]:
     defaults: Dict[str, Any] = {
         "enabled": True,
@@ -362,6 +418,58 @@ def _build_eligible_payable_partial_keys(
             continue
         eligible.add(k)
     return eligible
+
+
+def _load_cc_tax_stats_entry(
+    cache: CCClientCache,
+    lookup_key: str,
+    target_account: str,
+) -> Optional[ValueStatsEntry]:
+    tax_map = cache.merchant_key_target_account_tax_stats if isinstance(cache.merchant_key_target_account_tax_stats, dict) else {}
+    by_account = tax_map.get(str(lookup_key or ""))
+    if not isinstance(by_account, dict):
+        return None
+    entry = by_account.get(str(target_account or ""))
+    if isinstance(entry, dict):
+        entry = ValueStatsEntry.from_obj(entry)
+    return entry if isinstance(entry, ValueStatsEntry) else None
+
+
+def _tax_threshold_pass(
+    *,
+    stats: ValueStatsEntry,
+    min_count: int,
+    min_p_majority: float,
+) -> Tuple[bool, List[str]]:
+    reasons: List[str] = []
+    if int(stats.sample_total) < int(min_count):
+        reasons.append("tax_min_count_not_met")
+    if float(stats.p_majority) < float(min_p_majority):
+        reasons.append("tax_p_majority_not_met")
+    if not str(stats.top_value or "").strip():
+        reasons.append("tax_top_missing")
+    if int(stats.top_count) <= 0:
+        reasons.append("tax_top_count_invalid")
+    counts = stats.value_counts if isinstance(stats.value_counts, dict) else {}
+    if counts and int(stats.top_count) > 0:
+        tie_count = sum(1 for _, cnt in counts.items() if int(cnt) == int(stats.top_count))
+        if tie_count != 1:
+            reasons.append("tax_top_tie")
+    return (len(reasons) == 0, reasons)
+
+
+def _target_tax_side_from_placeholder_side(placeholder_side: str) -> str:
+    if placeholder_side in {"debit", "credit"}:
+        return placeholder_side
+    return ""
+
+
+def _target_tax_col_from_side(side: str) -> Optional[int]:
+    if side == "debit":
+        return COL_DEBIT_TAX_DIVISION
+    if side == "credit":
+        return COL_CREDIT_TAX_DIVISION
+    return None
 
 
 def _append_partial_example(examples: List[Tuple[str, str]], input_key: str, matched_key: str) -> None:
@@ -579,6 +687,178 @@ def _account_threshold_pass(
     return (len(reasons) == 0, reasons)
 
 
+def decide_cc_tax(
+    *,
+    tokens: Sequence[bytes],
+    encoding: str,
+    cache: CCClientCache,
+    config: Dict[str, Any],
+    decision: CCRowDecision,
+    defaults_opt: Optional[CategoryDefaults],
+    partial_match_settings: Dict[str, Any],
+    eligible_account_partial_keys: Optional[Iterable[str]] = None,
+) -> CCTaxDecision:
+    target_tax_side = _target_tax_side_from_placeholder_side(decision.placeholder_side)
+    tax_col = _target_tax_col_from_side(target_tax_side)
+    before = _safe_text(tokens, tax_col, encoding) if tax_col is not None else ""
+    predicted_account = str(decision.predicted_account or "").strip()
+    merchant_key = str(decision.merchant_key or "").strip()
+    tax_thresholds = _resolve_tax_division_thresholds(config, cache)
+
+    base = CCTaxDecision(
+        target_tax_side=target_tax_side,
+        target_tax_division_before=before,
+        target_tax_division_after=before,
+        changed=False,
+        evidence_type=_NONE_EVIDENCE,
+        lookup_key=merchant_key,
+        confidence=0.0,
+        sample_total=0,
+        p_majority=0.0,
+        top_count=0,
+        reasons=[],
+    )
+
+    if tax_col is None:
+        base.reasons.append("target_tax_side_not_determined")
+        return base
+    if not predicted_account:
+        base.reasons.append("predicted_account_empty")
+        return base
+    if not merchant_key:
+        base.reasons.append("merchant_key_empty")
+        return base
+
+    exact_entry = _load_cc_tax_stats_entry(cache, merchant_key, predicted_account)
+    if exact_entry is not None:
+        base.sample_total = int(exact_entry.sample_total)
+        base.p_majority = float(exact_entry.p_majority)
+        base.top_count = int(exact_entry.top_count)
+        passed, reasons = _tax_threshold_pass(
+            stats=exact_entry,
+            min_count=int((tax_thresholds.get(_ROUTE_TAX_EXACT) or {}).get("min_count", 3)),
+            min_p_majority=float((tax_thresholds.get(_ROUTE_TAX_EXACT) or {}).get("min_p_majority", 0.9)),
+        )
+        if passed:
+            chosen_tax = str(exact_entry.top_value or "").strip()
+            return CCTaxDecision(
+                target_tax_side=target_tax_side,
+                target_tax_division_before=before,
+                target_tax_division_after=chosen_tax or before,
+                changed=(chosen_tax != before) if chosen_tax else False,
+                evidence_type=_ROUTE_TAX_EXACT,
+                lookup_key=merchant_key,
+                confidence=float(exact_entry.p_majority),
+                sample_total=int(exact_entry.sample_total),
+                p_majority=float(exact_entry.p_majority),
+                top_count=int(exact_entry.top_count),
+                reasons=["tax_exact_selected"],
+            )
+        base.reasons.extend(reasons)
+    else:
+        base.reasons.append("tax_exact_stats_not_found")
+
+    partial_cfg = partial_match_settings if isinstance(partial_match_settings, dict) else {}
+    partial_enabled = (
+        bool(partial_cfg.get("enabled"))
+        and str(partial_cfg.get("direction") or "") == "cache_key_in_input"
+        and bool(partial_cfg.get("require_unique_longest", True))
+    )
+    partial_min_match_len = int(_as_int(partial_cfg.get("min_match_len"), 4))
+    partial_lookup_key = ""
+    if partial_enabled:
+        if decision.account_partial_match_used and str(decision.lookup_key or "").strip():
+            partial_lookup_key = str(decision.lookup_key or "").strip()
+            if partial_lookup_key == merchant_key:
+                partial_lookup_key = ""
+        elif not decision.account_partial_match_used:
+            partial_lookup_key = str(
+                resolve_partial_match_key(
+                    merchant_key,
+                    eligible_account_partial_keys or [],
+                    partial_min_match_len,
+                )
+                or ""
+            ).strip()
+    if partial_lookup_key:
+        partial_entry = _load_cc_tax_stats_entry(cache, partial_lookup_key, predicted_account)
+        if partial_entry is not None:
+            passed, reasons = _tax_threshold_pass(
+                stats=partial_entry,
+                min_count=int((tax_thresholds.get(_ROUTE_TAX_PARTIAL) or {}).get("min_count", 3)),
+                min_p_majority=float((tax_thresholds.get(_ROUTE_TAX_PARTIAL) or {}).get("min_p_majority", 0.9)),
+            )
+            if passed:
+                chosen_tax = str(partial_entry.top_value or "").strip()
+                return CCTaxDecision(
+                    target_tax_side=target_tax_side,
+                    target_tax_division_before=before,
+                    target_tax_division_after=chosen_tax or before,
+                    changed=(chosen_tax != before) if chosen_tax else False,
+                    evidence_type=_ROUTE_TAX_PARTIAL,
+                    lookup_key=partial_lookup_key,
+                    confidence=float(partial_entry.p_majority),
+                    sample_total=int(partial_entry.sample_total),
+                    p_majority=float(partial_entry.p_majority),
+                    top_count=int(partial_entry.top_count),
+                    reasons=["tax_partial_selected"],
+                )
+            base.sample_total = int(partial_entry.sample_total)
+            base.p_majority = float(partial_entry.p_majority)
+            base.top_count = int(partial_entry.top_count)
+            base.reasons.extend(reasons)
+        else:
+            base.reasons.append("tax_partial_stats_not_found")
+    else:
+        base.reasons.append("tax_partial_not_applicable")
+
+    if defaults_opt is not None and decision.category_key:
+        rule = defaults_opt.defaults.get(decision.category_key)
+        if rule is not None:
+            target_tax_division = str(rule.target_tax_division or "").strip()
+            if target_tax_division:
+                return CCTaxDecision(
+                    target_tax_side=target_tax_side,
+                    target_tax_division_before=before,
+                    target_tax_division_after=target_tax_division,
+                    changed=target_tax_division != before,
+                    evidence_type=_ROUTE_TAX_CATEGORY_DEFAULT,
+                    lookup_key="",
+                    confidence=float(rule.confidence),
+                    sample_total=0,
+                    p_majority=0.0,
+                    top_count=0,
+                    reasons=["tax_category_default_applied"],
+                )
+            base.reasons.append("tax_category_default_blank")
+        else:
+            base.reasons.append("tax_category_default_missing")
+    else:
+        base.reasons.append("tax_category_not_available")
+
+    if defaults_opt is not None:
+        global_tax_division = str(defaults_opt.global_fallback.target_tax_division or "").strip()
+        if global_tax_division:
+            return CCTaxDecision(
+                target_tax_side=target_tax_side,
+                target_tax_division_before=before,
+                target_tax_division_after=global_tax_division,
+                changed=global_tax_division != before,
+                evidence_type=_ROUTE_TAX_GLOBAL_FALLBACK,
+                lookup_key="",
+                confidence=float(defaults_opt.global_fallback.confidence),
+                sample_total=0,
+                p_majority=0.0,
+                top_count=0,
+                reasons=["tax_global_fallback_applied"],
+            )
+        base.reasons.append("tax_global_fallback_blank")
+    else:
+        base.reasons.append("tax_defaults_unavailable")
+
+    return base
+
+
 def decide_cc_row(
     tokens: Sequence[bytes],
     encoding: str,
@@ -639,6 +919,7 @@ def decide_cc_row(
         p_majority=0.0,
         top_count=0,
         predicted_account="",
+        account_partial_match_used=False,
         payable_sub_before="",
         payable_sub_after="",
         payable_sub_changed=False,
@@ -657,6 +938,16 @@ def decide_cc_row(
         lexicon_quality="",
         matched_needle="",
         is_learned_signal=False,
+        target_tax_side=_target_tax_side_from_placeholder_side(placeholder_side),
+        target_tax_division_before="",
+        target_tax_division_after="",
+        target_tax_division_changed=False,
+        tax_evidence_type=_NONE_EVIDENCE,
+        tax_lookup_key="",
+        tax_confidence=0.0,
+        tax_sample_total=0,
+        tax_p_majority=0.0,
+        tax_reasons=[],
     )
 
     if placeholder_side == "none":
@@ -679,6 +970,7 @@ def decide_cc_row(
                     lookup_key = matched
                     stats = cache.merchant_key_account_stats.get(lookup_key)
                     decision.lookup_key = lookup_key
+                    decision.account_partial_match_used = True
                     decision.reasons.append("partial_match_used")
             if isinstance(stats, dict):
                 stats = StatsEntry.from_obj(stats)
@@ -772,8 +1064,35 @@ def decide_cc_row(
     elif payable_side == "credit":
         decision.payable_sub_after = decision.credit_sub_after
 
+    tax_decision = decide_cc_tax(
+        tokens=tokens,
+        encoding=encoding,
+        cache=cache,
+        config=config,
+        decision=decision,
+        defaults_opt=defaults_opt,
+        partial_match_settings=partial_cfg,
+        eligible_account_partial_keys=partial_candidates,
+    )
+    decision.target_tax_side = tax_decision.target_tax_side
+    decision.target_tax_division_before = tax_decision.target_tax_division_before
+    decision.target_tax_division_after = tax_decision.target_tax_division_after
+    decision.target_tax_division_changed = bool(tax_decision.changed)
+    decision.tax_evidence_type = tax_decision.evidence_type
+    decision.tax_lookup_key = tax_decision.lookup_key
+    decision.tax_confidence = float(tax_decision.confidence)
+    decision.tax_sample_total = int(tax_decision.sample_total)
+    decision.tax_p_majority = float(tax_decision.p_majority)
+    decision.tax_reasons = list(tax_decision.reasons)
+    if tax_decision.changed:
+        tax_col = _target_tax_col_from_side(tax_decision.target_tax_side)
+        if tax_col is not None:
+            _set_text(new_tokens, tax_col, encoding, tax_decision.target_tax_division_after)
+
     decision.payable_sub_changed = decision.payable_sub_before != decision.payable_sub_after
-    decision.changed = bool(decision.account_changed or decision.payable_sub_changed)
+    decision.changed = bool(
+        decision.account_changed or decision.payable_sub_changed or decision.target_tax_division_changed
+    )
     return new_tokens, decision
 
 
@@ -832,8 +1151,13 @@ def replace_credit_card_yayoi_csv(
     decisions: List[CCRowDecision] = []
     account_changed_count = 0
     payable_sub_changed_count = 0
+    tax_division_changed_count = 0
     evidence_counts: Dict[str, int] = {}
     payable_sub_evidence_counts: Dict[str, int] = {}
+    tax_route_counts: Dict[str, int] = {}
+    tax_unresolved_count = 0
+    tax_partial_match_applied_count = 0
+    tax_target_side_counts: Dict[str, int] = {}
     account_partial_rows_used = 0
     votes_partial_used = int(file_inference.votes_partial_used)
     partial_examples: List[Tuple[str, str]] = []
@@ -862,10 +1186,22 @@ def replace_credit_card_yayoi_csv(
             _append_partial_example(partial_examples, decision.merchant_key, decision.lookup_key)
         if decision.payable_sub_changed:
             payable_sub_changed_count += 1
+        if decision.target_tax_division_changed:
+            tax_division_changed_count += 1
         evidence_counts[decision.evidence_type] = evidence_counts.get(decision.evidence_type, 0) + 1
         payable_sub_evidence_counts[decision.payable_sub_evidence] = (
             payable_sub_evidence_counts.get(decision.payable_sub_evidence, 0) + 1
         )
+        if decision.tax_evidence_type == _NONE_EVIDENCE:
+            tax_unresolved_count += 1
+        else:
+            tax_route_counts[decision.tax_evidence_type] = tax_route_counts.get(decision.tax_evidence_type, 0) + 1
+            if decision.tax_evidence_type == _ROUTE_TAX_PARTIAL:
+                tax_partial_match_applied_count += 1
+            if decision.target_tax_side:
+                tax_target_side_counts[decision.target_tax_side] = (
+                    tax_target_side_counts.get(decision.target_tax_side, 0) + 1
+                )
 
     pre_tax_row_tokens = _clone_row_tokens([row.tokens for row in csv_obj.rows])
     tax_summary = apply_yayoi_tax_postprocess(
@@ -920,6 +1256,16 @@ def replace_credit_card_yayoi_csv(
         "lexicon_quality",
         "matched_needle",
         "is_learned_signal",
+        "target_tax_side",
+        "target_tax_division_before",
+        "target_tax_division_after",
+        "target_tax_division_changed",
+        "tax_evidence_type",
+        "tax_lookup_key",
+        "tax_confidence",
+        "tax_sample_total",
+        "tax_p_majority",
+        "tax_reasons",
         "debit_tax_amount_before",
         "debit_tax_amount_after",
         "debit_tax_fill_status",
@@ -967,6 +1313,16 @@ def replace_credit_card_yayoi_csv(
                     decision.lexicon_quality,
                     decision.matched_needle,
                     "1" if decision.is_learned_signal else "0",
+                    decision.target_tax_side,
+                    decision.target_tax_division_before,
+                    decision.target_tax_division_after,
+                    "1" if decision.target_tax_division_changed else "0",
+                    decision.tax_evidence_type,
+                    decision.tax_lookup_key,
+                    f"{decision.tax_confidence:.4f}",
+                    str(decision.tax_sample_total),
+                    f"{decision.tax_p_majority:.6f}",
+                    " | ".join(decision.tax_reasons),
                     *_tax_review_cells(
                         row_index_1b=decision.row_index_1b,
                         encoding=csv_obj.encoding,
@@ -1001,6 +1357,7 @@ def replace_credit_card_yayoi_csv(
         "changed_count": int(changed_count),
         "changed_ratio": (changed_count / row_count) if row_count else 0.0,
         "account_changed_count": int(account_changed_count),
+        "tax_division_changed_count": int(tax_division_changed_count),
         "payable_sub_changed_count": int(payable_sub_changed_count),
         "evidence_counts": evidence_counts,
         "payable_sub_evidence_counts": payable_sub_evidence_counts,
@@ -1026,6 +1383,15 @@ def replace_credit_card_yayoi_csv(
             ],
         },
         "payable_sub_fill_required_failed": bool(payable_sub_fill_required_failed),
+        "tax_division_replacement": {
+            "changed_count": int(tax_division_changed_count),
+            "route_counts": tax_route_counts,
+            "unresolved_count": int(tax_unresolved_count),
+            "partial_match_applied_count": int(tax_partial_match_applied_count),
+            "category_default_applied_count": int(tax_route_counts.get(_ROUTE_TAX_CATEGORY_DEFAULT) or 0),
+            "global_fallback_applied_count": int(tax_route_counts.get(_ROUTE_TAX_GLOBAL_FALLBACK) or 0),
+            "target_side_counts": tax_target_side_counts,
+        },
         "tax_postprocess": build_tax_postprocess_manifest(tax_summary),
         "reports": {
             "review_report_csv": str(report_path),

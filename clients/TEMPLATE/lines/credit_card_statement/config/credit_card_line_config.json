@@ -1,6 +1,6 @@
 {
-  "schema": "belle.credit_card_line_config.v0",
-  "version": "0.1",
+  "schema": "belle.credit_card_line_config.v1",
+  "version": "0.2",
   "placeholder_account_name": "仮払金",
   "payable_account_name": "未払金",
   "merchant_key_normalization": {
@@ -25,6 +25,16 @@
     },
     "file_level_card_inference": {
       "min_votes": 3,
+      "min_p_majority": 0.9
+    }
+  },
+  "tax_division_thresholds": {
+    "merchant_key_target_account_exact": {
+      "min_count": 3,
+      "min_p_majority": 0.9
+    },
+    "merchant_key_target_account_partial": {
+      "min_count": 3,
       "min_p_majority": 0.9
     }
   },

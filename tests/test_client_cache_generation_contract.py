@@ -320,7 +320,7 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
                 self.assertTrue(cache_path.exists(), msg=output)
 
                 cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-                self.assertEqual("belle.cc_client_cache.v0", cache_obj.get("schema"))
+                self.assertEqual("belle.cc_client_cache.v1", cache_obj.get("schema"))
                 self.assertEqual("credit_card_statement", cache_obj.get("line_id"))
 
                 applied = cache_obj.get("applied_ledger_ref_sha256") or {}

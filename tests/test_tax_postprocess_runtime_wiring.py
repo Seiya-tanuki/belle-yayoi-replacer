@@ -59,6 +59,18 @@ TAX_REVIEW_COLUMNS = [
     "credit_tax_rate",
     "credit_tax_calc_mode",
 ]
+CC_TAX_DIVISION_COLUMNS = [
+    "target_tax_side",
+    "target_tax_division_before",
+    "target_tax_division_after",
+    "target_tax_division_changed",
+    "tax_evidence_type",
+    "tax_lookup_key",
+    "tax_confidence",
+    "tax_sample_total",
+    "tax_p_majority",
+    "tax_reasons",
+]
 RECEIPT_TAX_DIVISION_COLUMNS = [
     "debit_tax_division_before",
     "debit_tax_division_after",
@@ -625,8 +637,15 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
                 [STATUS_APPLIED_INNER_FLOOR, STATUS_TAX_AMOUNT_ALREADY_PRESENT],
                 [row["debit_tax_fill_status"] for row in review_rows],
             )
+            self.assertEqual(
+                CC_TAX_DIVISION_COLUMNS,
+                fieldnames[-len(TAX_REVIEW_COLUMNS) - len(CC_TAX_DIVISION_COLUMNS) : -len(TAX_REVIEW_COLUMNS)],
+            )
+            self.assertEqual("debit", review_rows[0]["target_tax_side"])
             self.assertEqual(TAX_REVIEW_COLUMNS, fieldnames[-len(TAX_REVIEW_COLUMNS) :])
             tax_manifest = replacer_manifest.get("tax_postprocess") or {}
+            self.assertIn("tax_division_replacement", replacer_manifest)
+            self.assertIn("target_side_counts", replacer_manifest.get("tax_division_replacement") or {})
             self.assertEqual(True, bool(tax_manifest.get("enabled")))
             self.assertEqual(1, int(tax_manifest.get("debit_filled_count") or 0))
             runner_tax_cfg = run_manifest.get("yayoi_tax_config") or {}

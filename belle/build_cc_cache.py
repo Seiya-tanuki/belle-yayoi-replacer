@@ -8,7 +8,13 @@ import json
 import re
 import unicodedata
 
-from .cc_cache import CCClientCache, LINE_ID_CC, SCHEMA_CC_CLIENT_CACHE_V0, ValueStatsEntry
+from .cc_cache import (
+    CCClientCache,
+    CC_CLIENT_CACHE_VERSION_V1,
+    LINE_ID_CC,
+    SCHEMA_CC_CLIENT_CACHE_V1,
+    ValueStatsEntry,
+)
 from .client_cache import StatsEntry
 from .stats_utils import ensure_stats_entry, ensure_value_stats_entry
 from .ingest import ingest_csv_dir
@@ -23,8 +29,10 @@ from .paths import (
 from .yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_SUBACCOUNT,
+    COL_CREDIT_TAX_DIVISION,
     COL_DEBIT_ACCOUNT,
     COL_DEBIT_SUBACCOUNT,
+    COL_DEBIT_TAX_DIVISION,
     COL_SUMMARY,
 )
 from .yayoi_csv import read_yayoi_csv, token_to_text
@@ -116,6 +124,32 @@ def _normalize_partial_match_config(obj: Any) -> Dict[str, Any]:
     }
 
 
+def _normalize_tax_threshold_config(obj: Any) -> Dict[str, Any]:
+    src = obj if isinstance(obj, dict) else {}
+    return {
+        "merchant_key_target_account_exact": {
+            "min_count": _as_int(
+                ((src.get("merchant_key_target_account_exact") or {}).get("min_count")),
+                3,
+            ),
+            "min_p_majority": _as_float(
+                ((src.get("merchant_key_target_account_exact") or {}).get("min_p_majority")),
+                0.9,
+            ),
+        },
+        "merchant_key_target_account_partial": {
+            "min_count": _as_int(
+                ((src.get("merchant_key_target_account_partial") or {}).get("min_count")),
+                3,
+            ),
+            "min_p_majority": _as_float(
+                ((src.get("merchant_key_target_account_partial") or {}).get("min_p_majority")),
+                0.9,
+            ),
+        },
+    }
+
+
 def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, Any]:
     line_root = repo_root / "clients" / client_id / "lines" / LINE_ID_CC
     cfg_path = line_root / "config" / "credit_card_line_config.json"
@@ -142,6 +176,11 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
         if isinstance(thresholds_raw.get("file_level_card_inference"), dict)
         else {}
     )
+    tax_division_thresholds_raw = (
+        raw.get("tax_division_thresholds")
+        if isinstance(raw.get("tax_division_thresholds"), dict)
+        else {}
+    )
 
     training_raw = raw.get("training") if isinstance(raw.get("training"), dict) else {}
     merchant_key_norm_raw = (
@@ -157,8 +196,8 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
     partial_match_raw = raw.get("partial_match") if isinstance(raw.get("partial_match"), dict) else {}
 
     loaded: Dict[str, Any] = {
-        "schema": str(raw.get("schema") or "belle.credit_card_line_config.v0"),
-        "version": str(raw.get("version") or "0.1"),
+        "schema": str(raw.get("schema") or "belle.credit_card_line_config.v1"),
+        "version": str(raw.get("version") or "0.2"),
         "placeholder_account_name": str(raw.get("placeholder_account_name") or "仮払金"),
         "payable_account_name": str(raw.get("payable_account_name") or "未払金"),
         "merchant_key_normalization": {
@@ -186,6 +225,7 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
                 "min_p_majority": _as_float(file_level_raw.get("min_p_majority", 0.9), 0.9),
             },
         },
+        "tax_division_thresholds": _normalize_tax_threshold_config(tax_division_thresholds_raw),
         "candidate_extraction": _normalize_candidate_config(candidate_raw),
         "partial_match": _normalize_partial_match_config(partial_match_raw),
     }
@@ -255,6 +295,7 @@ def _thresholds_snapshot(config: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "merchant_key_account": thresholds.get("merchant_key_account") or {},
         "file_level_card_inference": thresholds.get("file_level_card_inference") or {},
+        "tax_division_thresholds": _normalize_tax_threshold_config(config.get("tax_division_thresholds")),
         "candidate_extraction": candidate_extraction,
         "exclude_counter_accounts": training.get("exclude_counter_accounts") or [],
         "partial_match": _normalize_partial_match_config(partial_match),
@@ -414,6 +455,8 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
         cache.merchant_key_account_stats = {}
     if not isinstance(cache.merchant_key_payable_sub_stats, dict):
         cache.merchant_key_payable_sub_stats = {}
+    if not isinstance(cache.merchant_key_target_account_tax_stats, dict):
+        cache.merchant_key_target_account_tax_stats = {}
     if not isinstance(cache.card_subaccount_candidates, dict):
         cache.card_subaccount_candidates = {}
     if not cache.decision_thresholds:
@@ -426,6 +469,7 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
     applied_new_shas: List[str] = []
     rows_total_added = 0
     rows_used_added = 0
+    tax_rows_learned_added = 0
     per_sub_counter_sets_new: Dict[str, Set[str]] = {}
 
     ingested = manifest.get("ingested") if isinstance(manifest.get("ingested"), dict) else {}
@@ -472,22 +516,25 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
 
             debit_account = token_to_text(row.tokens[COL_DEBIT_ACCOUNT], csv_obj.encoding).strip()
             debit_subaccount = token_to_text(row.tokens[COL_DEBIT_SUBACCOUNT], csv_obj.encoding).strip()
+            debit_tax_division = token_to_text(row.tokens[COL_DEBIT_TAX_DIVISION], csv_obj.encoding).strip()
             credit_account = token_to_text(row.tokens[COL_CREDIT_ACCOUNT], csv_obj.encoding).strip()
             credit_subaccount = token_to_text(row.tokens[COL_CREDIT_SUBACCOUNT], csv_obj.encoding).strip()
+            credit_tax_division = token_to_text(row.tokens[COL_CREDIT_TAX_DIVISION], csv_obj.encoding).strip()
 
             payable_subaccount = ""
             counter_account = ""
+            target_tax_division = ""
             if debit_account == payable_account_name and credit_account != payable_account_name:
                 payable_subaccount = debit_subaccount
                 counter_account = credit_account
+                target_tax_division = credit_tax_division
             elif credit_account == payable_account_name and debit_account != payable_account_name:
                 payable_subaccount = credit_subaccount
                 counter_account = debit_account
+                target_tax_division = debit_tax_division
             else:
                 continue
 
-            if not payable_subaccount:
-                continue
             if not counter_account:
                 continue
             if counter_account in exclude_counter_accounts:
@@ -495,6 +542,14 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
 
             merchant_key = merchant_key_from_summary(summary, config)
             if not merchant_key:
+                continue
+
+            if target_tax_division:
+                tax_stats_by_account = cache.merchant_key_target_account_tax_stats.setdefault(merchant_key, {})
+                _ensure_value_stats_entry(tax_stats_by_account, counter_account).update(target_tax_division)
+                tax_rows_learned_added += 1
+
+            if not payable_subaccount:
                 continue
 
             rows_used += 1
@@ -523,8 +578,8 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
         per_sub_counter_sets_new=per_sub_counter_sets_new,
     )
 
-    cache.schema = SCHEMA_CC_CLIENT_CACHE_V0
-    cache.version = "0.1"
+    cache.schema = SCHEMA_CC_CLIENT_CACHE_V1
+    cache.version = CC_CLIENT_CACHE_VERSION_V1
     cache.client_id = str(client_id)
     cache.line_id = LINE_ID_CC
     cache.append_only = True
@@ -551,6 +606,7 @@ def ensure_cc_client_cache_updated(repo_root: Path, client_id: str) -> Tuple[CCC
         "applied_new_sha256": applied_new_shas,
         "rows_total_added": int(rows_total_added),
         "rows_used_added": int(rows_used_added),
+        "tax_rows_learned_added": int(tax_rows_learned_added),
         "warnings": warnings,
     }
     return cache, summary

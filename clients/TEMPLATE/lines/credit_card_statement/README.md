@@ -31,6 +31,25 @@ Strict file-count behavior:
 2. Ingestion uses per-file SHA256 dedupe.
 3. Applied SHA256 tracking prevents double-learning, even if you rerun many times with the same teacher files.
 4. Add new historical files over time; previously applied files will not increment counts again.
+5. Credit-card learning now includes target-side tax division conditioned on `merchant_key + target_account`.
+
+## Credit-card tax replacement
+
+1. Placeholder-side tax division is decided before the shared Yayoi tax postprocess runs.
+2. Learned tax routes use `merchant_key + target_account` evidence.
+3. Static fallback routes can use non-empty `target_tax_division` from:
+   1. `defaults/credit_card_statement/category_defaults.json`
+   2. `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`
+   3. shared `global_fallback`
+4. Blank fallback tax values mean "no fallback" and preserve the current cell.
+
+## Operator config
+
+1. Runtime config path is `config/credit_card_line_config.json`.
+2. Credit-card tax decision thresholds are configured under `tax_division_thresholds`.
+3. Learned tax routes currently covered by config are:
+   1. `merchant_key_target_account_exact`
+   2. `merchant_key_target_account_partial`
 
 ## Failure modes + How to fix
 

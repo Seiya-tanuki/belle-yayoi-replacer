@@ -1,14 +1,14 @@
-# CREDIT_CARD_REPLACER_SPEC (credit_card_statement line)
+# CREDIT_CARD_REPLACER_SPEC (`credit_card_statement`)
 
-## Scope and status
+## Scope
 
 This spec applies only to `line_id=credit_card_statement`.
-It defines replacer + runner operational contracts for the credit-card line.
 
-Implementation status:
-1. `receipt`: implemented/runnable via explicit skills.
-2. `bank_statement`: implemented/runnable via explicit skills.
-3. `credit_card_statement`: implemented/runnable via explicit skills.
+Current implementation status:
+1. Credit-card placeholder-side account replacement is implemented.
+2. Payable-side subaccount fill is implemented.
+3. Placeholder-side tax-division replacement is implemented.
+4. Shared Yayoi tax postprocess runs after credit-card tax-division replacement.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
@@ -17,122 +17,117 @@ Related specs:
 
 ## Replacement goals
 
-1. Replace placeholder account `仮払金` with a predicted account.
+1. Replace placeholder account `仮払金` with a predicted target account.
 2. Fill payable-side subaccount when account name is `未払金` and subaccount is empty.
+3. Replace placeholder-side target tax division before the shared tax postprocess runs.
+4. Preserve all non-target fields.
 
-All non-target fields must remain unchanged.
+## Target-side rule
 
-## Placeholder targeting rule
+1. Credit-card target side is the placeholder side.
+2. Placeholder side may be either `debit` or `credit`.
+3. If placeholder side is ambiguous or absent, target-side account and tax replacement are both no-op.
 
-Target side must be detected by account-name matching:
-1. locate side (debit or credit) whose account name equals `仮払金`
-2. do not rely on fixed column positions
-3. if side is ambiguous or absent, no account replacement is applied for that row
+## Account decision
 
-## Required replacements and threshold gate
+Intent remains unchanged:
+1. First prefer learned `merchant_key_account_stats`.
+2. If that does not resolve, category-default fallback may supply `target_account`.
+3. Payable-side subaccount inference semantics are unchanged.
 
-### A) Placeholder account replacement
+## Tax-division decision timing
 
-1. predict account from learned `merchant_key_account_stats`
-2. apply only when configured thresholds pass
-3. if thresholds fail or top label is non-unique, do not replace that row
+1. Credit-card tax-division decision runs only after the target account has been chosen/predicted for the row.
+2. Credit-card tax-division replacement happens before the shared `belle.tax_postprocess` step.
+3. If the chosen tax division is a supported inner-tax division, the shared tax postprocess may then fill tax amount in the same run.
 
-### B) Payable-side subaccount fill (`未払金`)
+## Tax-division route order
 
-1. detect side where account name equals `未払金`
-2. apply only when that side subaccount is empty
-3. fill from file-level inferred payable subaccount when file inference status is `OK`
-4. if inference is not `OK`, rows that require fill remain unresolved and are marked for strict-stop evaluation
+Exact route order:
+1. `merchant_key_target_account_exact`
+2. `merchant_key_target_account_partial`
+3. `category_default`
+4. `global_fallback`
+5. unresolved / no-op
 
-## File-level card inference policy (strict)
+Route requirements:
+1. Learned routes must use tax samples for the predicted target account only.
+2. Partial tax matching must reuse the same merchant normalization and partial-candidate policy as account partial matching.
+3. If account replacement used a partial candidate, tax partial must reuse that same resolved lookup key and must not select a different candidate.
+4. Static fallback routes must treat blank `target_tax_division` as no fallback.
+5. Unresolved tax decision preserves the existing target-side tax-division cell.
 
-For each target file, infer one payable subaccount identity for the whole file:
-1. voting unit: `merchant_key` evidence from target rows
-2. select a single top payable subaccount only when confidence gates pass
-3. confidence gates use configured `min_votes` and `min_p_majority`
-4. ties or low-confidence outcomes are treated as non-`OK` file inference
+## Tax write target
 
-This policy assumes Contract A input (one statement, one card per target file).
+1. If placeholder side is `debit`, write `COL_DEBIT_TAX_DIVISION`.
+2. If placeholder side is `credit`, write `COL_CREDIT_TAX_DIVISION`.
+3. Existing target-side tax division is preserved when no tax route resolves.
 
-## Runner strict-stop contract
+## Config contract
 
-Strict stop is enforced at runner layer.
+Runtime config path:
+1. `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json`
 
-Condition:
-1. replacer reports `payable_sub_fill_required_failed=true`
-2. this means payable-side subaccount fill was required for at least one row but file-level card inference was not `OK`
+Required tax section:
+1. `tax_division_thresholds`
+2. `tax_division_thresholds.merchant_key_target_account_exact`
+3. `tax_division_thresholds.merchant_key_target_account_partial`
 
-Runner behavior:
-1. write run outputs and manifests first
-2. mark run manifest with `strict_stop_applied=true` and `exit_status=FAIL`
-3. terminate with `SystemExit(2)` (exit code `2`)
+Each learned tax route entry currently uses:
+1. `min_count`
+2. `min_p_majority`
 
-## Audit artifact retention on failure
+Partial-route note:
+1. Thresholds above gate the chosen tax label after lookup.
+2. Partial candidate eligibility still reuses the shared `partial_match` policy used by account replacement.
 
-Strict-stop failure must remain auditable. Generated artifacts are kept under the run directory:
-1. replaced CSV output
-2. replacer manifest JSON (`reports.manifest_json`)
-3. per-row review report CSV (`reports.review_report_csv`)
-4. runner manifest (`run_manifest.json`)
+## Category defaults / overrides
 
-## Candidate extraction knobs (config contract)
+1. Effective category defaults and overrides may supply `target_tax_division`.
+2. A non-empty category `target_tax_division` may resolve the `category_default` tax route.
+3. A non-empty `global_fallback.target_tax_division` may resolve the `global_fallback` tax route.
+4. Blank fallback tax values mean no tax fallback.
 
-File-level card candidate extraction is controlled by config knobs such as:
-1. `min_total_count`
-2. `min_unique_merchants`
-3. `min_unique_counter_accounts`
-4. `manual_allow`
+## Review report observability
 
-These knobs gate whether a payable subaccount becomes an eligible candidate.
+Credit-card review report adds these columns immediately before the shared tax-amount appendix columns:
+1. `target_tax_side`
+2. `target_tax_division_before`
+3. `target_tax_division_after`
+4. `target_tax_division_changed`
+5. `tax_evidence_type`
+6. `tax_lookup_key`
+7. `tax_confidence`
+8. `tax_sample_total`
+9. `tax_p_majority`
+10. `tax_reasons`
 
-Hard-gate contract:
-1. eligible set for file-level payable-subaccount inference is only payable subaccounts where `is_candidate == true`
-2. if zero payable subaccounts are flagged as candidates, file-level inference must not return `OK`
-3. in that zero-candidate case, no payable subaccount may be inferred and there is no fallback to all observed payable subaccounts
-4. `manual_allow` remains an explicit override that can force candidacy even when numeric thresholds are not met
+## Manifest observability
 
-Default candidate-extraction policy for operators using defaults:
-1. `min_total_count = 5`
-2. `min_unique_merchants = 3`
-3. `min_unique_counter_accounts = 2`
+Replacer manifest includes additive block:
+1. `tax_division_replacement`
 
-## Candidate extraction alias policy
+Required fields:
+1. `changed_count`
+2. `route_counts`
+3. `unresolved_count`
+4. `partial_match_applied_count`
+5. `category_default_applied_count`
+6. `global_fallback_applied_count`
+7. `target_side_counts`
 
-1. Canonical key is `candidate_extraction.min_total_count`.
-2. Backward-compatible alias `candidate_extraction.min_rows` is accepted by loader normalization.
-3. TEMPLATE config uses canonical keys going forward.
+`changed_count` semantics:
+1. Final row diff is recomputed after account replacement, tax-division replacement, payable-subaccount fill, and shared tax postprocess.
+2. Tax-only row changes must therefore be visible in final `changed` and `changed_count`.
 
-## Partial match safe fallback contract
+## Strict-stop contract
 
-1. Partial match is attempted only when exact `merchant_key` lookup misses.
-2. Allowed direction is `cache_key_in_input` only (`cache_key` must be a substring of input key).
-3. Resolver is fail-closed:
-   1. choose only the unique longest matched key
-   2. if longest tie exists, reject partial match
-4. Minimum match length is `4` (`min_match_len` baseline).
-5. Partial-match candidate keys must satisfy strong stats gates before use:
-   1. `sample_total >= 10`
-   2. `p_majority >= 0.95`
-   3. top label must exist (`top_account` for account replacement, `top_value` for payable-sub inference)
-6. Even after partial key resolution, normal row/file thresholds are still enforced.
+Strict-stop behavior is unchanged and remains payable-subaccount specific:
+1. `payable_sub_fill_required_failed == true` triggers runner-level strict stop.
+2. Tax replacement alone does not introduce a new strict-stop condition.
 
-## Partial match observability (run manifest)
+## Explicit exclusions
 
-Replacer manifest includes additive partial-match diagnostics:
-1. `partial_match.account_partial_rows_used`
-2. `partial_match.votes_partial_used`
-3. `partial_match.examples` (input key and matched cache key pairs)
-
-## Training pollution exclusion rule
-
-At training time, rows whose counter account is a known transfer/bank account
-(for example `普通預金` or `当座預金`) must be excluded from learning stats.
-
-Rationale:
-1. avoid contaminating merchant-to-account and payable-subaccount mappings with non-purchase transfers
-
-## Inference source constraint
-
-Inference uses summary only:
-1. summary column is 17th column (1-based)
-2. memo column must not be used as inference signal
+1. Receipt tax behavior is unchanged in this phase.
+2. Bank tax behavior is unchanged in this phase.
+3. No backward compatibility or migration support is provided for older credit-card manifests in this phase.

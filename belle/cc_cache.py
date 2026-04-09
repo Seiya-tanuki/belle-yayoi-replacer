@@ -10,7 +10,8 @@ import json
 from .client_cache import StatsEntry
 from .io_atomic import atomic_write_text
 
-SCHEMA_CC_CLIENT_CACHE_V0 = "belle.cc_client_cache.v0"
+SCHEMA_CC_CLIENT_CACHE_V1 = "belle.cc_client_cache.v1"
+CC_CLIENT_CACHE_VERSION_V1 = "0.2"
 LINE_ID_CC = "credit_card_statement"
 
 
@@ -121,6 +122,7 @@ class CCClientCache:
     card_subaccount_candidates: Dict[str, Dict[str, Any]]
     merchant_key_account_stats: Dict[str, StatsEntry]
     merchant_key_payable_sub_stats: Dict[str, ValueStatsEntry]
+    merchant_key_target_account_tax_stats: Dict[str, Dict[str, ValueStatsEntry]]
     payable_sub_global_stats: ValueStatsEntry
 
     @staticmethod
@@ -132,8 +134,8 @@ class CCClientCache:
     ) -> "CCClientCache":
         now = created_at or _now_utc_iso()
         return CCClientCache(
-            schema=SCHEMA_CC_CLIENT_CACHE_V0,
-            version="0.1",
+            schema=SCHEMA_CC_CLIENT_CACHE_V1,
+            version=CC_CLIENT_CACHE_VERSION_V1,
             client_id=str(client_id),
             line_id=LINE_ID_CC,
             created_at=now,
@@ -144,6 +146,7 @@ class CCClientCache:
             card_subaccount_candidates={},
             merchant_key_account_stats={},
             merchant_key_payable_sub_stats={},
+            merchant_key_target_account_tax_stats={},
             payable_sub_global_stats=ValueStatsEntry.empty(),
         )
 
@@ -190,6 +193,18 @@ class CCClientCache:
             for k, v in payable_sub_raw.items()
         }
 
+        tax_stats_raw = obj.get("merchant_key_target_account_tax_stats")
+        if not isinstance(tax_stats_raw, dict):
+            tax_stats_raw = {}
+        merchant_key_target_account_tax_stats: Dict[str, Dict[str, ValueStatsEntry]] = {}
+        for merchant_key, account_map in tax_stats_raw.items():
+            if not isinstance(account_map, dict):
+                continue
+            merchant_key_target_account_tax_stats[str(merchant_key)] = {
+                str(account): ValueStatsEntry.from_obj(value if isinstance(value, dict) else {})
+                for account, value in account_map.items()
+            }
+
         global_stats_obj = obj.get("payable_sub_global_stats")
         if not isinstance(global_stats_obj, dict):
             global_stats_obj = {}
@@ -198,8 +213,8 @@ class CCClientCache:
         updated_at = str(obj.get("updated_at") or created_at)
 
         return CCClientCache(
-            schema=str(obj.get("schema") or SCHEMA_CC_CLIENT_CACHE_V0),
-            version=str(obj.get("version") or "0.1"),
+            schema=str(obj.get("schema") or SCHEMA_CC_CLIENT_CACHE_V1),
+            version=str(obj.get("version") or CC_CLIENT_CACHE_VERSION_V1),
             client_id=str(obj.get("client_id") or ""),
             line_id=str(obj.get("line_id") or LINE_ID_CC),
             created_at=created_at,
@@ -210,6 +225,7 @@ class CCClientCache:
             card_subaccount_candidates=candidates,
             merchant_key_account_stats=merchant_key_account_stats,
             merchant_key_payable_sub_stats=merchant_key_payable_sub_stats,
+            merchant_key_target_account_tax_stats=merchant_key_target_account_tax_stats,
             payable_sub_global_stats=ValueStatsEntry.from_obj(global_stats_obj),
         )
 
@@ -230,6 +246,13 @@ class CCClientCache:
             },
             "merchant_key_payable_sub_stats": {
                 k: v.to_obj() for k, v in self.merchant_key_payable_sub_stats.items()
+            },
+            "merchant_key_target_account_tax_stats": {
+                merchant_key: {
+                    account: stats.to_obj()
+                    for account, stats in account_map.items()
+                }
+                for merchant_key, account_map in self.merchant_key_target_account_tax_stats.items()
             },
             "payable_sub_global_stats": self.payable_sub_global_stats.to_obj(),
         }
