@@ -112,19 +112,23 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 ## Shared assets (tracked)
 
 1. `lexicon/lexicon.json`
-2. `defaults/receipt/category_defaults.json`
-3. `defaults/credit_card_statement/category_defaults.json`
-4. `rulesets/receipt/replacer_config_v1_15.json`
-5. `clients/TEMPLATE/config/yayoi_tax_config.json`
-6. `lexicon/receipt/pending/.gitkeep`
-7. `lexicon/receipt/pending/locks/.gitkeep`
+2. `defaults/receipt/category_defaults_tax_excluded.json`
+3. `defaults/receipt/category_defaults_tax_included.json`
+4. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+5. `defaults/credit_card_statement/category_defaults_tax_included.json`
+6. `rulesets/receipt/replacer_config_v1_15.json`
+7. `clients/TEMPLATE/config/yayoi_tax_config.json`
+8. `lexicon/receipt/pending/.gitkeep`
+9. `lexicon/receipt/pending/locks/.gitkeep`
 
 ## Shared client config
 
 1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json` is the shared client config path for Yayoi tax postprocess.
 2. The shared tax postprocess is wired into `receipt`, `bank_statement`, and `credit_card_statement`.
 3. `clients/TEMPLATE/config/yayoi_tax_config.json` is currently tracked with `enabled: true`, and new clients inherit that default unless they change the file.
-4. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
+4. The tracked template currently sets `bookkeeping_mode: tax_excluded`.
+5. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
+6. `receipt` / `credit_card_statement` tracked defaults are dual assets selected by `bookkeeping_mode`.
 
 ## Runtime-managed assets (ignored)
 

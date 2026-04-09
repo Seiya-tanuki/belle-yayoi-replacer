@@ -4,7 +4,7 @@
 
 `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` is a per-client, per-line editable overlay for shared target-side fallback rules.
 The generated file is full-expanded from the current shared `lexicon/lexicon.json` category keys
-and `defaults/<line_id>/category_defaults.json`, but runtime loading is best-effort and applies
+and the bookkeeping-mode-selected tracked defaults variant for the line, but runtime loading is best-effort and applies
 only validated rows. These generated files are not tracked as repository assets in the current
 baseline.
 The live row contract is `target_account` / `target_tax_division`; older v1-style `debit_account`
@@ -71,7 +71,9 @@ Top-level keys:
 
 ## Runtime merge behavior
 
-1. Load global defaults from `defaults/<line_id>/category_defaults.json`.
+1. Load global defaults from the bookkeeping-mode-selected tracked defaults file for the line.
+   1. `receipt`: `defaults/receipt/category_defaults_tax_<mode>.json`
+   2. `credit_card_statement`: `defaults/credit_card_statement/category_defaults_tax_<mode>.json`
 2. Load best-effort overrides from `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`.
 3. Build `effective_defaults` by replacing `target_account` and `target_tax_division` for validated override keys.
 4. Keep global `confidence`, `priority`, `reason_code`, and `global_fallback` unchanged.

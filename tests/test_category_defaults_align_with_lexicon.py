@@ -33,8 +33,10 @@ class CategoryDefaultsAlignWithLexiconTests(unittest.TestCase):
         }
 
         for path in (
-            repo_root / "defaults" / "receipt" / "category_defaults.json",
-            repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+            repo_root / "defaults" / "receipt" / "category_defaults_tax_excluded.json",
+            repo_root / "defaults" / "receipt" / "category_defaults_tax_included.json",
+            repo_root / "defaults" / "credit_card_statement" / "category_defaults_tax_excluded.json",
+            repo_root / "defaults" / "credit_card_statement" / "category_defaults_tax_included.json",
         ):
             loaded = load_category_defaults(path)
             loaded_keys = set(loaded.defaults.keys())

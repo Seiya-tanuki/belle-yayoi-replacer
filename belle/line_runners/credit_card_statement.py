@@ -164,6 +164,13 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         raise RuntimeError(_missing_cc_config_reason(client_dir))
 
     ensure_client_system_dirs(repo_root, client_id, line_id=LINE_ID_CARD)
+    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
+    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
+    asset_paths = line_asset_paths(
+        repo_root,
+        LINE_ID_CARD,
+        bookkeeping_mode=yayoi_tax_config.bookkeeping_mode,
+    )
     try:
         _cache, cache_update_summary = ensure_cc_client_cache_updated(repo_root, client_id)
     except Exception as exc:
@@ -174,12 +181,9 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     run_id, run_dir = make_run_dir(repo_root, client_id, line_id=LINE_ID_CARD)
     latest_path = get_latest_path(repo_root, client_id, line_id=LINE_ID_CARD)
     config = load_credit_card_line_config(repo_root, client_id)
-    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
-    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
     cache_path = Path(
         str(cache_update_summary.get("cache_path") or get_client_cache_path(repo_root, client_id, line_id=LINE_ID_CARD))
     )
-    asset_paths = line_asset_paths(repo_root, LINE_ID_CARD)
     lexicon_path = asset_paths["lexicon_path"]
     defaults_path = asset_paths["defaults_path"]
     lex = load_lexicon(lexicon_path)

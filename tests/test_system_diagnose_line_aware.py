@@ -127,6 +127,12 @@ def _write_minimal_lexicon_with_category(repo_root: Path, category_key: str = "k
     )
 
 
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, text: str) -> None:
+    defaults_dir = repo_root / "defaults" / line_id
+    _write_text(defaults_dir / "category_defaults_tax_excluded.json", text)
+    _write_text(defaults_dir / "category_defaults_tax_included.json", text)
+
+
 def _load_system_diagnose_module(real_repo_root: Path):
     script_path = (
         real_repo_root
@@ -195,7 +201,7 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
 
 
 def _prepare_receipt_assets(repo_root: Path, *, with_lexicon: bool) -> None:
-    _write_text(repo_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
+    _write_mode_aware_defaults(repo_root, "receipt", "{}\n")
     _write_text(
         repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
         _minimal_receipt_replacer_config_json(),
@@ -469,7 +475,7 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_common_repo_layout(repo_root, "receipt")
-            _write_text(repo_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
+            _write_mode_aware_defaults(repo_root, "receipt", "{}\n")
             _write_minimal_lexicon_with_category(repo_root)
             _write_text(
                 repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
@@ -575,7 +581,7 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
                 _minimal_credit_card_line_config_json(include_tax_sections=False),
             )
             _write_minimal_lexicon_with_category(repo_root)
-            _write_text(repo_root / "defaults" / "credit_card_statement" / "category_defaults.json", "{}\n")
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
 
             module = _load_system_diagnose_module(self.real_repo_root)
             rc, output = _run_main(module, repo_root, "credit_card_statement")

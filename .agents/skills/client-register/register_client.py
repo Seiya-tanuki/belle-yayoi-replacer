@@ -176,12 +176,14 @@ def _initialize_category_overrides(
     client_id: str,
     line_id: str,
     destination_line_root: Path,
+    *,
+    bookkeeping_mode: str,
 ) -> None:
     from belle.defaults import generate_full_category_overrides, load_category_defaults
     from belle.lexicon import load_lexicon
     from belle.lines import line_asset_paths
 
-    assets = line_asset_paths(repo_root, line_id)
+    assets = line_asset_paths(repo_root, line_id, bookkeeping_mode=bookkeeping_mode)
     lex = load_lexicon(assets["lexicon_path"])
     global_defaults = load_category_defaults(assets["defaults_path"])
     generate_full_category_overrides(
@@ -207,6 +209,56 @@ def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Pa
         json.dumps(BANK_LINE_CONFIG_MINIMAL, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _load_staged_bookkeeping_mode(shared_tax_config_path: Path) -> str:
+    from belle.lines import validate_bookkeeping_mode
+    from belle.tax_postprocess import (
+        ROUNDING_MODE_FLOOR,
+        YAYOI_TAX_CONFIG_FILENAME,
+        YAYOI_TAX_CONFIG_SCHEMA,
+        YAYOI_TAX_CONFIG_VERSION,
+    )
+
+    try:
+        raw = json.loads(shared_tax_config_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse {YAYOI_TAX_CONFIG_FILENAME}: {shared_tax_config_path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"{YAYOI_TAX_CONFIG_FILENAME} must be a JSON object: {shared_tax_config_path}")
+
+    allowed_keys = {"schema", "version", "enabled", "bookkeeping_mode", "rounding_mode"}
+    actual_keys = set(raw.keys())
+    missing_keys = sorted(allowed_keys - actual_keys)
+    extra_keys = sorted(actual_keys - allowed_keys)
+    if missing_keys:
+        raise ValueError(
+            f"{YAYOI_TAX_CONFIG_FILENAME} missing required keys: {', '.join(missing_keys)}: {shared_tax_config_path}"
+        )
+    if extra_keys:
+        raise ValueError(
+            f"{YAYOI_TAX_CONFIG_FILENAME} contains unsupported keys: {', '.join(extra_keys)}: {shared_tax_config_path}"
+        )
+
+    schema = str(raw.get("schema") or "").strip()
+    if schema != YAYOI_TAX_CONFIG_SCHEMA:
+        raise ValueError(
+            f"{YAYOI_TAX_CONFIG_FILENAME} schema must be {YAYOI_TAX_CONFIG_SCHEMA!r}: {shared_tax_config_path}"
+        )
+    version = str(raw.get("version") or "").strip()
+    if version != YAYOI_TAX_CONFIG_VERSION:
+        raise ValueError(
+            f"{YAYOI_TAX_CONFIG_FILENAME} version must be {YAYOI_TAX_CONFIG_VERSION!r}: {shared_tax_config_path}"
+        )
+    enabled = raw.get("enabled")
+    if not isinstance(enabled, bool):
+        raise ValueError(f"{YAYOI_TAX_CONFIG_FILENAME} enabled must be a boolean: {shared_tax_config_path}")
+    rounding_mode = str(raw.get("rounding_mode") or "").strip()
+    if rounding_mode != ROUNDING_MODE_FLOOR:
+        raise ValueError(
+            f"{YAYOI_TAX_CONFIG_FILENAME} rounding_mode must be {ROUNDING_MODE_FLOOR!r}: {shared_tax_config_path}"
+        )
+    return validate_bookkeeping_mode(raw.get("bookkeeping_mode"))
 
 
 def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> tuple[list[Path], list[Path]]:
@@ -273,6 +325,20 @@ def _initialize_staged_client(
     (staging_dir / "config").mkdir(parents=True, exist_ok=True)
     _prune_unselected_lines(staging_dir, selected_lines)
 
+    shared_tax_config_path = staging_dir / SHARED_YAYOI_TAX_CONFIG_REL_PATH
+    if not shared_tax_config_path.is_file():
+        raise RegistrationError(
+            "Shared Yayoi tax config is missing after staging.",
+            f"Expected staged path: clients/{client_id}/config/yayoi_tax_config.json",
+        )
+    try:
+        bookkeeping_mode = _load_staged_bookkeeping_mode(shared_tax_config_path)
+    except Exception as exc:
+        raise RegistrationError(
+            "Shared Yayoi tax config is invalid after staging.",
+            str(exc),
+        ) from exc
+
     for line_id in selected_lines:
         if line_id not in CATEGORY_OVERRIDES_LINES:
             continue
@@ -282,6 +348,7 @@ def _initialize_staged_client(
                 client_id,
                 line_id,
                 staging_dir / "lines" / line_id,
+                bookkeeping_mode=bookkeeping_mode,
             )
         except Exception as exc:
             raise RegistrationError(
@@ -304,13 +371,6 @@ def _initialize_staged_client(
         line_root = staging_dir / "lines" / line_id
         if not line_root.exists() or not line_root.is_dir():
             raise RegistrationError(f"{line_id} line directory is missing after registration.")
-
-    shared_tax_config_path = staging_dir / SHARED_YAYOI_TAX_CONFIG_REL_PATH
-    if not shared_tax_config_path.is_file():
-        raise RegistrationError(
-            "Shared Yayoi tax config is missing after staging.",
-            f"Expected staged path: clients/{client_id}/config/yayoi_tax_config.json",
-        )
 
 
 def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path) -> None:

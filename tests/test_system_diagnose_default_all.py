@@ -102,6 +102,12 @@ def _minimal_credit_card_line_config_json() -> str:
     )
 
 
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, text: str) -> None:
+    defaults_dir = repo_root / "defaults" / line_id
+    _write_text(defaults_dir / "category_defaults_tax_excluded.json", text)
+    _write_text(defaults_dir / "category_defaults_tax_included.json", text)
+
+
 class SystemDiagnoseDefaultAllTests(unittest.TestCase):
     def test_default_all_is_bootstrap_safe_and_reports_each_line(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
@@ -172,8 +178,8 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                 (card_template_root / rel).mkdir(parents=True, exist_ok=True)
 
             _write_text(temp_root / "lexicon" / "lexicon.json", "{}\n")
-            _write_text(temp_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
-            _write_text(temp_root / "defaults" / "credit_card_statement" / "category_defaults.json", "{}\n")
+            _write_mode_aware_defaults(temp_root, "receipt", "{}\n")
+            _write_mode_aware_defaults(temp_root, "credit_card_statement", "{}\n")
             _write_text(
                 temp_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
                 _minimal_receipt_replacer_config_json(),
@@ -190,7 +196,10 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                     [
                         "from __future__ import annotations",
                         "",
+                        "from pathlib import Path",
+                        "",
                         "CANONICAL_LINE_IDS = ['receipt', 'bank_statement', 'credit_card_statement']",
+                        "SUPPORTED_BOOKKEEPING_MODES = ['tax_excluded', 'tax_included']",
                         "",
                         "def validate_line_id(line_id: str) -> str:",
                         "    value = str(line_id or '').strip().lower()",
@@ -200,6 +209,15 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                         "",
                         "def is_line_implemented(line_id: str) -> bool:",
                         "    return validate_line_id(line_id) in {'receipt', 'bank_statement', 'credit_card_statement'}",
+                        "",
+                        "def tracked_category_defaults_relpaths(line_id: str) -> list[Path]:",
+                        "    line = validate_line_id(line_id)",
+                        "    if line == 'receipt' or line == 'credit_card_statement':",
+                        "        return [",
+                        "            Path('defaults') / line / 'category_defaults_tax_excluded.json',",
+                        "            Path('defaults') / line / 'category_defaults_tax_included.json',",
+                        "        ]",
+                        "    return [Path('defaults') / line / 'category_defaults.json']",
                         "",
                     ]
                 ),

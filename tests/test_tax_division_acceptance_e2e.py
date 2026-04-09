@@ -96,6 +96,18 @@ def _write_yayoi_rows(path: Path, rows: list[list[str]]) -> None:
         writer.writerows(rows)
 
 
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, payload: dict) -> None:
+    defaults_dir = repo_root / "defaults" / line_id
+    _write_text(
+        defaults_dir / "category_defaults_tax_excluded.json",
+        json.dumps(payload, ensure_ascii=False, indent=2),
+    )
+    _write_text(
+        defaults_dir / "category_defaults_tax_included.json",
+        json.dumps(payload, ensure_ascii=False, indent=2),
+    )
+
+
 def _read_csv_rows(path: Path) -> list[list[str]]:
     csv_obj = read_yayoi_csv(path)
     return [[token_to_text(token, csv_obj.encoding) for token in row.tokens] for row in csv_obj.rows]
@@ -207,32 +219,29 @@ def _write_receipt_assets(repo_root: Path) -> Path:
             indent=2,
         ),
     )
-    _write_text(
-        repo_root / "defaults" / "receipt" / "category_defaults.json",
-        json.dumps(
-            {
-                "schema": "belle.category_defaults.v2",
-                "version": "test",
-                "defaults": {
-                    "known_category": {
-                        "target_account": ACCOUNT_SUPPLIES,
-                        "target_tax_division": "",
-                        "confidence": 0.55,
-                        "priority": "MED",
-                        "reason_code": "category_default",
-                    }
-                },
-                "global_fallback": {
-                    "target_account": "仮払金",
+    _write_mode_aware_defaults(
+        repo_root,
+        "receipt",
+        {
+            "schema": "belle.category_defaults.v2",
+            "version": "test",
+            "defaults": {
+                "known_category": {
+                    "target_account": ACCOUNT_SUPPLIES,
                     "target_tax_division": "",
-                    "confidence": 0.35,
-                    "priority": "HIGH",
-                    "reason_code": "global_fallback",
-                },
+                    "confidence": 0.55,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
             },
-            ensure_ascii=False,
-            indent=2,
-        ),
+            "global_fallback": {
+                "target_account": "仮払金",
+                "target_tax_division": "",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
     )
     ruleset_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
     _write_text(
@@ -301,32 +310,29 @@ def _write_credit_card_assets(repo_root: Path, client_id: str) -> None:
             indent=2,
         ),
     )
-    _write_text(
-        repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
-        json.dumps(
-            {
-                "schema": "belle.category_defaults.v2",
-                "version": "test",
-                "defaults": {
-                    "shop_category": {
-                        "target_account": ACCOUNT_SUPPLIES,
-                        "target_tax_division": "",
-                        "confidence": 0.55,
-                        "priority": "MED",
-                        "reason_code": "category_default",
-                    }
-                },
-                "global_fallback": {
-                    "target_account": PLACEHOLDER_ACCOUNT,
+    _write_mode_aware_defaults(
+        repo_root,
+        "credit_card_statement",
+        {
+            "schema": "belle.category_defaults.v2",
+            "version": "test",
+            "defaults": {
+                "shop_category": {
+                    "target_account": ACCOUNT_SUPPLIES,
                     "target_tax_division": "",
-                    "confidence": 0.35,
-                    "priority": "HIGH",
-                    "reason_code": "global_fallback",
-                },
+                    "confidence": 0.55,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
             },
-            ensure_ascii=False,
-            indent=2,
-        ),
+            "global_fallback": {
+                "target_account": PLACEHOLDER_ACCOUNT,
+                "target_tax_division": "",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
     )
     _write_text(
         repo_root / "clients" / client_id / "lines" / "credit_card_statement" / "config" / "credit_card_line_config.json",

@@ -39,17 +39,20 @@ python .agents/skills/client-register/register_client.py --line credit_card_stat
 
 ## Notes
 1. Category overrides are generated from shared `lexicon/lexicon.json` category keys and line defaults:
-   1. `defaults/receipt/category_defaults.json`
-   2. `defaults/credit_card_statement/category_defaults.json`
-2. Generated `category_overrides.json` rows use the live contract:
+   1. `defaults/receipt/category_defaults_tax_excluded.json`
+   2. `defaults/receipt/category_defaults_tax_included.json`
+   3. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+   4. `defaults/credit_card_statement/category_defaults_tax_included.json`
+2. `receipt` / `credit_card_statement` override generation selects the tracked defaults variant from staged `clients/<CLIENT_ID>/config/yayoi_tax_config.json` `bookkeeping_mode`.
+3. Generated `category_overrides.json` rows use the live contract:
    1. `target_account`
    2. `target_tax_division`
-3. Line interpretation of those rows:
+4. Line interpretation of those rows:
    1. `receipt`: debit side
    2. `credit_card_statement`: placeholder side (`debit` or `credit`)
-4. category_overrides generation is best-effort; missing per-category defaults are filled with `global_fallback`.
-5. Generated `category_overrides.json` files are runtime/client assets and are not tracked in the repository baseline.
-6. `bank_statement` does not use category_overrides.
+5. category_overrides generation is best-effort; missing per-category defaults are filled with `global_fallback`.
+6. Generated `category_overrides.json` files are runtime/client assets and are not tracked in the repository baseline.
+7. `bank_statement` does not use category_overrides.
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.

@@ -34,9 +34,16 @@ def _prepare_template(real_repo_root: Path, repo_root: Path) -> None:
     shutil.copytree(src, dst)
 
 
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, payload: dict) -> None:
+    base_dir = repo_root / "defaults" / line_id
+    _write_json(base_dir / "category_defaults_tax_excluded.json", payload)
+    _write_json(base_dir / "category_defaults_tax_included.json", payload)
+
+
 def _prepare_shared_assets(repo_root: Path) -> None:
-    _write_json(
-        repo_root / "defaults" / "receipt" / "category_defaults.json",
+    _write_mode_aware_defaults(
+        repo_root,
+        "receipt",
         {
             "schema": "belle.category_defaults.v2",
             "version": "0.1",
@@ -58,8 +65,9 @@ def _prepare_shared_assets(repo_root: Path) -> None:
             },
         },
     )
-    _write_json(
-        repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+    _write_mode_aware_defaults(
+        repo_root,
+        "credit_card_statement",
         {
             "schema": "belle.category_defaults.v2",
             "version": "0.1",

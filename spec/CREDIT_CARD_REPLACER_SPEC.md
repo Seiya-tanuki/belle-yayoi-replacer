@@ -85,10 +85,13 @@ Partial-route note:
 
 ## Category defaults / overrides
 
-1. Effective category defaults and overrides may supply `target_tax_division`.
-2. A non-empty category `target_tax_division` may resolve the `category_default` tax route.
-3. A non-empty `global_fallback.target_tax_division` may resolve the `global_fallback` tax route.
-4. Blank fallback tax values mean no tax fallback.
+1. Effective category defaults come from the bookkeeping-mode-selected tracked credit-card defaults file.
+   1. `tax_excluded` -> `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+   2. `tax_included` -> `defaults/credit_card_statement/category_defaults_tax_included.json`
+2. Effective category defaults and overrides may supply `target_tax_division`.
+3. A non-empty category `target_tax_division` may resolve the `category_default` tax route.
+4. A non-empty `global_fallback.target_tax_division` may resolve the `global_fallback` tax route.
+5. Blank fallback tax values mean no tax fallback.
 
 ## Review report observability
 

@@ -130,8 +130,14 @@ def run_receipt(
         print("[WARN] legacy client layout detected (no lines/receipt/). Using legacy paths for this run.")
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
+    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
+    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 
-    asset_paths = line_asset_paths(repo_root, LINE_ID_RECEIPT)
+    asset_paths = line_asset_paths(
+        repo_root,
+        LINE_ID_RECEIPT,
+        bookkeeping_mode=yayoi_tax_config.bookkeeping_mode,
+    )
     lexicon_path = asset_paths["lexicon_path"]
     defaults_path = asset_paths["defaults_path"]
     overrides_path = get_category_overrides_path(repo_root, client_id, line_id=client_layout_line_id)
@@ -155,8 +161,6 @@ def run_receipt(
 
     defaults = merge_effective_defaults(global_defaults, overrides_by_category)
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
-    yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 
     try:
         tm, tm_summary = ensure_client_cache_updated(

@@ -52,7 +52,9 @@ This contract in this file is for `receipt` line behavior.
 
 ## Defaults overlay (runtime)
 
-1. Load global defaults from `defaults/<line_id>/category_defaults.json`.
+1. Load global defaults from the bookkeeping-mode-selected receipt tracked defaults file.
+   1. `tax_excluded` -> `defaults/receipt/category_defaults_tax_excluded.json`
+   2. `tax_included` -> `defaults/receipt/category_defaults_tax_included.json`
 2. Load per-client overrides from `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`.
 3. Build `effective_defaults = merge(global_defaults, client_overrides)`:
    1. Override `target_account` and `target_tax_division` per `category_key`.

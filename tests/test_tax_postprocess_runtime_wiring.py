@@ -530,23 +530,28 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (repo_root / "defaults" / "credit_card_statement" / "category_defaults.json").write_text(
-                json.dumps(
-                    {
-                        "schema": "belle.category_defaults.v2",
-                        "version": "test",
-                        "defaults": {},
-                        "global_fallback": {
-                            "target_account": RECEIPT_ACCOUNT,
-                            "target_tax_division": "",
-                            "confidence": 0.35,
-                            "priority": "HIGH",
-                            "reason_code": "global_fallback",
-                        },
+            defaults_payload = json.dumps(
+                {
+                    "schema": "belle.category_defaults.v2",
+                    "version": "test",
+                    "defaults": {},
+                    "global_fallback": {
+                        "target_account": RECEIPT_ACCOUNT,
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
                     },
-                    ensure_ascii=False,
-                    indent=2,
-                ),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            (repo_root / "defaults" / "credit_card_statement" / "category_defaults_tax_excluded.json").write_text(
+                defaults_payload,
+                encoding="utf-8",
+            )
+            (repo_root / "defaults" / "credit_card_statement" / "category_defaults_tax_included.json").write_text(
+                defaults_payload,
                 encoding="utf-8",
             )
             (line_root / "config" / "category_overrides.json").write_text("{}", encoding="utf-8")

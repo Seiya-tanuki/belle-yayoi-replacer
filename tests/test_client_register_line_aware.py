@@ -34,53 +34,55 @@ def _prepare_template(real_repo_root: Path, repo_root: Path) -> None:
     shutil.copytree(src, dst)
 
 
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, *, excluded: dict, included: dict) -> None:
+    base_dir = repo_root / "defaults" / line_id
+    _write_json(base_dir / "category_defaults_tax_excluded.json", excluded)
+    _write_json(base_dir / "category_defaults_tax_included.json", included)
+
+
 def _prepare_shared_assets(repo_root: Path) -> None:
-    _write_json(
-        repo_root / "defaults" / "receipt" / "category_defaults.json",
-        {
-            "schema": "belle.category_defaults.v2",
-            "version": "0.1",
-            "defaults": {
-                "misc": {
-                    "target_account": "雑費",
-                    "target_tax_division": "",
-                    "confidence": 0.7,
-                    "priority": "MED",
-                    "reason_code": "category_default",
-                }
-            },
-            "global_fallback": {
-                "target_account": "仮払金",
+    receipt_defaults = {
+        "schema": "belle.category_defaults.v2",
+        "version": "0.1",
+        "defaults": {
+            "misc": {
+                "target_account": "雑費",
                 "target_tax_division": "",
-                "confidence": 0.35,
-                "priority": "HIGH",
-                "reason_code": "global_fallback",
-            },
+                "confidence": 0.7,
+                "priority": "MED",
+                "reason_code": "category_default",
+            }
         },
-    )
-    _write_json(
-        repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
-        {
-            "schema": "belle.category_defaults.v2",
-            "version": "0.1",
-            "defaults": {
-                "misc": {
-                    "target_account": "髮題ｲｻ",
-                    "target_tax_division": "",
-                    "confidence": 0.7,
-                    "priority": "MED",
-                    "reason_code": "category_default",
-                }
-            },
-            "global_fallback": {
-                "target_account": "莉ｮ謇暮≡",
+        "global_fallback": {
+            "target_account": "仮払金",
+            "target_tax_division": "",
+            "confidence": 0.35,
+            "priority": "HIGH",
+            "reason_code": "global_fallback",
+        },
+    }
+    card_defaults = {
+        "schema": "belle.category_defaults.v2",
+        "version": "0.1",
+        "defaults": {
+            "misc": {
+                "target_account": "髮題ｲｻ",
                 "target_tax_division": "",
-                "confidence": 0.35,
-                "priority": "HIGH",
-                "reason_code": "global_fallback",
-            },
+                "confidence": 0.7,
+                "priority": "MED",
+                "reason_code": "category_default",
+            }
         },
-    )
+        "global_fallback": {
+            "target_account": "莉ｮ謇暮≡",
+            "target_tax_division": "",
+            "confidence": 0.35,
+            "priority": "HIGH",
+            "reason_code": "global_fallback",
+        },
+    }
+    _write_mode_aware_defaults(repo_root, "receipt", excluded=receipt_defaults, included=receipt_defaults)
+    _write_mode_aware_defaults(repo_root, "credit_card_statement", excluded=card_defaults, included=card_defaults)
     _write_json(
         repo_root / "lexicon" / "lexicon.json",
         {
@@ -254,6 +256,149 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_register_uses_staged_tax_included_defaults_variant_for_overrides(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_tax_included_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            _write_json(
+                repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json",
+                {
+                    "schema": "belle.yayoi_tax_config.v1",
+                    "version": "1.0",
+                    "enabled": True,
+                    "bookkeeping_mode": "tax_included",
+                    "rounding_mode": "floor",
+                },
+            )
+            _write_mode_aware_defaults(
+                repo_root,
+                "receipt",
+                excluded={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "雑費",
+                            "target_tax_division": "",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "仮払金",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+                included={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "租税公課",
+                            "target_tax_division": "課対仕入込10%",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "仮払金",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+            )
+            _write_mode_aware_defaults(
+                repo_root,
+                "credit_card_statement",
+                excluded={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "髮題ｲｻ",
+                            "target_tax_division": "",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "莉ｮ謇暮≡",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+                included={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "諸会費",
+                            "target_tax_division": "課対仕入込10%",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "莉ｮ謇暮≡",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+            )
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(module, repo_root, client_id="C_TAX_INCLUDED")
+            self.assertEqual(0, rc, msg=output)
+
+            receipt_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_INCLUDED"
+                    / "lines"
+                    / "receipt"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+            cc_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_INCLUDED"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                {"target_account": "租税公課", "target_tax_division": "課対仕入込10%"},
+                (receipt_overrides.get("overrides") or {}).get("misc"),
+            )
+            self.assertEqual(
+                {"target_account": "諸会費", "target_tax_division": "課対仕入込10%"},
+                (cc_overrides.get("overrides") or {}).get("misc"),
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_credit_card_line_option_creates_only_cc_line_with_overrides(self) -> None:
         repo_root = self.test_tmp_root / f"client_register_cc_only_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
@@ -354,6 +499,39 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertIn("Shared Yayoi tax config is missing after staging.", output)
             self.assertIn("Expected staged path: clients/C_MISSING_SHARED_TAX/config/yayoi_tax_config.json", output)
             self.assertFalse((repo_root / "clients" / "C_MISSING_SHARED_TAX").exists())
+            self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_registration_fails_when_shared_tax_config_is_invalid_after_staging(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_invalid_shared_tax_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            _write_json(
+                repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json",
+                {
+                    "schema": "belle.yayoi_tax_config.v1",
+                    "version": "1.0",
+                    "enabled": True,
+                    "bookkeeping_mode": "broken_mode",
+                    "rounding_mode": "floor",
+                },
+            )
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_INVALID_SHARED_TAX",
+                line="receipt",
+            )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Shared Yayoi tax config is invalid after staging.", output)
+            self.assertIn("bookkeeping_mode", output)
+            self.assertFalse((repo_root / "clients" / "C_INVALID_SHARED_TAX").exists())
             self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)

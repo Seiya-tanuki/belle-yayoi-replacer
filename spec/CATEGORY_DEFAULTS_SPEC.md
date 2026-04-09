@@ -1,13 +1,23 @@
 # CATEGORY_DEFAULTS_SPEC (belle.category_defaults.v2)
 
 ## Purpose
-`defaults/<line_id>/category_defaults.json` provides a shared, side-neutral fallback rule per
-lexicon category. It is used when per-client evidence is missing or too weak, especially for
-new clients that have no historical journals. The current repository tracks line-specific defaults for:
+Tracked category defaults provide a shared, side-neutral fallback rule per lexicon category.
+They are used when per-client evidence is missing or too weak, especially for new clients that
+have no historical journals. The current repository tracks line-specific defaults for:
 1. `receipt`
 2. `credit_card_statement`
 
 The live shared row contract is `target_account` / `target_tax_division`.
+Tracked asset filenames are:
+1. `defaults/receipt/category_defaults_tax_excluded.json`
+2. `defaults/receipt/category_defaults_tax_included.json`
+3. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+4. `defaults/credit_card_statement/category_defaults_tax_included.json`
+
+For `receipt` and `credit_card_statement`, runtime/bootstrap selects the tracked defaults file from
+`clients/<CLIENT_ID>/config/yayoi_tax_config.json` `bookkeeping_mode`:
+1. `tax_excluded` -> `category_defaults_tax_excluded.json`
+2. `tax_included` -> `category_defaults_tax_included.json`
 
 This is deliberately **opinionated** to increase replacement coverage.
 Human review remains the source of truth.
@@ -38,4 +48,5 @@ Top-level keys:
 - Defaults are not client-specific; client_cache overrides them when evidence is strong enough.
 - Tracked defaults are aligned to the shared `lexicon/lexicon.json` category keyset for each supported line.
 - If the client has an allowlist of valid accounts (optional future), defaults should be filtered against it.
+- This phase changes tracked asset structure and mode-aware resolution only. Tax learning and tax replacement order are unchanged.
 

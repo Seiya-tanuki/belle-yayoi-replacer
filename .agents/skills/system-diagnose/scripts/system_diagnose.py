@@ -20,7 +20,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from belle.lines import is_line_implemented, validate_line_id
+from belle.lines import is_line_implemented, tracked_category_defaults_relpaths, validate_line_id
 
 _SUPPORTED_LINE_IDS = ("receipt", "bank_statement", "credit_card_statement")
 _SUPPORTED_LINE_IDS_WITH_ALL = _SUPPORTED_LINE_IDS + ("all",)
@@ -1076,9 +1076,15 @@ def main() -> int:
                 False,
             ),
             (
-                "C2",
-                f"defaults/{line_id}/category_defaults.json exists",
-                repo_root / "defaults" / line_id / "category_defaults.json",
+                "C2A",
+                "defaults/receipt/category_defaults_tax_excluded.json exists",
+                repo_root / tracked_category_defaults_relpaths("receipt")[0],
+                False,
+            ),
+            (
+                "C2B",
+                "defaults/receipt/category_defaults_tax_included.json exists",
+                repo_root / tracked_category_defaults_relpaths("receipt")[1],
                 False,
             ),
         ] + required_paths
@@ -1162,9 +1168,15 @@ def main() -> int:
                 False,
             ),
             (
-                "C40",
-                "defaults/credit_card_statement/category_defaults.json exists",
-                repo_root / "defaults" / "credit_card_statement" / "category_defaults.json",
+                "C40A",
+                "defaults/credit_card_statement/category_defaults_tax_excluded.json exists",
+                repo_root / tracked_category_defaults_relpaths("credit_card_statement")[0],
+                False,
+            ),
+            (
+                "C40B",
+                "defaults/credit_card_statement/category_defaults_tax_included.json exists",
+                repo_root / tracked_category_defaults_relpaths("credit_card_statement")[1],
                 False,
             ),
             (

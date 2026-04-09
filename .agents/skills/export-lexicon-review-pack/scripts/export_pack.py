@@ -19,16 +19,15 @@ _REPO_ROOT = _Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
-from belle.lines import validate_line_id
+from belle.lines import tracked_category_defaults_relpaths, validate_line_id
 from belle.paths import get_label_queue_lock_path
 
 
 def _fixed_paths(line_id: str) -> List[Tuple[str, bool]]:
-    return [
+    fixed_paths: List[Tuple[str, bool]] = [
         ("lexicon/lexicon.json", True),
         (f"lexicon/{line_id}/pending/label_queue.csv", True),
         (f"lexicon/{line_id}/pending/label_queue_state.json", False),
-        (f"defaults/{line_id}/category_defaults.json", True),
         ("spec/LEXICON_PENDING_SPEC.md", False),
         ("spec/REPLACER_SPEC.md", False),
         ("spec/CATEGORY_OVERRIDES_SPEC.md", False),
@@ -36,6 +35,8 @@ def _fixed_paths(line_id: str) -> List[Tuple[str, bool]]:
         ("spec/FILE_LAYOUT.md", False),
         ("AGENTS.md", True),
     ]
+    fixed_paths[3:3] = [(rel_path.as_posix(), True) for rel_path in tracked_category_defaults_relpaths(line_id)]
+    return fixed_paths
 
 
 def _sha256_bytes(data: bytes) -> str:

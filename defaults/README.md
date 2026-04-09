@@ -9,5 +9,11 @@ Line interpretation:
 - `receipt`: target side is the debit side.
 - `credit_card_statement`: target side is the placeholder side.
 
-Phase A resets only the shared fallback schema. Tax learning and runtime tax-division replacement are deferred.
+Tracked defaults layout:
+- `receipt` uses `category_defaults_tax_excluded.json` and `category_defaults_tax_included.json`.
+- `credit_card_statement` uses `category_defaults_tax_excluded.json` and `category_defaults_tax_included.json`.
+- `bank_statement` has no tracked category defaults asset.
+
+For `receipt` / `credit_card_statement`, runtime selects the tracked defaults variant from the client shared tax config `bookkeeping_mode`.
+This phase changes tracked asset resolution only. Tax learning and tax replacement order remain unchanged.
 See `spec/CATEGORY_DEFAULTS_SPEC.md`.

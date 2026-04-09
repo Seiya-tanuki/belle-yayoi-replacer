@@ -1,0 +1,497 @@
+{
+  "schema": "belle.category_defaults.v2",
+  "version": "2.0.0",
+  "created_at": "2026-03-15T06:41:16Z",
+  "defaults": {
+    "restaurant_izakaya": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "cafe_coffee_shop": {
+      "target_account": "会議費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "supermarket_food": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "department_store_mall_service_area": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "convenience_store": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "daily_goods_variety_store": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "drugstore_pharmacy": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "stationery": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "books_magazines": {
+      "target_account": "新聞図書費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "electronics_pc_accessories": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "clothing_retail": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "shoes_bags_accessories": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "flower_shop": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "sports_goods_rental": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "cd_dvd_media": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "apparel_materials_supplies": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "cosmetics_retail": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "furniture_retail": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "newspapers_digital_news": {
+      "target_account": "新聞図書費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "auto_motorcycle_sales_service": {
+      "target_account": "車両費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "auto_motorcycle_supplies": {
+      "target_account": "車両費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "home_center": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "construction_materials": {
+      "target_account": "仕入高",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "real_estate_rent_office": {
+      "target_account": "地代家賃",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "delivery_postal_logistics": {
+      "target_account": "通信費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "barber_beauty_salon": {
+      "target_account": "仮払金",
+      "target_tax_division": "",
+      "confidence": 0.25,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "wellness_salon": {
+      "target_account": "仮払金",
+      "target_tax_division": "",
+      "confidence": 0.25,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "laundry_cleaning": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "insurance_agency": {
+      "target_account": "保険料",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "camera_photo": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "agency_support_service": {
+      "target_account": "外注費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "advertising_marketing": {
+      "target_account": "広告宣伝費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "printing_service": {
+      "target_account": "広告宣伝費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "keys_locks_safe": {
+      "target_account": "消耗品費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "waste_disposal_cleaning": {
+      "target_account": "雑費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "apps_subscriptions_software": {
+      "target_account": "通信費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "training_school": {
+      "target_account": "研修費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "repair_maintenance": {
+      "target_account": "修繕費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "outsourcing": {
+      "target_account": "外注費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "lease_rental": {
+      "target_account": "賃借料",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "office_equipment_service": {
+      "target_account": "リース料",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "staffing_dispatch": {
+      "target_account": "外注費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "recruiting_agency": {
+      "target_account": "支払手数料",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "security_service": {
+      "target_account": "雑費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "translation_interpretation": {
+      "target_account": "外注費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "construction_work": {
+      "target_account": "外注費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "licensed_professionals": {
+      "target_account": "管理諸費",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "consulting_research": {
+      "target_account": "支払手数料",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "movies_theater": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "golf_related": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "hotel_lodging_travel": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "hot_springs_public_bath": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "gas_station": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "taxi": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "rental_car": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "rail_transport": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "bus_transport": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "toll_road": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "parking": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "air_sea_transport": {
+      "target_account": "旅費交通費",
+      "target_tax_division": "",
+      "confidence": 0.6,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "telecom_communications": {
+      "target_account": "通信費",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "tax_public_office": {
+      "target_account": "租税公課",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "stamps_certificates": {
+      "target_account": "租税公課",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "social_insurance_pension": {
+      "target_account": "法定福利費",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "utilities": {
+      "target_account": "水道光熱費",
+      "target_tax_division": "",
+      "confidence": 0.68,
+      "priority": "LOW",
+      "reason_code": "category_default_policy"
+    },
+    "hospital_clinic": {
+      "target_account": "福利厚生費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "banks_credit_unions": {
+      "target_account": "支払手数料",
+      "target_tax_division": "",
+      "confidence": 0.58,
+      "priority": "MED",
+      "reason_code": "category_default_policy"
+    },
+    "religious_facilities": {
+      "target_account": "交際費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    },
+    "membership_fees": {
+      "target_account": "諸会費",
+      "target_tax_division": "",
+      "confidence": 0.45,
+      "priority": "HIGH",
+      "reason_code": "category_default_policy"
+    }
+  },
+  "global_fallback": {
+    "target_account": "仮払金",
+    "target_tax_division": "",
+    "confidence": 0.35,
+    "priority": "HIGH",
+    "reason_code": "global_fallback"
+  }
+}

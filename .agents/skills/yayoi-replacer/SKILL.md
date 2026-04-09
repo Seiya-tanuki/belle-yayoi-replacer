@@ -55,14 +55,16 @@ Deterministic replacement skill for Yayoi import CSVs.
 
 ## Defaults / overrides contract
 1. `receipt` and `credit_card_statement` use:
-   - `defaults/<line_id>/category_defaults.json`
+   - `defaults/receipt/category_defaults_tax_excluded.json` / `category_defaults_tax_included.json`
+   - `defaults/credit_card_statement/category_defaults_tax_excluded.json` / `category_defaults_tax_included.json`
    - `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`
-2. The live row contract is:
+2. Runtime selects the tracked defaults variant from `clients/<CLIENT_ID>/config/yayoi_tax_config.json` `bookkeeping_mode`.
+3. The live row contract is:
    - `target_account`
    - `target_tax_division`
-3. `receipt` target side is always the debit side.
-4. `credit_card_statement` target side is the placeholder side, so `target_tax_division` is written to debit or credit depending on where the placeholder is.
-5. Old `debit_account`-shaped overrides are invalid under the current rollout.
+4. `receipt` target side is always the debit side.
+5. `credit_card_statement` target side is the placeholder side, so `target_tax_division` is written to debit or credit depending on where the placeholder is.
+6. Old `debit_account`-shaped overrides are invalid under the current rollout.
 
 ## Operator protocol (mandatory)
 Codex/operator は以下の手順を固定で実施すること。

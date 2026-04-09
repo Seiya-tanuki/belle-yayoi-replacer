@@ -76,7 +76,18 @@ def _load_lexicon_keys(repo_root: Path) -> list[str]:
 
 
 def _load_expected_override_map(repo_root: Path, line_id: str, lexicon_keys: list[str]) -> dict[str, dict[str, str]]:
-    payload = json.loads((repo_root / "defaults" / line_id / "category_defaults.json").read_text(encoding="utf-8"))
+    template_cfg = json.loads(
+        (repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json").read_text(encoding="utf-8")
+    )
+    bookkeeping_mode = str(template_cfg.get("bookkeeping_mode") or "").strip()
+    payload = json.loads(
+        (
+            repo_root
+            / "defaults"
+            / line_id
+            / f"category_defaults_{bookkeeping_mode}.json"
+        ).read_text(encoding="utf-8")
+    )
     defaults = payload.get("defaults") or {}
     fallback_account = str(((payload.get("global_fallback") or {}).get("target_account")) or "")
     fallback_tax = str(((payload.get("global_fallback") or {}).get("target_tax_division")) or "")
