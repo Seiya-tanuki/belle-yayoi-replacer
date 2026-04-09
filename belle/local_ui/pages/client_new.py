@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from belle.local_ui.services.clients import create_client, preview_client_id
 from belle.local_ui.state import get_state
-from belle.local_ui.theme import page_shell, primary_button, secondary_button
+from belle.local_ui.theme import card_container, page_shell, primary_button, secondary_button
+
+
+BOOKKEEPING_MODE_CHOICES = {
+    "tax_included": (
+        "税込経理",
+        "税込金額のまま扱う設定です。",
+    ),
+    "tax_excluded": (
+        "税抜経理",
+        "税額を本体金額と分けて扱う設定です。",
+    ),
+}
 
 
 def build() -> None:
@@ -19,6 +31,26 @@ def build() -> None:
     def update_bookkeeping_mode(value: str) -> None:
         model["bookkeeping_mode"] = value or ""
 
+    def refresh_bookkeeping_cards() -> None:
+        cards_row.clear()
+        with cards_row:
+            for value, (label, description) in BOOKKEEPING_MODE_CHOICES.items():
+                is_selected = model["bookkeeping_mode"] == value
+                with card_container(selected=is_selected).classes("sm:flex-1").on(
+                    "click",
+                    lambda _=None, value=value: select_bookkeeping_mode(value),
+                ):
+                    ui.label(label).classes(
+                        "text-lg font-semibold text-white" if is_selected else "text-lg font-semibold"
+                    )
+                    ui.label(description).classes(
+                        "text-sm text-white" if is_selected else "text-sm text-slate-600"
+                    )
+
+    def select_bookkeeping_mode(value: str) -> None:
+        update_bookkeeping_mode(value)
+        refresh_bookkeeping_cards()
+
     def submit() -> None:
         model["error"] = ""
         model["stdout"] = ""
@@ -26,12 +58,10 @@ def build() -> None:
             model["error"] = "帳簿方式を選択してください。"
             error_label.set_text(model["error"])
             error_label.visible = True
-            detail_log.set_content("詳細はありません。")
             return
 
         result = create_client(model["raw_name"], model["bookkeeping_mode"])
         model["stdout"] = result.stdout
-        detail_log.set_content(result.stdout or "詳細はありません。")
         if result.ok:
             state.selected_client_id = result.client_id
             ui.notify("クライアントを作成しました。", type="positive")
@@ -45,28 +75,21 @@ def build() -> None:
     with page_shell(
         "手順 1 / 6",
         "新しいクライアントを作ります",
-        "入力した名前は、保存用に自動で整えられます。\n帳簿方式は作成時に必ず選択してください。",
+        "入力した名前は、保存用に自動で整えられます。\n消費税の経理方式は必ず事前に弥生会計のデータを確認し、正しい方を選択してください",
     ):
+        ui.label("登録したいクライアント名").classes("text-sm font-semibold text-slate-700")
         ui.input(
-            label="クライアント名",
-            placeholder="クライアント名",
+            placeholder="ここにクライアント名を入力してください",
             on_change=lambda e: update_preview(e.value or ""),
         ).props("outlined").classes("w-full")
-        ui.radio(
-            {
-                "tax_excluded": "税抜き",
-                "tax_included": "税込み",
-            },
-            value=None,
-            on_change=lambda e: update_bookkeeping_mode(e.value or ""),
-        ).props("inline").classes("w-full")
+        ui.label("消費税の経理方式").classes("text-sm font-semibold text-slate-700")
+        cards_row = ui.row().classes("w-full items-stretch gap-3 flex-col sm:flex-row")
+        refresh_bookkeeping_cards()
         with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
             ui.label("保存される名前").classes("text-sm text-slate-500")
             preview_label = ui.label("-").classes("text-lg font-semibold")
         error_label = ui.label("").classes("text-sm text-red-600")
         error_label.visible = False
-        with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
-            detail_log = ui.markdown("詳細はありません。")
         with ui.row().classes("w-full items-center justify-between gap-3"):
             secondary_button("戻る", lambda: ui.navigate.to("/"))
             with ui.row().classes("justify-end"):

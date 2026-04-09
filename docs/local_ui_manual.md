@@ -45,7 +45,7 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - The UI assumes local execution on `127.0.0.1`.
 - NiceGUI import is shimmed for current Python 3.14 behavior via `belle/local_ui/nicegui_compat.py`.
-- New client creation requires an explicit bookkeeping-mode selection: `税抜き` or `税込み`.
+- New client creation requires an explicit bookkeeping-mode selection: `税抜経理` or `税込経理`.
 - That creation-time selection is passed to `client-register`, which writes `clients/<CLIENT_ID>/config/yayoi_tax_config.json` and seeds `receipt` / `credit_card_statement` `category_overrides.json` from the corresponding defaults variant.
 - The local UI does not later edit `target_tax_division`, `clients/<CLIENT_ID>/config/yayoi_tax_config.json`, or any line-level tax-threshold config; operators manage those assets outside the UI after creation.
 - `exports/` remains outside Git tracking; operational progress files live there by bundle design.
