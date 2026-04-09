@@ -14,11 +14,11 @@ All runtime data must be isolated by client and line.
 ```text
 clients/<CLIENT_ID>/
   config/
-    yayoi_tax_config.json             # shared tax postprocess config (live runtime; template currently tracks enabled=true)
+    yayoi_tax_config.json             # live shared tax postprocess config for all implemented lines
   lines/
     <line_id>/
       config/
-        category_overrides.json        # receipt + credit_card_statement only; rows use target_account / target_tax_division
+        category_overrides.json        # receipt + credit_card_statement only; shared override rows use target_account / target_tax_division
         bank_line_config.json          # bank_statement only
         credit_card_line_config.json   # credit_card_statement only; tax_division_thresholds live here
       inputs/
@@ -124,6 +124,7 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json` is the shared client config path for Yayoi tax postprocess.
 2. The shared tax postprocess is wired into `receipt`, `bank_statement`, and `credit_card_statement`.
 3. `clients/TEMPLATE/config/yayoi_tax_config.json` is currently tracked with `enabled: true`, and new clients inherit that default unless they change the file.
+4. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
 
 ## Runtime-managed assets (ignored)
 

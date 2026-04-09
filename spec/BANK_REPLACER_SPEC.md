@@ -83,12 +83,13 @@ File-level decision gates (`clients/<CLIENT_ID>/lines/bank_statement/config/bank
 
 File-level apply policy:
 1. infer one bank-side subaccount identity per target CSV from row vote evidence
-2. if inference status is `OK`, apply the SAME inferred subaccount to ALL rows that require bank-side subaccount fill
-3. partial fill is forbidden; hybrid per-row bank-side subaccount outcomes are not allowed
-4. if inference status is not `OK` and required-fill rows exist:
-   1. do not fill any required bank-side subaccount row
+2. if inference status is `OK`, apply the SAME inferred subaccount uniformly to all rows whose bank side can be identified in the target file
+3. uniform application in `OK` state includes normalization of already non-blank bank-side subaccount values; apply policy is not limited to blank-fill rows
+4. partial fill is forbidden; hybrid per-row bank-side subaccount outcomes are not allowed
+5. strict-stop trigger basis is narrower than apply policy:
+   1. when required-fill rows exist and inference status is not `OK`, do not fill those required rows
    2. set `bank_sub_fill_required_failed = true` in replacer manifest
-5. if no rows require bank-side subaccount fill, keep rows unchanged and do not raise this failure flag
+6. if no rows require bank-side subaccount fill and inference status is not `OK`, keep rows unchanged and do not raise this failure flag
 
 Apply target and non-target guarantees:
 1. only the bank-account-side subaccount column is writable

@@ -7,6 +7,8 @@ The generated file is full-expanded from the current shared `lexicon/lexicon.jso
 and `defaults/<line_id>/category_defaults.json`, but runtime loading is best-effort and applies
 only validated rows. These generated files are not tracked as repository assets in the current
 baseline.
+The live row contract is `target_account` / `target_tax_division`; older v1-style `debit_account`
+wording is not part of the current runtime contract.
 Phase D line scope:
 1. `receipt`: used.
 2. `credit_card_statement`: used.

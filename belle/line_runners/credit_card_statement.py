@@ -90,6 +90,16 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
             details=details,
         )
 
+    cc_config_path = _credit_card_line_config_path(client_dir)
+    if not cc_config_path.exists():
+        return LinePlan(
+            line_id=LINE_ID_CARD,
+            status="FAIL",
+            reason=_missing_cc_config_reason(client_dir),
+            target_files=target_files,
+            details=details,
+        )
+
     return LinePlan(
         line_id=LINE_ID_CARD,
         status="RUN",

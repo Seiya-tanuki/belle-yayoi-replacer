@@ -13,7 +13,7 @@
    3. Only run a skill when the user explicitly requests it.
 3. Available Skills (split by responsibility):
    1. `$client-register`: clone `clients/TEMPLATE/` into `clients/<CLIENT_ID>/` using a safe client name.
-   2. `$yayoi-replacer`: run line-aware replacement (`receipt`: debit account only, `bank_statement`: see BANK_REPLACER_SPEC, `credit_card_statement`: see CREDIT_CARD_REPLACER_SPEC).
+   2. `$yayoi-replacer`: run line-aware replacement (`receipt`: debit account + debit-side tax division, with shared tax postprocess tax-amount fill when configured/applicable; `bank_statement`: see BANK_REPLACER_SPEC; `credit_card_statement`: see CREDIT_CARD_REPLACER_SPEC).
    3. `$client-cache-builder`: ingest line-specific learning inputs and incrementally update `client_cache`.
    4. `$lexicon-extract`: extract unknown terms from finalized ledger data and grow `label_queue.csv`.
    5. `$lexicon-apply`: apply only `ADD` rows from `label_queue.csv` to `lexicon.json`.
@@ -52,11 +52,16 @@
 
 ## 3) Critical Safety Constraints (Do Not Break Yayoi Import)
 1. Yayoi import CSV must be treated as fixed 25 columns.
-2. For `receipt`, `$yayoi-replacer` may change only debit account (column 5).
+2. For `receipt`, `$yayoi-replacer` may change:
+   1. debit account (column 5)
+   2. debit-side tax division (column 8)
+   3. shared tax postprocess may subsequently fill tax amount fields when configured/applicable
 3. For `bank_statement`, replacement target fields are defined by `spec/BANK_REPLACER_SPEC.md` and must stay within that contract.
 4. All non-target columns must remain unchanged.
-5. Inference may use only summary (column 17).
-6. Memo (column 22) must not be used for inference.
+5. Inference-source constraints are line-aware:
+   1. `receipt`: inference uses summary (column 17) only; memo (column 22) is not an inference source.
+   2. `credit_card_statement`: inference uses summary (column 17) only; memo (column 22) is not an inference source.
+   3. `bank_statement`: memo (column 22) may be used only for the `SIGN` fallback described by `spec/BANK_REPLACER_SPEC.md`.
 7. `##DUMMY_OCR_UNREADABLE##` must be treated as a dummy row: do not replace it and raise review priority.
 8. Yayoi CSV read/write must remain cp932-compatible.
 

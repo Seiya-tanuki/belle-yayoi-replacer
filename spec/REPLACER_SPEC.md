@@ -8,12 +8,14 @@ For credit-card replacement behavior, see `spec/CREDIT_CARD_REPLACER_SPEC.md`.
 
 ## Goal
 
-For `receipt`, replace only:
+For `receipt`, the live runtime may replace:
 1. debit account field (5th column)
 2. debit-side tax division field (8th column)
 
-All other replacement logic must remain out of scope.
-The shared tax postprocess may then fill tax amount cells after receipt tax-division replacement.
+Receipt target-side replacement uses the shared `target_account` / `target_tax_division` contract,
+interpreted on the debit side for this line.
+All other receipt replacement logic remains out of scope, except that the shared tax postprocess may
+then fill tax amount cells after receipt tax-division replacement.
 
 ## Line implementation status (current)
 
@@ -54,7 +56,8 @@ This contract in this file is for `receipt` line behavior.
 2. Load per-client overrides from `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`.
 3. Build `effective_defaults = merge(global_defaults, client_overrides)`:
    1. Override `target_account` and `target_tax_division` per `category_key`.
-   2. Keep global `confidence`, `priority`, and `reason_code` unchanged.
+   2. For `receipt`, `target_account` means debit-side account and `target_tax_division` means debit-side tax division.
+   3. Keep global `confidence`, `priority`, and `reason_code` unchanged.
 4. If overrides file is missing, generate a full-expanded file and continue.
 5. If overrides file exists, load it best-effort:
    1. file-level invalid states are treated as empty overrides with warnings

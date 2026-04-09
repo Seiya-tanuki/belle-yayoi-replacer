@@ -7,7 +7,8 @@ This spec applies only to `line_id=credit_card_statement`.
 Current implementation status:
 1. `credit_card_statement` cache learning is implemented.
 2. Cache update source is line-scoped `inputs/ledger_ref/`.
-3. No backward compatibility or migration support is provided for older credit-card cache schema versions in this phase.
+3. Target-account-conditioned tax learning is implemented.
+4. No backward compatibility or migration support is provided for older credit-card cache schema versions in this phase.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
@@ -135,8 +136,6 @@ Required credit-card tax section:
 2. `tax_division_thresholds.merchant_key_target_account_exact`
 3. `tax_division_thresholds.merchant_key_target_account_partial`
 
-## Explicit exclusions
+## Compatibility note
 
-1. Receipt tax learning is out of scope here.
-2. Bank tax learning is out of scope here.
-3. This phase does not provide compatibility shims for legacy credit-card cache schema versions.
+1. This phase does not provide compatibility shims for legacy credit-card cache schema versions.

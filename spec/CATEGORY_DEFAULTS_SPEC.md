@@ -7,6 +7,8 @@ new clients that have no historical journals. The current repository tracks line
 1. `receipt`
 2. `credit_card_statement`
 
+The live shared row contract is `target_account` / `target_tax_division`.
+
 This is deliberately **opinionated** to increase replacement coverage.
 Human review remains the source of truth.
 

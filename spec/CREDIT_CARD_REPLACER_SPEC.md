@@ -5,9 +5,9 @@
 This spec applies only to `line_id=credit_card_statement`.
 
 Current implementation status:
-1. Credit-card placeholder-side account replacement is implemented.
-2. Payable-side subaccount fill is implemented.
-3. Placeholder-side tax-division replacement is implemented.
+1. Target-side account replacement is implemented.
+2. Target-side tax-division replacement is implemented.
+3. Payable-side subaccount fill is implemented.
 4. Shared Yayoi tax postprocess runs after credit-card tax-division replacement.
 
 Related specs:
@@ -17,16 +17,18 @@ Related specs:
 
 ## Replacement goals
 
-1. Replace placeholder account `仮払金` with a predicted target account.
-2. Fill payable-side subaccount when account name is `未払金` and subaccount is empty.
-3. Replace placeholder-side target tax division before the shared tax postprocess runs.
-4. Preserve all non-target fields.
+1. Replace placeholder account `仮払金` on the target side with a predicted target account.
+2. Replace target-side tax division before the shared tax postprocess runs.
+3. Fill payable-side subaccount when account name is `未払金` and subaccount is empty.
+4. In the same run, the shared tax postprocess may later fill tax amount fields when configured/applicable.
+5. Preserve all other non-target fields.
 
 ## Target-side rule
 
 1. Credit-card target side is the placeholder side.
 2. Placeholder side may be either `debit` or `credit`.
 3. If placeholder side is ambiguous or absent, target-side account and tax replacement are both no-op.
+4. Inference uses summary only; memo is not an inference source for this line.
 
 ## Account decision
 
@@ -125,6 +127,14 @@ Required fields:
 Strict-stop behavior is unchanged and remains payable-subaccount specific:
 1. `payable_sub_fill_required_failed == true` triggers runner-level strict stop.
 2. Tax replacement alone does not introduce a new strict-stop condition.
+
+## Runtime summary
+
+The current live credit-card runtime performs all of the following within one run:
+1. target-side account replacement
+2. target-side tax-division replacement on the placeholder side
+3. payable-side subaccount fill
+4. shared tax postprocess tax-amount fill when configured/applicable
 
 ## Explicit exclusions
 
