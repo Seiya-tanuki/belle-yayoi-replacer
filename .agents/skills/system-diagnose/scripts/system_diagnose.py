@@ -31,6 +31,29 @@ _YAYOI_TAX_CONFIG_SCHEMA = "belle.yayoi_tax_config.v1"
 _YAYOI_TAX_CONFIG_VERSION = "1.0"
 _SUPPORTED_TAX_BOOKKEEPING_MODES = {"tax_excluded", "tax_included"}
 _SUPPORTED_TAX_ROUNDING_MODES = {"floor"}
+_CATEGORY_OVERRIDES_SCHEMA_V2 = "belle.category_overrides.v2"
+_UTF8_BOM = b"\xef\xbb\xbf"
+_RECEIPT_TAX_THRESHOLD_ROUTES = (
+    "t_number_x_category_target_account",
+    "t_number_target_account",
+    "vendor_key_target_account",
+    "category_target_account",
+    "global_target_account",
+)
+_RECEIPT_TAX_CONFIDENCE_KEYS = (
+    "t_number_x_category_target_account_strength",
+    "t_number_target_account_strength",
+    "vendor_key_target_account_strength",
+    "category_target_account_strength",
+    "global_target_account_strength",
+    "category_default_strength",
+    "global_fallback_strength",
+    "learned_weight_multiplier",
+)
+_CC_TAX_THRESHOLD_ROUTES = (
+    "merchant_key_target_account_exact",
+    "merchant_key_target_account_partial",
+)
 
 
 @dataclass
@@ -350,6 +373,267 @@ def _format_shared_tax_config_state(client_id: str, config_obj) -> str:
         f"{client_id}(enabled={enabled}, bookkeeping_mode={bookkeeping_mode}, "
         f"rounding_mode={rounding_mode})"
     )
+
+
+def _load_json_object(path: Path, *, label: str) -> dict:
+    try:
+        obj = json.loads(path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"{label} parse_error: {path}: {exc}") from exc
+    if not isinstance(obj, dict):
+        raise ValueError(f"{label} must be a JSON object: {path}")
+    return obj
+
+
+def _is_int_like(value) -> bool:
+    try:
+        int(value)
+    except Exception:
+        return False
+    return True
+
+
+def _is_float_like(value) -> bool:
+    try:
+        float(value)
+    except Exception:
+        return False
+    return True
+
+
+def _validate_threshold_routes(
+    section_obj,
+    *,
+    section_name: str,
+    route_names: Sequence[str],
+) -> List[str]:
+    issues: List[str] = []
+    if not isinstance(section_obj, dict):
+        return [f"{section_name}=missing_or_invalid"]
+    for route_name in route_names:
+        route_obj = section_obj.get(route_name)
+        if not isinstance(route_obj, dict):
+            issues.append(f"{section_name}.{route_name}=missing_or_invalid")
+            continue
+        if "min_count" not in route_obj or not _is_int_like(route_obj.get("min_count")):
+            issues.append(f"{section_name}.{route_name}.min_count=missing_or_invalid")
+        if "min_p_majority" not in route_obj or not _is_float_like(route_obj.get("min_p_majority")):
+            issues.append(f"{section_name}.{route_name}.min_p_majority=missing_or_invalid")
+    return issues
+
+
+def _validate_float_key_section(
+    section_obj,
+    *,
+    section_name: str,
+    keys: Sequence[str],
+) -> List[str]:
+    issues: List[str] = []
+    if not isinstance(section_obj, dict):
+        return [f"{section_name}=missing_or_invalid"]
+    for key in keys:
+        if key not in section_obj or not _is_float_like(section_obj.get(key)):
+            issues.append(f"{section_name}.{key}=missing_or_invalid")
+    return issues
+
+
+def _validate_receipt_runtime_tax_sections(config_path: Path) -> tuple[bool, str]:
+    try:
+        obj = _load_json_object(config_path, label="receipt replacer config")
+    except Exception as exc:
+        return False, str(exc)
+
+    issues = _validate_threshold_routes(
+        obj.get("tax_division_thresholds"),
+        section_name="tax_division_thresholds",
+        route_names=_RECEIPT_TAX_THRESHOLD_ROUTES,
+    )
+    issues.extend(
+        _validate_float_key_section(
+            obj.get("tax_division_confidence"),
+            section_name="tax_division_confidence",
+            keys=_RECEIPT_TAX_CONFIDENCE_KEYS,
+        )
+    )
+    if issues:
+        return False, f"{config_path.name}: " + "; ".join(issues)
+    return (
+        True,
+        f"{config_path.name}: tax_division_thresholds/routes={len(_RECEIPT_TAX_THRESHOLD_ROUTES)}, "
+        f"tax_division_confidence/keys={len(_RECEIPT_TAX_CONFIDENCE_KEYS)}",
+    )
+
+
+def _validate_credit_card_template_tax_sections(config_path: Path) -> tuple[bool, str]:
+    try:
+        obj = _load_json_object(config_path, label="credit_card_line_config")
+    except Exception as exc:
+        return False, str(exc)
+
+    issues = _validate_threshold_routes(
+        obj.get("tax_division_thresholds"),
+        section_name="tax_division_thresholds",
+        route_names=_CC_TAX_THRESHOLD_ROUTES,
+    )
+    if issues:
+        return False, f"{config_path.name}: " + "; ".join(issues)
+    return (
+        True,
+        f"{config_path.name}: tax_division_thresholds/routes={len(_CC_TAX_THRESHOLD_ROUTES)}",
+    )
+
+
+def _discover_clients_with_line(repo_root: Path, line_id: str) -> List[tuple[str, Path]]:
+    found: List[tuple[str, Path]] = []
+    for client_id, client_dir in _discover_non_template_clients(repo_root):
+        line_root = client_dir / "lines" / line_id
+        if line_root.exists():
+            found.append((client_id, line_root))
+    return found
+
+
+def _discover_receipt_override_targets(repo_root: Path) -> List[tuple[str, Path, str]]:
+    found: List[tuple[str, Path, str]] = []
+    for client_id, client_dir in _discover_non_template_clients(repo_root):
+        line_root = client_dir / "lines" / "receipt"
+        if line_root.exists():
+            found.append((client_id, line_root / "config" / "category_overrides.json", "line"))
+            continue
+        legacy_path = client_dir / "config" / "category_overrides.json"
+        if legacy_path.exists():
+            found.append((client_id, legacy_path, "legacy"))
+    return found
+
+
+def _load_lexicon_category_keys(repo_root: Path) -> List[str]:
+    lexicon_path = repo_root / "lexicon" / "lexicon.json"
+    if not lexicon_path.exists():
+        return []
+    try:
+        obj = _load_json_object(lexicon_path, label="lexicon")
+    except Exception:
+        return []
+    raw_categories = obj.get("categories")
+    if not isinstance(raw_categories, list):
+        return []
+    keys: List[str] = []
+    for raw_row in raw_categories:
+        if not isinstance(raw_row, dict):
+            continue
+        key = str(raw_row.get("key") or "").strip()
+        if key:
+            keys.append(key)
+    return sorted(set(keys))
+
+
+def _validate_category_overrides_contract(
+    repo_root: Path,
+    path: Path,
+    *,
+    lexicon_category_keys: Sequence[str],
+    layout_label: str,
+) -> tuple[str, str]:
+    rel_path = path.relative_to(repo_root).as_posix()
+    if not path.exists():
+        return "missing_optional", f"optional_missing: layout={layout_label}; path={rel_path}"
+
+    raw_bytes = path.read_bytes()
+    has_bom = raw_bytes.startswith(_UTF8_BOM)
+    parse_bytes = raw_bytes[len(_UTF8_BOM) :] if has_bom else raw_bytes
+    notes: List[str] = []
+    invalid_reasons: List[str] = []
+    if has_bom:
+        notes.append("utf8_bom_present")
+
+    try:
+        decoded = parse_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        invalid_reasons.append(f"invalid_utf8@{exc.start}:{exc.end}")
+        return "invalid", f"invalid_present: layout={layout_label}; path={rel_path}; " + "; ".join(invalid_reasons)
+
+    try:
+        obj = json.loads(decoded)
+    except json.JSONDecodeError as exc:
+        invalid_reasons.append(f"invalid_json@line={exc.lineno},col={exc.colno}")
+        return "invalid", f"invalid_present: layout={layout_label}; path={rel_path}; " + "; ".join(invalid_reasons)
+
+    if not isinstance(obj, dict):
+        invalid_reasons.append(f"top_level_invalid:{type(obj).__name__}")
+        return "invalid", f"invalid_present: layout={layout_label}; path={rel_path}; " + "; ".join(invalid_reasons)
+
+    schema = str(obj.get("schema") or "").strip()
+    if schema != _CATEGORY_OVERRIDES_SCHEMA_V2:
+        invalid_reasons.append(
+            f"schema_invalid: expected={_CATEGORY_OVERRIDES_SCHEMA_V2} actual={schema or '(empty)'}"
+        )
+        return "invalid", f"invalid_present: layout={layout_label}; path={rel_path}; " + "; ".join(invalid_reasons)
+
+    overrides = obj.get("overrides")
+    if not isinstance(overrides, dict):
+        invalid_reasons.append(f"overrides_invalid:{type(overrides).__name__}")
+        return "invalid", f"invalid_present: layout={layout_label}; path={rel_path}; " + "; ".join(invalid_reasons)
+
+    expected_keys = {str(k) for k in lexicon_category_keys}
+    actual_keys = {str(k) for k in overrides.keys()}
+    keys_to_validate = sorted(expected_keys or actual_keys)
+
+    if expected_keys:
+        missing_keys = sorted(expected_keys - actual_keys)
+        extra_keys = sorted(actual_keys - expected_keys)
+        if missing_keys:
+            notes.append(f"missing_keys={len(missing_keys)}")
+        if extra_keys:
+            notes.append(f"extra_keys={len(extra_keys)}")
+
+    applied_count = 0
+    row_invalid = 0
+    row_missing_keys = 0
+    row_extra_keys = 0
+    row_value_invalid = 0
+    for key in keys_to_validate:
+        row = overrides.get(key)
+        if not isinstance(row, dict):
+            row_invalid += 1
+            continue
+
+        row_keys = {str(k) for k in row.keys()}
+        missing_required = sorted({"target_account", "target_tax_division"} - row_keys)
+        extra = sorted(row_keys - {"target_account", "target_tax_division"})
+        if missing_required:
+            row_missing_keys += 1
+        if extra:
+            row_extra_keys += 1
+
+        target_account = row.get("target_account")
+        target_tax_division = row.get("target_tax_division")
+        if not isinstance(target_account, str) or not target_account.strip():
+            row_value_invalid += 1
+            continue
+        if not isinstance(target_tax_division, str):
+            row_value_invalid += 1
+            continue
+        if missing_required:
+            row_value_invalid += 1
+            continue
+        applied_count += 1
+
+    if row_invalid:
+        invalid_reasons.append(f"row_invalid={row_invalid}")
+    if row_missing_keys:
+        invalid_reasons.append(f"row_missing_target_keys={row_missing_keys}")
+    if row_extra_keys:
+        invalid_reasons.append(f"row_extra_keys={row_extra_keys}")
+    if row_value_invalid:
+        invalid_reasons.append(f"row_value_invalid={row_value_invalid}")
+
+    summary = (
+        f"layout={layout_label}; path={rel_path}; applied={applied_count}/{len(keys_to_validate)}"
+    )
+    if invalid_reasons:
+        return "invalid", f"invalid_present: {summary}; " + "; ".join(invalid_reasons)
+    if notes:
+        summary += "; notes=" + ",".join(notes)
+    return "valid", f"valid_present: {summary}"
 
 
 def _discover_bank_line_clients(repo_root: Path) -> List[tuple[str, Path]]:
@@ -1042,6 +1326,65 @@ def main() -> int:
             cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
             "Add the active replacer config back under rulesets/ and align references.",
         )
+        if detected_cfg is not None and detected_cfg.exists():
+            c44_passed, c44_evidence = _validate_receipt_runtime_tax_sections(detected_cfg)
+        else:
+            c44_passed = False
+            c44_evidence = "active receipt replacer config missing"
+        add_hard(
+            "C44",
+            "active receipt replacer config contains required tax_division_thresholds and tax_division_confidence sections",
+            c44_passed,
+            c44_evidence,
+            "Restore the tracked receipt tax threshold/confidence sections in the active replacer config.",
+        )
+
+        receipt_override_targets = _discover_receipt_override_targets(repo_root)
+        lexicon_category_keys = _load_lexicon_category_keys(repo_root)
+        receipt_override_invalid: List[str] = []
+        receipt_override_valid: List[str] = []
+        receipt_override_missing: List[str] = []
+        for receipt_client_id, override_path, layout_label in receipt_override_targets:
+            state, evidence = _validate_category_overrides_contract(
+                repo_root,
+                override_path,
+                lexicon_category_keys=lexicon_category_keys,
+                layout_label=layout_label,
+            )
+            entry = f"{receipt_client_id}: {evidence}"
+            if state == "invalid":
+                receipt_override_invalid.append(entry)
+            elif state == "valid":
+                receipt_override_valid.append(entry)
+            else:
+                receipt_override_missing.append(entry)
+        if not receipt_override_targets:
+            c45_passed = True
+            c45_evidence = "N/A: no receipt category_overrides targets detected"
+        elif receipt_override_invalid:
+            c45_passed = False
+            evidence_parts: List[str] = []
+            if receipt_override_valid:
+                evidence_parts.append("valid=" + "; ".join(receipt_override_valid[:5]))
+            if receipt_override_missing:
+                evidence_parts.append("optional_missing=" + "; ".join(receipt_override_missing[:5]))
+            evidence_parts.append("invalid=" + "; ".join(receipt_override_invalid[:5]))
+            c45_evidence = " | ".join(evidence_parts)
+        else:
+            c45_passed = True
+            evidence_parts = []
+            if receipt_override_valid:
+                evidence_parts.append("valid=" + "; ".join(receipt_override_valid[:5]))
+            if receipt_override_missing:
+                evidence_parts.append("optional_missing=" + "; ".join(receipt_override_missing[:5]))
+            c45_evidence = " | ".join(evidence_parts) if evidence_parts else "N/A"
+        add_hard(
+            "C45",
+            "receipt category_overrides.json follows the target_account/target_tax_division row contract when present",
+            c45_passed,
+            c45_evidence,
+            "Replace old debit_account/debit_tax_division-shaped receipt override rows with target_account/target_tax_division rows.",
+        )
 
     if line_id == "bank_statement":
         bank_clients = _discover_bank_line_clients(repo_root)
@@ -1283,6 +1626,85 @@ def main() -> int:
             s7_passed,
             s7_evidence,
             "Run $client-cache-builder --line bank_statement --client <CLIENT_ID> for clients with missing cache.",
+        )
+    if line_id == "credit_card_statement":
+        card_template_config_path = (
+            repo_root
+            / "clients"
+            / "TEMPLATE"
+            / "lines"
+            / "credit_card_statement"
+            / "config"
+            / "credit_card_line_config.json"
+        )
+        add_hard(
+            "C46",
+            "clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json exists",
+            card_template_config_path.is_file(),
+            f"checked path: {card_template_config_path.relative_to(repo_root).as_posix()}",
+            "Restore the tracked TEMPLATE credit_card_line_config.json from source control.",
+        )
+        if card_template_config_path.is_file():
+            c47_passed, c47_evidence = _validate_credit_card_template_tax_sections(card_template_config_path)
+        else:
+            c47_passed = False
+            c47_evidence = "missing path: clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json"
+        add_hard(
+            "C47",
+            "clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required tax_division_thresholds sections",
+            c47_passed,
+            c47_evidence,
+            "Restore the TEMPLATE credit-card tax threshold sections under tax_division_thresholds.",
+        )
+
+        credit_card_override_targets = [
+            (client_id, line_root / "config" / "category_overrides.json", "line")
+            for client_id, line_root in _discover_clients_with_line(repo_root, "credit_card_statement")
+        ]
+        lexicon_category_keys = _load_lexicon_category_keys(repo_root)
+        card_override_invalid: List[str] = []
+        card_override_valid: List[str] = []
+        card_override_missing: List[str] = []
+        for card_client_id, override_path, layout_label in credit_card_override_targets:
+            state, evidence = _validate_category_overrides_contract(
+                repo_root,
+                override_path,
+                lexicon_category_keys=lexicon_category_keys,
+                layout_label=layout_label,
+            )
+            entry = f"{card_client_id}: {evidence}"
+            if state == "invalid":
+                card_override_invalid.append(entry)
+            elif state == "valid":
+                card_override_valid.append(entry)
+            else:
+                card_override_missing.append(entry)
+        if not credit_card_override_targets:
+            c48_passed = True
+            c48_evidence = "N/A: no credit_card_statement category_overrides targets detected"
+        elif card_override_invalid:
+            c48_passed = False
+            evidence_parts = []
+            if card_override_valid:
+                evidence_parts.append("valid=" + "; ".join(card_override_valid[:5]))
+            if card_override_missing:
+                evidence_parts.append("optional_missing=" + "; ".join(card_override_missing[:5]))
+            evidence_parts.append("invalid=" + "; ".join(card_override_invalid[:5]))
+            c48_evidence = " | ".join(evidence_parts)
+        else:
+            c48_passed = True
+            evidence_parts = []
+            if card_override_valid:
+                evidence_parts.append("valid=" + "; ".join(card_override_valid[:5]))
+            if card_override_missing:
+                evidence_parts.append("optional_missing=" + "; ".join(card_override_missing[:5]))
+            c48_evidence = " | ".join(evidence_parts) if evidence_parts else "N/A"
+        add_hard(
+            "C48",
+            "credit_card_statement category_overrides.json follows the target_account/target_tax_division row contract when present",
+            c48_passed,
+            c48_evidence,
+            "Replace old debit_account/debit_tax_division-shaped credit-card override rows with target_account/target_tax_division rows.",
         )
     # D) BOM / compilation / tests
     d1 = run_and_store("D1", "python tools/bom_guard.py --check")

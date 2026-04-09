@@ -30,7 +30,7 @@ Top-level keys:
   - `receipt`: target side is the debit side.
   - `credit_card_statement`: target side is the placeholder side.
 - `receipt` may use non-empty `target_tax_division` as a fallback route after learned receipt tax evidence.
-- `credit_card_statement` still stores `target_tax_division` only as shared contract data in this phase.
+- `credit_card_statement` may use non-empty `target_tax_division` as a placeholder-side tax fallback after learned merchant-key tax evidence.
 - `target_tax_division` must exist in tracked defaults, but it may be blank.
 - Defaults should use commonly available Japanese account names to reduce import risk.
 - Defaults are not client-specific; client_cache overrides them when evidence is strong enough.

@@ -45,7 +45,7 @@ Top-level keys:
 4. `target_account` must be a non-empty string.
 5. `target_tax_division` must be a string and may be blank.
 6. `receipt` may use non-empty `target_tax_division` as a fallback route after learned receipt tax evidence.
-7. `credit_card_statement` still treats `target_tax_division` as stored overlay data only in this phase.
+7. `credit_card_statement` may use non-empty `target_tax_division` as a placeholder-side fallback after learned merchant-key tax evidence.
 
 ## Runtime validation semantics (best-effort)
 
@@ -81,7 +81,7 @@ Top-level keys:
 1. `receipt` reads the merged rule's `target_account` as the debit-side fallback account.
 2. `credit_card_statement` reads the merged rule's `target_account` as the placeholder-side fallback account.
 3. `receipt` reads `target_tax_division` as a debit-side tax-division fallback only when the value is non-empty.
-4. `credit_card_statement` still stores `target_tax_division` for a later phase.
+4. `credit_card_statement` reads `target_tax_division` as a placeholder-side tax-division fallback only when the value is non-empty.
 
 ## Warnings and manifest
 

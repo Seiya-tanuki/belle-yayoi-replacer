@@ -12,20 +12,31 @@ The current taxonomy is the reconstructed 69-category operational/posting taxono
 
 ## Core behavior
 
-1. `receipt`: replace only debit account column (column 5); inference uses summary column (column 17) only; memo column (column 22) is not used.
-2. `bank_statement`: replace only the fields defined by `spec/BANK_REPLACER_SPEC.md`; summary may be rewritten and memo `SIGN` may be used as a fallback signal.
-3. `credit_card_statement`: replace placeholder account and payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; inference uses summary and does not use memo.
+1. `receipt`: replace debit account and debit-side tax division; inference uses summary column (column 17) only; memo column (column 22) is not used.
+2. `bank_statement`: replace only the fields defined by `spec/BANK_REPLACER_SPEC.md`; bank keeps its own tax-division replacement logic, then shared tax postprocess may fill tax amount.
+3. `credit_card_statement`: replace placeholder-side account, placeholder-side tax division, and payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; the placeholder side may be `debit` or `credit`.
 4. Keep everything offline (no network dependency).
+
+## Defaults / overrides contract
+
+1. `receipt` and `credit_card_statement` defaults/overrides use the live row shape:
+   - `target_account`
+   - `target_tax_division`
+2. `receipt` interprets that contract on the debit side.
+3. `credit_card_statement` interprets that contract on the placeholder side.
+4. `bank_statement` does not use `category_overrides.json`.
 
 ## Shared tax postprocess config
 
 Shared client config path:
 1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
 2. This shared config controls runtime tax amount auto-fill.
+3. The shared tax postprocess runs after line-specific tax-division replacement on `receipt`, `bank_statement`, and `credit_card_statement`.
 
 Current default behavior:
 1. Missing config resolves to disabled / no-op.
 2. New clients inherit the shared config from `clients/TEMPLATE/config/yayoi_tax_config.json`.
+3. The tracked template currently sets `enabled: true`, so newly registered clients start with shared tax postprocess enabled by default on this branch.
 
 Current v1 runtime scope:
 1. `bookkeeping_mode = tax_excluded`

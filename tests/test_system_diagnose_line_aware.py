@@ -51,6 +51,82 @@ def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: 
     )
 
 
+def _minimal_receipt_replacer_config_json(*, include_tax_sections: bool = True) -> str:
+    payload = {
+        "schema": "belle.replacer_config.v1",
+        "version": "1.16",
+        "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+    }
+    if include_tax_sections:
+        payload["tax_division_thresholds"] = {
+            "t_number_x_category_target_account": {"min_count": 2, "min_p_majority": 0.75},
+            "t_number_target_account": {"min_count": 3, "min_p_majority": 0.7},
+            "vendor_key_target_account": {"min_count": 3, "min_p_majority": 0.7},
+            "category_target_account": {"min_count": 3, "min_p_majority": 0.7},
+            "global_target_account": {"min_count": 3, "min_p_majority": 0.7},
+        }
+        payload["tax_division_confidence"] = {
+            "t_number_x_category_target_account_strength": 0.97,
+            "t_number_target_account_strength": 0.95,
+            "vendor_key_target_account_strength": 0.85,
+            "category_target_account_strength": 0.65,
+            "global_target_account_strength": 0.55,
+            "category_default_strength": 0.55,
+            "global_fallback_strength": 0.35,
+            "learned_weight_multiplier": 0.85,
+        }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _minimal_credit_card_line_config_json(*, include_tax_sections: bool = True) -> str:
+    payload = {
+        "schema": "belle.credit_card_line_config.v1",
+        "version": "0.2",
+        "placeholder_account_name": "仮払金",
+        "payable_account_name": "未払金",
+        "thresholds": {
+            "merchant_key_account": {"min_count": 3, "min_p_majority": 0.9},
+            "file_level_card_inference": {"min_votes": 3, "min_p_majority": 0.9},
+        },
+        "candidate_extraction": {
+            "min_total_count": 5,
+            "min_unique_merchants": 3,
+            "min_unique_counter_accounts": 2,
+        },
+    }
+    if include_tax_sections:
+        payload["tax_division_thresholds"] = {
+            "merchant_key_target_account_exact": {"min_count": 3, "min_p_majority": 0.9},
+            "merchant_key_target_account_partial": {"min_count": 3, "min_p_majority": 0.9},
+        }
+    return json.dumps(payload, ensure_ascii=False)
+
+
+def _write_minimal_lexicon_with_category(repo_root: Path, category_key: str = "known_a") -> None:
+    _write_text(
+        repo_root / "lexicon" / "lexicon.json",
+        json.dumps(
+            {
+                "schema": "belle.lexicon.v1",
+                "version": "test",
+                "categories": [
+                    {
+                        "id": 1,
+                        "key": category_key,
+                        "label": "Known A",
+                        "kind": "expense",
+                        "precision_hint": 0.9,
+                        "deprecated": False,
+                        "negative_terms": {"n0": [], "n1": []},
+                    }
+                ],
+                "term_rows": [],
+            },
+            ensure_ascii=False,
+        ),
+    )
+
+
 def _load_system_diagnose_module(real_repo_root: Path):
     script_path = (
         real_repo_root
@@ -101,13 +177,31 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
             "bank_pairing.py",
         ]:
             _write_text(repo_root / "belle" / module_name, "# test fixture\n")
+    if line_id == "credit_card_statement":
+        card_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement"
+        for rel in [
+            Path("inputs/kari_shiwake"),
+            Path("inputs/ledger_ref"),
+            Path("artifacts/ingest/kari_shiwake"),
+            Path("artifacts/ingest/ledger_ref"),
+            Path("artifacts/cache"),
+            Path("outputs/runs"),
+        ]:
+            (card_template_root / rel).mkdir(parents=True, exist_ok=True)
+        _write_text(
+            card_template_root / "config" / "credit_card_line_config.json",
+            _minimal_credit_card_line_config_json(),
+        )
 
 
 def _prepare_receipt_assets(repo_root: Path, *, with_lexicon: bool) -> None:
     _write_text(repo_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
-    _write_text(repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", "{}\n")
+    _write_text(
+        repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+        _minimal_receipt_replacer_config_json(),
+    )
     if with_lexicon:
-        _write_text(repo_root / "lexicon" / "lexicon.json", "{}\n")
+        _write_minimal_lexicon_with_category(repo_root)
 
 
 def _prepare_bank_client(
@@ -367,6 +461,132 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
                 "valid: C_VALID(enabled=True, bookkeeping_mode=tax_excluded, rounding_mode=floor)",
                 report,
             )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_ruleset_missing_tax_sections_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_receipt_tax_sections_fail_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "receipt")
+            _write_text(repo_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_text(
+                repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+                _minimal_receipt_replacer_config_json(include_tax_sections=False),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "receipt")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C44 active receipt replacer config contains required tax_division_thresholds and tax_division_confidence sections | FAIL |",
+                report,
+            )
+            self.assertIn("tax_division_thresholds=missing_or_invalid", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_old_shape_category_overrides_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_receipt_old_override_fail_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "receipt")
+            _prepare_receipt_assets(repo_root, with_lexicon=True)
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_BAD" / "lines" / "receipt" / "config" / "category_overrides.json",
+                json.dumps(
+                    {
+                        "schema": "belle.category_overrides.v2",
+                        "client_id": "C_RECEIPT_BAD",
+                        "generated_at": "2026-04-09T00:00:00Z",
+                        "note_ja": "old shape",
+                        "overrides": {
+                            "known_a": {
+                                "debit_account": "旅費交通費",
+                                "debit_tax_division": "課対仕入内10%適格",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "receipt")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C45 receipt category_overrides.json follows the target_account/target_tax_division row contract when present | FAIL |",
+                report,
+            )
+            self.assertIn("invalid_present", report)
+            self.assertIn("row_missing_target_keys=1", report)
+            self.assertIn("row_extra_keys=1", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_missing_optional_override_and_valid_present_override_are_distinguished(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_receipt_override_states_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "receipt")
+            _prepare_receipt_assets(repo_root, with_lexicon=True)
+            (repo_root / "clients" / "C_RECEIPT_MISSING" / "lines" / "receipt").mkdir(parents=True, exist_ok=True)
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_VALID" / "lines" / "receipt" / "config" / "category_overrides.json",
+                json.dumps(
+                    {
+                        "schema": "belle.category_overrides.v2",
+                        "client_id": "C_RECEIPT_VALID",
+                        "generated_at": "2026-04-09T00:00:00Z",
+                        "note_ja": "valid shape",
+                        "overrides": {
+                            "known_a": {
+                                "target_account": "旅費交通費",
+                                "target_tax_division": "課対仕入内10%適格",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "receipt")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn("valid_present: layout=line; path=clients/C_RECEIPT_VALID/lines/receipt/config/category_overrides.json", report)
+            self.assertIn("optional_missing: layout=line; path=clients/C_RECEIPT_MISSING/lines/receipt/config/category_overrides.json", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_missing_tax_sections_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_tax_sections_fail_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            _write_text(
+                repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement" / "config" / "credit_card_line_config.json",
+                _minimal_credit_card_line_config_json(include_tax_sections=False),
+            )
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_text(repo_root / "defaults" / "credit_card_statement" / "category_defaults.json", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C47 clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required tax_division_thresholds sections | FAIL |",
+                report,
+            )
+            self.assertIn("tax_division_thresholds=missing_or_invalid", report)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

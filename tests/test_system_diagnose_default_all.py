@@ -49,6 +49,59 @@ def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: 
     )
 
 
+def _minimal_receipt_replacer_config_json() -> str:
+    return json.dumps(
+        {
+            "schema": "belle.replacer_config.v1",
+            "version": "1.16",
+            "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+            "tax_division_thresholds": {
+                "t_number_x_category_target_account": {"min_count": 2, "min_p_majority": 0.75},
+                "t_number_target_account": {"min_count": 3, "min_p_majority": 0.7},
+                "vendor_key_target_account": {"min_count": 3, "min_p_majority": 0.7},
+                "category_target_account": {"min_count": 3, "min_p_majority": 0.7},
+                "global_target_account": {"min_count": 3, "min_p_majority": 0.7},
+            },
+            "tax_division_confidence": {
+                "t_number_x_category_target_account_strength": 0.97,
+                "t_number_target_account_strength": 0.95,
+                "vendor_key_target_account_strength": 0.85,
+                "category_target_account_strength": 0.65,
+                "global_target_account_strength": 0.55,
+                "category_default_strength": 0.55,
+                "global_fallback_strength": 0.35,
+                "learned_weight_multiplier": 0.85,
+            },
+        },
+        ensure_ascii=False,
+    )
+
+
+def _minimal_credit_card_line_config_json() -> str:
+    return json.dumps(
+        {
+            "schema": "belle.credit_card_line_config.v1",
+            "version": "0.2",
+            "placeholder_account_name": "仮払金",
+            "payable_account_name": "未払金",
+            "thresholds": {
+                "merchant_key_account": {"min_count": 3, "min_p_majority": 0.9},
+                "file_level_card_inference": {"min_votes": 3, "min_p_majority": 0.9},
+            },
+            "tax_division_thresholds": {
+                "merchant_key_target_account_exact": {"min_count": 3, "min_p_majority": 0.9},
+                "merchant_key_target_account_partial": {"min_count": 3, "min_p_majority": 0.9},
+            },
+            "candidate_extraction": {
+                "min_total_count": 5,
+                "min_unique_merchants": 3,
+                "min_unique_counter_accounts": 2,
+            },
+        },
+        ensure_ascii=False,
+    )
+
+
 class SystemDiagnoseDefaultAllTests(unittest.TestCase):
     def test_default_all_is_bootstrap_safe_and_reports_each_line(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]
@@ -121,7 +174,14 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
             _write_text(temp_root / "lexicon" / "lexicon.json", "{}\n")
             _write_text(temp_root / "defaults" / "receipt" / "category_defaults.json", "{}\n")
             _write_text(temp_root / "defaults" / "credit_card_statement" / "category_defaults.json", "{}\n")
-            _write_text(temp_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", "{}\n")
+            _write_text(
+                temp_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+                _minimal_receipt_replacer_config_json(),
+            )
+            _write_text(
+                card_template_root / "config" / "credit_card_line_config.json",
+                _minimal_credit_card_line_config_json(),
+            )
 
             _write_text(temp_root / "belle" / "__init__.py", "")
             _write_text(

@@ -22,6 +22,10 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - Editing lexicon or pending queues
 - Editing runtime config files
+- Editing `target_tax_division` inside `category_overrides.json`
+- Editing receipt tax-threshold config in `rulesets/receipt/replacer_config_v1_15.json`
+- Editing credit-card tax-threshold config in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json`
+- Editing line-level tax-threshold config of any kind
 - Editing `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
 - Editing review CSV outputs
 - Replacing CLI workflows for maintenance tasks
@@ -40,5 +44,5 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - The UI assumes local execution on `127.0.0.1`.
 - NiceGUI import is shimmed for current Python 3.14 behavior via `belle/local_ui/nicegui_compat.py`.
-- The local UI does not edit `clients/<CLIENT_ID>/config/yayoi_tax_config.json`; operators manage that shared tax config outside the UI.
+- The local UI does not edit `target_tax_division`, line-level tax-threshold config, or `clients/<CLIENT_ID>/config/yayoi_tax_config.json`; operators manage those assets outside the UI.
 - `exports/` remains outside Git tracking; operational progress files live there by bundle design.

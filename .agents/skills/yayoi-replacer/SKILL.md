@@ -34,19 +34,35 @@ Deterministic replacement skill for Yayoi import CSVs.
    - when inference is `OK`, the SAME inferred bank-side subaccount is applied to all required-fill rows in the file (no partial fill)
    - thresholds: `thresholds.file_level_bank_sub_inference.min_votes` (default `3`) and `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
    - if required fill exists and inference is not `OK`, runner strict-stops with exit `2` after writing artifacts (`bank_sub_fill_required_failed == true`)
-12. `credit_card_statement` is implemented/runnable.
-13. `credit_card_statement` target must satisfy Contract A (one statement per target file).
+12. `receipt` replaces debit-side `target_account` and debit-side `target_tax_division`.
+13. `credit_card_statement` is implemented/runnable.
+14. `credit_card_statement` target must satisfy Contract A (one statement per target file).
+15. `credit_card_statement` target side is the placeholder side (`debit` or `credit`), and placeholder-side tax division replacement runs before shared tax postprocess.
+16. `bank_statement` keeps its existing line-specific tax division replacement; shared tax postprocess may then fill tax amount in the same run when configured.
 
 ## Shared tax postprocess config
 1. Shared config path:
    - `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
 2. Runtime tax amount auto-fill is controlled by this shared config.
-3. Missing shared config defaults to disabled / no-op.
-4. Current v1 auto-fill scope is intentionally narrow:
+3. Shared tax postprocess runs after line-specific tax-division replacement for `receipt`, `bank_statement`, and `credit_card_statement`.
+4. Missing shared config defaults to disabled / no-op.
+5. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
+6. Current v1 auto-fill scope is intentionally narrow:
    - `bookkeeping_mode = tax_excluded`
    - tax amount cell is blank
    - tax division is parseable as `inner`
    - `rounding_mode = floor`
+
+## Defaults / overrides contract
+1. `receipt` and `credit_card_statement` use:
+   - `defaults/<line_id>/category_defaults.json`
+   - `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`
+2. The live row contract is:
+   - `target_account`
+   - `target_tax_division`
+3. `receipt` target side is always the debit side.
+4. `credit_card_statement` target side is the placeholder side, so `target_tax_division` is written to debit or credit depending on where the placeholder is.
+5. Old `debit_account`-shaped overrides are invalid under the current rollout.
 
 ## Operator protocol (mandatory)
 Codex/operator は以下の手順を固定で実施すること。
@@ -81,9 +97,11 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 
 ### 必須ファイルメモ（診断結果優先）
 1. `receipt` line: 対象は `inputs/kari_shiwake/` 配下。実行時アセット不足は PLAN の `fail` 内容をそのまま提示する。
+2. `receipt` tax routing thresholds are tuned in `rulesets/receipt/replacer_config_v1_15.json` under `tax_division_thresholds` / `tax_division_confidence`.
 2. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
 3. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
-4. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
+4. `credit_card_statement` tax routing thresholds are tuned in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json` under `tax_division_thresholds`.
+5. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
 
 ### Examples (dialog)
 1. User: 「yayoi-replacerを実行して」

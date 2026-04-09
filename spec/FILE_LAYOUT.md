@@ -14,13 +14,13 @@ All runtime data must be isolated by client and line.
 ```text
 clients/<CLIENT_ID>/
   config/
-    yayoi_tax_config.json             # shared tax postprocess config (Phase 1 contract only; runtime wiring later)
+    yayoi_tax_config.json             # shared tax postprocess config (live runtime; template currently tracks enabled=true)
   lines/
     <line_id>/
       config/
-        category_overrides.json        # receipt + credit_card_statement only
+        category_overrides.json        # receipt + credit_card_statement only; rows use target_account / target_tax_division
         bank_line_config.json          # bank_statement only
-        credit_card_line_config.json   # credit_card_statement only
+        credit_card_line_config.json   # credit_card_statement only; tax_division_thresholds live here
       inputs/
         kari_shiwake/                  # target draft CSV for the selected line (all implemented lines)
         ledger_ref/                    # receipt + credit_card_statement only
@@ -122,8 +122,8 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 ## Shared client config
 
 1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json` is the shared client config path for Yayoi tax postprocess.
-2. Phase 1 adds only the shared config contract and foundation module.
-3. Runtime wiring for actual replacer/runner execution is deferred to a later phase.
+2. The shared tax postprocess is wired into `receipt`, `bank_statement`, and `credit_card_statement`.
+3. `clients/TEMPLATE/config/yayoi_tax_config.json` is currently tracked with `enabled: true`, and new clients inherit that default unless they change the file.
 
 ## Runtime-managed assets (ignored)
 
@@ -141,7 +141,7 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
    3. `clients/<CLIENT_ID>/outputs/`
    4. `clients/<CLIENT_ID>/artifacts/`
 2. Non-receipt lines must never fall back to legacy layout.
-3. Shared assets do not use legacy global paths in Phase 1.
+3. Shared assets do not use legacy global paths in the current rollout.
 4. Phase 2 provides an explicit safe migration utility:
    1. `python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client <ID|ALL> --dry-run true --line receipt`
    2. Real migration requires `--apply --dry-run false`
