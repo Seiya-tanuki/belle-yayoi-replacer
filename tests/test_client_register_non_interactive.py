@@ -159,12 +159,85 @@ class ClientRegisterNonInteractiveTests(unittest.TestCase):
                 rc, output = _run_register(
                     module,
                     repo_root,
-                    argv=["register_client.py", "--client-id", "C_NON_INTERACTIVE"],
+                    argv=[
+                        "register_client.py",
+                        "--client-id",
+                        "C_NON_INTERACTIVE",
+                        "--bookkeeping-mode",
+                        "tax_excluded",
+                    ],
                 )
 
             self.assertEqual(0, rc, msg=output)
             self.assertIn("[OK] Created: clients\\C_NON_INTERACTIVE", output)
             self.assertTrue((repo_root / "clients" / "C_NON_INTERACTIVE").exists())
+            config_obj = json.loads(
+                (repo_root / "clients" / "C_NON_INTERACTIVE" / "config" / "yayoi_tax_config.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(True, bool(config_obj.get("enabled")))
+            self.assertEqual("tax_excluded", config_obj.get("bookkeeping_mode"))
+            self.assertEqual("floor", config_obj.get("rounding_mode"))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_client_id_creates_tax_included_without_prompt(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_noninteractive_included_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            with mock.patch("builtins.input", side_effect=AssertionError("input should not be called")):
+                rc, output = _run_register(
+                    module,
+                    repo_root,
+                    argv=[
+                        "register_client.py",
+                        "--client-id",
+                        "C_NON_INTERACTIVE_INCLUDED",
+                        "--bookkeeping-mode",
+                        "tax_included",
+                    ],
+                )
+
+            self.assertEqual(0, rc, msg=output)
+            self.assertIn("[OK] Created: clients\\C_NON_INTERACTIVE_INCLUDED", output)
+            config_obj = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_NON_INTERACTIVE_INCLUDED"
+                    / "config"
+                    / "yayoi_tax_config.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(False, bool(config_obj.get("enabled")))
+            self.assertEqual("tax_included", config_obj.get("bookkeeping_mode"))
+            self.assertEqual("floor", config_obj.get("rounding_mode"))
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_non_interactive_requires_bookkeeping_mode(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_noninteractive_requires_mode_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            with mock.patch("builtins.input", side_effect=AssertionError("input should not be called")):
+                rc, output = _run_register(
+                    module,
+                    repo_root,
+                    argv=["register_client.py", "--client-id", "C_NON_INTERACTIVE_MISSING_MODE"],
+                )
+
+            self.assertEqual(1, rc, msg=output)
+            self.assertIn("--bookkeeping-mode is required when --client-id is used.", output)
+            self.assertFalse((repo_root / "clients" / "C_NON_INTERACTIVE_MISSING_MODE").exists())
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -180,7 +253,13 @@ class ClientRegisterNonInteractiveTests(unittest.TestCase):
                 rc, output = _run_register(
                     module,
                     repo_root,
-                    argv=["register_client.py", "--client-id", "ＡＢＣ"],
+                    argv=[
+                        "register_client.py",
+                        "--client-id",
+                        "ＡＢＣ",
+                        "--bookkeeping-mode",
+                        "tax_excluded",
+                    ],
                 )
 
             self.assertEqual(1, rc, msg=output)
@@ -202,7 +281,14 @@ class ClientRegisterNonInteractiveTests(unittest.TestCase):
                 rc, output = _run_register(
                     module,
                     repo_root,
-                    argv=["register_client.py", "--client-id", "ＡＢＣ", "--yes"],
+                    argv=[
+                        "register_client.py",
+                        "--client-id",
+                        "ＡＢＣ",
+                        "--bookkeeping-mode",
+                        "tax_excluded",
+                        "--yes",
+                    ],
                 )
 
             self.assertEqual(0, rc, msg=output)
@@ -223,7 +309,7 @@ class ClientRegisterNonInteractiveTests(unittest.TestCase):
                 module,
                 repo_root,
                 argv=["register_client.py"],
-                input_values=["Interactive Client", "y"],
+                input_values=["Interactive Client", "1"],
             )
 
             self.assertEqual(0, rc, msg=output)

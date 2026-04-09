@@ -35,8 +35,10 @@ Shared client config path:
 
 Current default behavior:
 1. Missing config resolves to disabled / no-op.
-2. New clients inherit the shared config from `clients/TEMPLATE/config/yayoi_tax_config.json`.
-3. The tracked template currently sets `enabled: true`, so newly registered clients start with shared tax postprocess enabled by default on this branch.
+2. New client bootstrap requires an explicit bookkeeping mode choice and writes `clients/<CLIENT_ID>/config/yayoi_tax_config.json` during registration.
+3. `tax_excluded` writes `enabled: true`, `bookkeeping_mode: tax_excluded`, `rounding_mode: floor`.
+4. `tax_included` writes `enabled: false`, `bookkeeping_mode: tax_included`, `rounding_mode: floor`.
+5. `receipt` / `credit_card_statement` bootstrap seeds `category_overrides.json` from the defaults variant that matches the selected bookkeeping mode.
 
 Current v1 runtime scope:
 1. `bookkeeping_mode = tax_excluded`

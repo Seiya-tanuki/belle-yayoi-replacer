@@ -17,17 +17,17 @@ def _prepare_template(real_repo_root: Path, repo_root: Path) -> None:
     shutil.copytree(real_repo_root / "clients" / "TEMPLATE", repo_root / "clients" / "TEMPLATE")
 
 
-def _write_mode_aware_defaults(repo_root: Path, line_id: str, payload: dict) -> None:
+def _write_mode_aware_defaults(repo_root: Path, line_id: str, *, excluded: dict, included: dict) -> None:
     base_dir = repo_root / "defaults" / line_id
-    _write_json(base_dir / "category_defaults_tax_excluded.json", payload)
-    _write_json(base_dir / "category_defaults_tax_included.json", payload)
+    _write_json(base_dir / "category_defaults_tax_excluded.json", excluded)
+    _write_json(base_dir / "category_defaults_tax_included.json", included)
 
 
 def _prepare_shared_assets(repo_root: Path) -> None:
     _write_mode_aware_defaults(
         repo_root,
         "receipt",
-        {
+        excluded={
             "schema": "belle.category_defaults.v2",
             "version": "0.1",
             "defaults": {
@@ -47,17 +47,57 @@ def _prepare_shared_assets(repo_root: Path) -> None:
                 "reason_code": "global_fallback",
             },
         },
+        included={
+            "schema": "belle.category_defaults.v2",
+            "version": "0.1",
+            "defaults": {
+                "misc": {
+                    "target_account": "租税公課",
+                    "target_tax_division": "課対仕入込10%",
+                    "confidence": 0.7,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
+            },
+            "global_fallback": {
+                "target_account": "仮払金",
+                "target_tax_division": "",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
     )
     _write_mode_aware_defaults(
         repo_root,
         "credit_card_statement",
-        {
+        excluded={
             "schema": "belle.category_defaults.v2",
             "version": "0.1",
             "defaults": {
                 "misc": {
                     "target_account": "雑費",
                     "target_tax_division": "",
+                    "confidence": 0.7,
+                    "priority": "MED",
+                    "reason_code": "category_default",
+                }
+            },
+            "global_fallback": {
+                "target_account": "未払金",
+                "target_tax_division": "",
+                "confidence": 0.35,
+                "priority": "HIGH",
+                "reason_code": "global_fallback",
+            },
+        },
+        included={
+            "schema": "belle.category_defaults.v2",
+            "version": "0.1",
+            "defaults": {
+                "misc": {
+                    "target_account": "諸会費",
+                    "target_tax_division": "課対仕入込10%",
                     "confidence": 0.7,
                     "priority": "MED",
                     "reason_code": "category_default",
@@ -120,10 +160,78 @@ class LocalUiClientServicesTests(unittest.TestCase):
             _prepare_shared_assets(repo_root)
             from belle.local_ui.services.clients import create_client
 
-            result = create_client("ＡＢＣ", repo_root)
+            result = create_client("ＡＢＣ", "tax_excluded", repo_root)
             self.assertTrue(result.ok, msg=result.stdout)
             self.assertEqual("ABC", result.client_id)
             self.assertIn("[OK] Created: clients\\ABC", result.stdout)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_create_client_requires_bookkeeping_mode(self) -> None:
+        repo_root = self.test_tmp_root / f"local_ui_clients_requires_mode_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            from belle.local_ui.services.clients import create_client
+
+            result = create_client("ABC", "", repo_root)
+            self.assertFalse(result.ok)
+            self.assertEqual("", result.client_id)
+            self.assertEqual("帳簿方式を選択してください。", result.error_message)
+            self.assertIn("bookkeeping_mode is required.", result.stdout)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_create_client_tax_included_passes_selected_mode_to_register(self) -> None:
+        repo_root = self.test_tmp_root / f"local_ui_clients_included_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            from belle.local_ui.services.clients import create_client
+
+            result = create_client("ABC_INCLUDED", "tax_included", repo_root)
+            self.assertTrue(result.ok, msg=result.stdout)
+
+            config_obj = json.loads(
+                (repo_root / "clients" / "ABC_INCLUDED" / "config" / "yayoi_tax_config.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            receipt_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_INCLUDED"
+                    / "lines"
+                    / "receipt"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+            cc_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_INCLUDED"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(False, bool(config_obj.get("enabled")))
+            self.assertEqual("tax_included", config_obj.get("bookkeeping_mode"))
+            self.assertEqual(
+                {"target_account": "租税公課", "target_tax_division": "課対仕入込10%"},
+                (receipt_overrides.get("overrides") or {}).get("misc"),
+            )
+            self.assertEqual(
+                {"target_account": "諸会費", "target_tax_division": "課対仕入込10%"},
+                (cc_overrides.get("overrides") or {}).get("misc"),
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -137,7 +245,7 @@ class LocalUiClientServicesTests(unittest.TestCase):
             existing_root.mkdir(parents=True, exist_ok=False)
             from belle.local_ui.services.clients import create_client
 
-            result = create_client("ABC", repo_root)
+            result = create_client("ABC", "tax_excluded", repo_root)
             self.assertFalse(result.ok)
             self.assertEqual("", result.client_id)
             self.assertEqual("クライアントを作成できませんでした。入力内容を確認してください。", result.error_message)

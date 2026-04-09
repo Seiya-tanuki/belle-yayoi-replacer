@@ -17,6 +17,10 @@ RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
 REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
 CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
 SHARED_YAYOI_TAX_CONFIG_REL_PATH = Path("config") / "yayoi_tax_config.json"
+BOOKKEEPING_MODE_CHOICES = {
+    "1": ("税抜き", "tax_excluded"),
+    "2": ("税込み", "tax_included"),
+}
 
 BANK_LINE_CONFIG_MINIMAL = {
     "schema": "belle.bank_line_config.v0",
@@ -211,7 +215,7 @@ def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Pa
     )
 
 
-def _load_staged_bookkeeping_mode(shared_tax_config_path: Path) -> str:
+def _load_staged_shared_tax_config(shared_tax_config_path: Path) -> dict[str, object]:
     from belle.lines import validate_bookkeeping_mode
     from belle.tax_postprocess import (
         ROUNDING_MODE_FLOOR,
@@ -258,7 +262,36 @@ def _load_staged_bookkeeping_mode(shared_tax_config_path: Path) -> str:
         raise ValueError(
             f"{YAYOI_TAX_CONFIG_FILENAME} rounding_mode must be {ROUNDING_MODE_FLOOR!r}: {shared_tax_config_path}"
         )
-    return validate_bookkeeping_mode(raw.get("bookkeeping_mode"))
+    return {
+        "schema": schema,
+        "version": version,
+        "enabled": enabled,
+        "bookkeeping_mode": validate_bookkeeping_mode(raw.get("bookkeeping_mode")),
+        "rounding_mode": rounding_mode,
+    }
+
+
+def _write_staged_shared_tax_config(shared_tax_config_path: Path, *, bookkeeping_mode: str) -> str:
+    from belle.lines import validate_bookkeeping_mode
+    from belle.tax_postprocess import (
+        BOOKKEEPING_MODE_TAX_EXCLUDED,
+        ROUNDING_MODE_FLOOR,
+    )
+
+    staged_config = _load_staged_shared_tax_config(shared_tax_config_path)
+    selected_mode = validate_bookkeeping_mode(bookkeeping_mode)
+    updated_config = {
+        "schema": str(staged_config["schema"]),
+        "version": str(staged_config["version"]),
+        "enabled": selected_mode == BOOKKEEPING_MODE_TAX_EXCLUDED,
+        "bookkeeping_mode": selected_mode,
+        "rounding_mode": ROUNDING_MODE_FLOOR,
+    }
+    shared_tax_config_path.write_text(
+        json.dumps(updated_config, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return selected_mode
 
 
 def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> tuple[list[Path], list[Path]]:
@@ -320,6 +353,7 @@ def _initialize_staged_client(
     staging_dir: Path,
     client_id: str,
     selected_lines: tuple[str, ...],
+    bookkeeping_mode: str,
 ) -> None:
     shutil.copytree(template_dir, staging_dir)
     (staging_dir / "config").mkdir(parents=True, exist_ok=True)
@@ -332,10 +366,18 @@ def _initialize_staged_client(
             f"Expected staged path: clients/{client_id}/config/yayoi_tax_config.json",
         )
     try:
-        bookkeeping_mode = _load_staged_bookkeeping_mode(shared_tax_config_path)
-    except Exception as exc:
+        bookkeeping_mode = _write_staged_shared_tax_config(
+            shared_tax_config_path,
+            bookkeeping_mode=bookkeeping_mode,
+        )
+    except ValueError as exc:
         raise RegistrationError(
             "Shared Yayoi tax config is invalid after staging.",
+            str(exc),
+        ) from exc
+    except Exception as exc:
+        raise RegistrationError(
+            "Failed to write staged shared Yayoi tax config.",
             str(exc),
         ) from exc
 
@@ -411,6 +453,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Create client without interactive prompt.",
     )
     parser.add_argument(
+        "--bookkeeping-mode",
+        choices=tuple(choice[1] for choice in BOOKKEEPING_MODE_CHOICES.values()),
+        help="Required when using --client-id.",
+    )
+    parser.add_argument(
         "--yes",
         action="store_true",
         help="Allow substantial canonicalization change in non-interactive mode.",
@@ -464,6 +511,28 @@ def _collect_client_id(args: argparse.Namespace) -> ValidationResult | None:
     return result
 
 
+def _collect_bookkeeping_mode(args: argparse.Namespace) -> str | None:
+    if args.bookkeeping_mode is not None:
+        return args.bookkeeping_mode
+
+    if args.client_id is not None:
+        print("[ERROR] --bookkeeping-mode is required when --client-id is used.")
+        return None
+
+    print("帳簿方式を選択してください。")
+    for key, (label, value) in BOOKKEEPING_MODE_CHOICES.items():
+        print(f"  {key}. {label} ({value})")
+
+    selected = BOOKKEEPING_MODE_CHOICES.get(input("番号を入力してください [1/2]: ").strip())
+    if selected is None:
+        print("[ERROR] bookkeeping mode selection is required. Choose 1 or 2.")
+        return None
+
+    label, value = selected
+    print(f"帳簿方式: {label} ({value})")
+    return value
+
+
 def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> int:
     args = parse_args(argv)
     selected_lines = _selected_lines(args.line)
@@ -504,6 +573,9 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
     result = _collect_client_id(args)
     if result is None:
         return 1
+    bookkeeping_mode = _collect_bookkeeping_mode(args)
+    if bookkeeping_mode is None:
+        return 1
 
     destination = clients_dir / result.canonical
     if destination.exists():
@@ -518,6 +590,7 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
             staging_dir=staging_dir,
             client_id=result.canonical,
             selected_lines=selected_lines,
+            bookkeeping_mode=bookkeeping_mode,
         )
         _publish_staged_client(staging_dir, destination, repo_root)
     except RegistrationError as exc:

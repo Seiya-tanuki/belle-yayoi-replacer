@@ -105,7 +105,39 @@ def _prepare_shared_assets(repo_root: Path) -> None:
     )
 
 
-def _run_register(module, repo_root: Path, *, client_id: str, line: str | None = None) -> tuple[int, str]:
+def _run_register(
+    module,
+    repo_root: Path,
+    *,
+    client_id: str,
+    line: str | None = None,
+    bookkeeping_mode: str = "tax_excluded",
+) -> tuple[int, str]:
+    fake_script_path = repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
+    fake_script_path.parent.mkdir(parents=True, exist_ok=True)
+    module.__file__ = str(fake_script_path)
+
+    output_buffer = io.StringIO()
+    original_sys_path = list(sys.path)
+    try:
+        argv = ["register_client.py", "--client-id", client_id, "--bookkeeping-mode", bookkeeping_mode]
+        if line is not None:
+            argv.extend(["--line", line])
+        with mock.patch.object(sys, "argv", argv):
+            with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
+                rc = module.main()
+    finally:
+        sys.path[:] = original_sys_path
+    return rc, output_buffer.getvalue()
+
+
+def _run_register_interactive(
+    module,
+    repo_root: Path,
+    *,
+    input_values: list[str],
+    line: str | None = None,
+) -> tuple[int, str]:
     fake_script_path = repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
     fake_script_path.parent.mkdir(parents=True, exist_ok=True)
     module.__file__ = str(fake_script_path)
@@ -117,7 +149,7 @@ def _run_register(module, repo_root: Path, *, client_id: str, line: str | None =
         if line is not None:
             argv.extend(["--line", line])
         with mock.patch.object(sys, "argv", argv):
-            with mock.patch("builtins.input", side_effect=[client_id]):
+            with mock.patch("builtins.input", side_effect=input_values):
                 with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
                     rc = module.main()
     finally:
@@ -256,8 +288,8 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_register_uses_staged_tax_included_defaults_variant_for_overrides(self) -> None:
-        repo_root = self.test_tmp_root / f"client_register_tax_included_{uuid4().hex}"
+    def test_register_uses_selected_tax_excluded_defaults_variant_for_overrides(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_tax_excluded_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
@@ -267,7 +299,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
                 {
                     "schema": "belle.yayoi_tax_config.v1",
                     "version": "1.0",
-                    "enabled": True,
+                    "enabled": False,
                     "bookkeeping_mode": "tax_included",
                     "rounding_mode": "floor",
                 },
@@ -362,9 +394,172 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             )
             module = _load_register_module(self.real_repo_root)
 
-            rc, output = _run_register(module, repo_root, client_id="C_TAX_INCLUDED")
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_TAX_EXCLUDED",
+                bookkeeping_mode="tax_excluded",
+            )
             self.assertEqual(0, rc, msg=output)
 
+            shared_tax_config = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_EXCLUDED"
+                    / "config"
+                    / "yayoi_tax_config.json"
+                ).read_text(encoding="utf-8")
+            )
+            receipt_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_EXCLUDED"
+                    / "lines"
+                    / "receipt"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+            cc_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_EXCLUDED"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(True, bool(shared_tax_config.get("enabled")))
+            self.assertEqual("tax_excluded", shared_tax_config.get("bookkeeping_mode"))
+            self.assertEqual(
+                {"target_account": "雑費", "target_tax_division": ""},
+                (receipt_overrides.get("overrides") or {}).get("misc"),
+            )
+            self.assertEqual(
+                {"target_account": "髮題ｲｻ", "target_tax_division": ""},
+                (cc_overrides.get("overrides") or {}).get("misc"),
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_register_uses_selected_tax_included_defaults_variant_for_overrides(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_tax_included_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            _write_mode_aware_defaults(
+                repo_root,
+                "receipt",
+                excluded={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "雑費",
+                            "target_tax_division": "",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "仮払金",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+                included={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "租税公課",
+                            "target_tax_division": "課対仕入込10%",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "仮払金",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+            )
+            _write_mode_aware_defaults(
+                repo_root,
+                "credit_card_statement",
+                excluded={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "髮題ｲｻ",
+                            "target_tax_division": "",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "莉ｮ謇暮≡",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+                included={
+                    "schema": "belle.category_defaults.v2",
+                    "version": "0.1",
+                    "defaults": {
+                        "misc": {
+                            "target_account": "諸会費",
+                            "target_tax_division": "課対仕入込10%",
+                            "confidence": 0.7,
+                            "priority": "MED",
+                            "reason_code": "category_default",
+                        }
+                    },
+                    "global_fallback": {
+                        "target_account": "莉ｮ謇暮≡",
+                        "target_tax_division": "",
+                        "confidence": 0.35,
+                        "priority": "HIGH",
+                        "reason_code": "global_fallback",
+                    },
+                },
+            )
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_TAX_INCLUDED",
+                bookkeeping_mode="tax_included",
+            )
+            self.assertEqual(0, rc, msg=output)
+
+            shared_tax_config = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_TAX_INCLUDED"
+                    / "config"
+                    / "yayoi_tax_config.json"
+                ).read_text(encoding="utf-8")
+            )
             receipt_overrides = json.loads(
                 (
                     repo_root
@@ -388,6 +583,8 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
                 ).read_text(encoding="utf-8")
             )
 
+            self.assertEqual(False, bool(shared_tax_config.get("enabled")))
+            self.assertEqual("tax_included", shared_tax_config.get("bookkeeping_mode"))
             self.assertEqual(
                 {"target_account": "租税公課", "target_tax_division": "課対仕入込10%"},
                 (receipt_overrides.get("overrides") or {}).get("misc"),
@@ -396,6 +593,92 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
                 {"target_account": "諸会費", "target_tax_division": "課対仕入込10%"},
                 (cc_overrides.get("overrides") or {}).get("misc"),
             )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_interactive_bookkeeping_mode_selection_is_required(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_interactive_mode_required_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register_interactive(
+                module,
+                repo_root,
+                input_values=["C_INTERACTIVE_MODE_REQUIRED", ""],
+                line="receipt",
+            )
+
+            self.assertEqual(1, rc, msg=output)
+            self.assertIn("帳簿方式を選択してください。", output)
+            self.assertIn("bookkeeping mode selection is required. Choose 1 or 2.", output)
+            self.assertFalse((repo_root / "clients" / "C_INTERACTIVE_MODE_REQUIRED").exists())
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_interactive_bookkeeping_mode_tax_excluded_writes_expected_shared_config(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_interactive_excluded_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register_interactive(
+                module,
+                repo_root,
+                input_values=["C_INTERACTIVE_EXCLUDED", "1"],
+                line="receipt",
+            )
+
+            self.assertEqual(0, rc, msg=output)
+            config_obj = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_INTERACTIVE_EXCLUDED"
+                    / "config"
+                    / "yayoi_tax_config.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(True, bool(config_obj.get("enabled")))
+            self.assertEqual("tax_excluded", config_obj.get("bookkeeping_mode"))
+            self.assertEqual("floor", config_obj.get("rounding_mode"))
+            self.assertIn("帳簿方式: 税抜き (tax_excluded)", output)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_interactive_bookkeeping_mode_tax_included_writes_expected_shared_config(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_interactive_included_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register_interactive(
+                module,
+                repo_root,
+                input_values=["C_INTERACTIVE_INCLUDED", "2"],
+                line="receipt",
+            )
+
+            self.assertEqual(0, rc, msg=output)
+            config_obj = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "C_INTERACTIVE_INCLUDED"
+                    / "config"
+                    / "yayoi_tax_config.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(False, bool(config_obj.get("enabled")))
+            self.assertEqual("tax_included", config_obj.get("bookkeeping_mode"))
+            self.assertEqual("floor", config_obj.get("rounding_mode"))
+            self.assertIn("帳簿方式: 税込み (tax_included)", output)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -512,10 +795,10 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             _write_json(
                 repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json",
                 {
-                    "schema": "belle.yayoi_tax_config.v1",
+                    "schema": "belle.yayoi_tax_config.v999",
                     "version": "1.0",
                     "enabled": True,
-                    "bookkeeping_mode": "broken_mode",
+                    "bookkeeping_mode": "tax_excluded",
                     "rounding_mode": "floor",
                 },
             )
@@ -530,7 +813,7 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
 
             self.assertEqual(2, rc, msg=output)
             self.assertIn("Shared Yayoi tax config is invalid after staging.", output)
-            self.assertIn("bookkeeping_mode", output)
+            self.assertIn("schema", output)
             self.assertFalse((repo_root / "clients" / "C_INVALID_SHARED_TAX").exists())
             self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
         finally:

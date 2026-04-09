@@ -120,7 +120,7 @@ def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]
     original_sys_path = list(sys.path)
     try:
         with mock.patch.object(sys, "argv", ["register_client.py"]):
-            with mock.patch("builtins.input", side_effect=[client_id]):
+            with mock.patch("builtins.input", side_effect=[client_id, "1"]):
                 with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
                     rc = module.main()
     finally:

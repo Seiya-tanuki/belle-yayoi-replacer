@@ -46,7 +46,7 @@ Deterministic replacement skill for Yayoi import CSVs.
 2. Runtime tax amount auto-fill is controlled by this shared config.
 3. Shared tax postprocess runs after line-specific tax-division replacement for `receipt`, `bank_statement`, and `credit_card_statement`.
 4. Missing shared config defaults to disabled / no-op.
-5. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
+5. New clients choose bookkeeping mode during `$client-register`; registration writes `clients/<CLIENT_ID>/config/yayoi_tax_config.json` explicitly from that selection.
 6. Current v1 auto-fill scope is intentionally narrow:
    - `bookkeeping_mode = tax_excluded`
    - tax amount cell is blank

@@ -56,7 +56,7 @@ def preview_client_id(raw_name: str, root: Path | None = None) -> str:
     return result.canonical if result.ok else ""
 
 
-def create_client(raw_name: str, root: Path | None = None) -> ClientCreateResult:
+def create_client(raw_name: str, bookkeeping_mode: str, root: Path | None = None) -> ClientCreateResult:
     current_root = root or repo_root()
     module = _load_register_module()
     validation = module.validate_and_canonicalize(raw_name)
@@ -67,13 +67,20 @@ def create_client(raw_name: str, root: Path | None = None) -> ClientCreateResult
             stdout=validation.reason,
             error_message="クライアントを作成できませんでした。入力内容を確認してください。",
         )
+    if not str(bookkeeping_mode or "").strip():
+        return ClientCreateResult(
+            ok=False,
+            client_id="",
+            stdout="bookkeeping_mode is required.",
+            error_message="帳簿方式を選択してください。",
+        )
 
     buffer = io.StringIO()
     original_sys_path = list(sys.path)
     try:
         with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
             rc = module.main(
-                argv=["--client-id", raw_name, "--yes"],
+                argv=["--client-id", raw_name, "--bookkeeping-mode", bookkeeping_mode, "--yes"],
                 repo_root=current_root,
             )
     finally:

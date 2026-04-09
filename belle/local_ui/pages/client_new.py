@@ -9,17 +9,27 @@ def build() -> None:
     from nicegui import ui
 
     state = get_state()
-    model = {"raw_name": "", "preview": "", "stdout": "", "error": ""}
+    model = {"raw_name": "", "preview": "", "bookkeeping_mode": "", "stdout": "", "error": ""}
 
     def update_preview(value: str) -> None:
         model["raw_name"] = value or ""
         model["preview"] = preview_client_id(model["raw_name"])
         preview_label.set_text(model["preview"] or "-")
 
+    def update_bookkeeping_mode(value: str) -> None:
+        model["bookkeeping_mode"] = value or ""
+
     def submit() -> None:
         model["error"] = ""
         model["stdout"] = ""
-        result = create_client(model["raw_name"])
+        if not model["bookkeeping_mode"]:
+            model["error"] = "帳簿方式を選択してください。"
+            error_label.set_text(model["error"])
+            error_label.visible = True
+            detail_log.set_content("詳細はありません。")
+            return
+
+        result = create_client(model["raw_name"], model["bookkeeping_mode"])
         model["stdout"] = result.stdout
         detail_log.set_content(result.stdout or "詳細はありません。")
         if result.ok:
@@ -35,13 +45,21 @@ def build() -> None:
     with page_shell(
         "手順 1 / 6",
         "新しいクライアントを作ります",
-        "入力した名前は、保存用に自動で整えられます。",
+        "入力した名前は、保存用に自動で整えられます。\n帳簿方式は作成時に必ず選択してください。",
     ):
         ui.input(
             label="クライアント名",
             placeholder="クライアント名",
             on_change=lambda e: update_preview(e.value or ""),
         ).props("outlined").classes("w-full")
+        ui.radio(
+            {
+                "tax_excluded": "税抜き",
+                "tax_included": "税込み",
+            },
+            value=None,
+            on_change=lambda e: update_bookkeeping_mode(e.value or ""),
+        ).props("inline").classes("w-full")
         with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
             ui.label("保存される名前").classes("text-sm text-slate-500")
             preview_label = ui.label("-").classes("text-lg font-semibold")
