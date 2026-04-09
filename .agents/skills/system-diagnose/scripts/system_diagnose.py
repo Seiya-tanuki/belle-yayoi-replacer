@@ -375,6 +375,34 @@ def _format_shared_tax_config_state(client_id: str, config_obj) -> str:
     )
 
 
+def _validate_shared_tax_bootstrap_policy(client_id: str, config_obj) -> tuple[bool, str]:
+    if isinstance(config_obj, dict):
+        enabled = bool(config_obj.get("enabled"))
+        bookkeeping_mode = str(config_obj.get("bookkeeping_mode") or "")
+        rounding_mode = str(config_obj.get("rounding_mode") or "")
+    else:
+        enabled = bool(getattr(config_obj, "enabled"))
+        bookkeeping_mode = str(getattr(config_obj, "bookkeeping_mode"))
+        rounding_mode = str(getattr(config_obj, "rounding_mode"))
+
+    state = _format_shared_tax_config_state(client_id, config_obj)
+    expected_enabled = bookkeeping_mode == "tax_excluded"
+    issues: List[str] = []
+    if bookkeeping_mode == "tax_excluded" and enabled is not True:
+        issues.append("expected enabled=true for bookkeeping_mode=tax_excluded")
+    if bookkeeping_mode == "tax_included" and enabled is not False:
+        issues.append("expected enabled=false for bookkeeping_mode=tax_included")
+    if rounding_mode != "floor":
+        issues.append("expected rounding_mode=floor")
+
+    expected_summary = (
+        f"expected(enabled={expected_enabled}, bookkeeping_mode={bookkeeping_mode}, rounding_mode=floor)"
+    )
+    if issues:
+        return False, f"present_inconsistent: {state}; {expected_summary}; issues=" + ", ".join(issues)
+    return True, f"valid_mode_consistent: {state}; {expected_summary}"
+
+
 def _load_json_object(path: Path, *, label: str) -> dict:
     try:
         obj = json.loads(path.read_text(encoding="utf-8"))
@@ -1258,11 +1286,29 @@ def main() -> int:
         c42_evidence,
         "Fix clients/TEMPLATE/config/yayoi_tax_config.json to match the shared tax config contract.",
     )
+    if template_tax_config_path.is_file() and c42_passed:
+        c42b_passed, c42b_evidence = _validate_shared_tax_bootstrap_policy("TEMPLATE", template_tax_config)
+    elif not template_tax_config_path.is_file():
+        c42b_passed = False
+        c42b_evidence = "missing_required: path=clients/TEMPLATE/config/yayoi_tax_config.json"
+    else:
+        c42b_passed = False
+        c42b_evidence = "unavailable: validity check failed first"
+    add_hard(
+        "C42B",
+        "clients/TEMPLATE/config/yayoi_tax_config.json matches the bookkeeping-mode bootstrap policy",
+        c42b_passed,
+        c42b_evidence,
+        "Set TEMPLATE shared tax config to the live bootstrap policy: tax_excluded => enabled=true,floor; "
+        "tax_included => enabled=false,floor.",
+    )
 
     non_template_clients = _discover_non_template_clients(repo_root)
     missing_shared_tax_configs: List[str] = []
     valid_shared_tax_configs: List[str] = []
     invalid_shared_tax_configs: List[str] = []
+    consistent_shared_tax_configs: List[str] = []
+    inconsistent_shared_tax_configs: List[str] = []
     for client_id, _ in non_template_clients:
         client_tax_config_path = _shared_tax_config_path(repo_root, client_id)
         if not client_tax_config_path.is_file():
@@ -1271,6 +1317,11 @@ def main() -> int:
         try:
             client_tax_config = _load_yayoi_tax_postprocess_config(repo_root, client_id)
             valid_shared_tax_configs.append(_format_shared_tax_config_state(client_id, client_tax_config))
+            consistent, policy_evidence = _validate_shared_tax_bootstrap_policy(client_id, client_tax_config)
+            if consistent:
+                consistent_shared_tax_configs.append(policy_evidence)
+            else:
+                inconsistent_shared_tax_configs.append(policy_evidence)
         except Exception as exc:
             invalid_shared_tax_configs.append(f"{client_id}: {exc}")
 
@@ -1305,6 +1356,56 @@ def main() -> int:
         c43_passed,
         c43_evidence,
         "Fix invalid clients/<CLIENT_ID>/config/yayoi_tax_config.json files or restore them from the template.",
+    )
+    if not non_template_clients:
+        c43b_passed = True
+        c43b_evidence = "N/A: no non-TEMPLATE clients found"
+    elif inconsistent_shared_tax_configs:
+        c43b_passed = False
+        c43b_parts: List[str] = []
+        if consistent_shared_tax_configs:
+            consistent_preview = "; ".join(consistent_shared_tax_configs[:10])
+            if len(consistent_shared_tax_configs) > 10:
+                consistent_preview += f"; ... (+{len(consistent_shared_tax_configs) - 10} more)"
+            c43b_parts.append(f"valid_mode_consistent: {consistent_preview}")
+        inconsistent_preview = "; ".join(inconsistent_shared_tax_configs[:10])
+        if len(inconsistent_shared_tax_configs) > 10:
+            inconsistent_preview += f"; ... (+{len(inconsistent_shared_tax_configs) - 10} more)"
+        c43b_parts.append(f"present_inconsistent: {inconsistent_preview}")
+        if missing_shared_tax_configs:
+            missing_preview = ", ".join(missing_shared_tax_configs[:10])
+            if len(missing_shared_tax_configs) > 10:
+                missing_preview += ", ..."
+            c43b_parts.append(f"missing_allowed: {missing_preview}")
+        c43b_evidence = " | ".join(c43b_parts)
+    elif consistent_shared_tax_configs:
+        c43b_passed = True
+        consistent_preview = "; ".join(consistent_shared_tax_configs[:10])
+        if len(consistent_shared_tax_configs) > 10:
+            consistent_preview += f"; ... (+{len(consistent_shared_tax_configs) - 10} more)"
+        c43b_parts = [f"valid_mode_consistent: {consistent_preview}"]
+        if missing_shared_tax_configs:
+            missing_preview = ", ".join(missing_shared_tax_configs[:10])
+            if len(missing_shared_tax_configs) > 10:
+                missing_preview += ", ..."
+            c43b_parts.append(f"missing_allowed: {missing_preview}")
+        c43b_evidence = " | ".join(c43b_parts)
+    else:
+        c43b_passed = True
+        if missing_shared_tax_configs:
+            missing_preview = ", ".join(missing_shared_tax_configs[:10])
+            if len(missing_shared_tax_configs) > 10:
+                missing_preview += ", ..."
+            c43b_evidence = f"missing_allowed: {missing_preview}"
+        else:
+            c43b_evidence = "N/A: no present shared tax config among non-TEMPLATE clients"
+    add_hard(
+        "C43B",
+        "shared Yayoi tax config matches the bookkeeping-mode bootstrap policy for non-TEMPLATE clients when present",
+        c43b_passed,
+        c43b_evidence,
+        "Align present clients/<CLIENT_ID>/config/yayoi_tax_config.json files with the live bootstrap policy "
+        "(tax_excluded => enabled=true,floor; tax_included => enabled=false,floor).",
     )
 
     if not non_template_clients:

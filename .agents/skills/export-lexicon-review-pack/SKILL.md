@@ -17,6 +17,7 @@ Exports a fixed read-only snapshot zip for Lexicon Steward GPTs.
 
 ## Notes
 - File selection is fixed. No interactive selection.
+- Receipt exports include the tracked defaults assets returned by `tracked_category_defaults_relpaths("receipt")`, so the pack contains both `category_defaults_tax_excluded.json` and `category_defaults_tax_included.json`.
 - If required files are missing or lock acquisition fails, exit non-zero without creating a zip.
 
 ## Execution

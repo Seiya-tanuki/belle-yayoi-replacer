@@ -35,7 +35,15 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: bool = False) -> None:
+def _write_valid_shared_tax_config(
+    repo_root: Path,
+    client_id: str,
+    *,
+    bookkeeping_mode: str = "tax_excluded",
+    enabled: bool | None = None,
+) -> None:
+    if enabled is None:
+        enabled = bookkeeping_mode == "tax_excluded"
     _write_text(
         repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json",
         json.dumps(
@@ -43,7 +51,7 @@ def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: 
                 "schema": "belle.yayoi_tax_config.v1",
                 "version": "1.0",
                 "enabled": enabled,
-                "bookkeeping_mode": "tax_excluded",
+                "bookkeeping_mode": bookkeeping_mode,
                 "rounding_mode": "floor",
             },
             ensure_ascii=False,
@@ -160,7 +168,7 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
         parents=True,
         exist_ok=True,
     )
-    _write_valid_shared_tax_config(repo_root, "TEMPLATE", enabled=False)
+    _write_valid_shared_tax_config(repo_root, "TEMPLATE")
     if line_id == "bank_statement":
         bank_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
         for rel in [
@@ -451,12 +459,75 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_template_shared_tax_config_semantic_inconsistency_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_template_shared_tax_inconsistent_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            _write_text(
+                repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json",
+                json.dumps(
+                    {
+                        "schema": "belle.yayoi_tax_config.v1",
+                        "version": "1.0",
+                        "enabled": False,
+                        "bookkeeping_mode": "tax_excluded",
+                        "rounding_mode": "floor",
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C42B clients/TEMPLATE/config/yayoi_tax_config.json matches the bookkeeping-mode bootstrap policy | FAIL |",
+                report,
+            )
+            self.assertIn("present_inconsistent", report)
+            self.assertIn("expected enabled=true for bookkeeping_mode=tax_excluded", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_non_template_shared_tax_config_semantic_inconsistency_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_client_shared_tax_inconsistent_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "bank_statement")
+            _write_valid_shared_tax_config(repo_root, "C_OK", bookkeeping_mode="tax_excluded")
+            _write_valid_shared_tax_config(
+                repo_root,
+                "C_BAD",
+                bookkeeping_mode="tax_included",
+                enabled=True,
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "bank_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C43B shared Yayoi tax config matches the bookkeeping-mode bootstrap policy for non-TEMPLATE clients when present | FAIL |",
+                report,
+            )
+            self.assertIn("valid_mode_consistent", report)
+            self.assertIn("C_OK(enabled=True, bookkeeping_mode=tax_excluded, rounding_mode=floor)", report)
+            self.assertIn("C_BAD(enabled=True, bookkeeping_mode=tax_included, rounding_mode=floor)", report)
+            self.assertIn("expected enabled=false for bookkeeping_mode=tax_included", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_valid_present_shared_tax_config_evidence_lists_modes(self) -> None:
         repo_root = self.test_tmp_root / f"diagnose_shared_tax_valid_evidence_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_common_repo_layout(repo_root, "bank_statement")
-            _write_valid_shared_tax_config(repo_root, "C_VALID", enabled=True)
+            _write_valid_shared_tax_config(repo_root, "C_VALID", bookkeeping_mode="tax_excluded")
+            _write_valid_shared_tax_config(repo_root, "C_INCLUDED", bookkeeping_mode="tax_included")
 
             module = _load_system_diagnose_module(self.real_repo_root)
             rc, output = _run_main(module, repo_root, "bank_statement")
@@ -464,9 +535,14 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
             self.assertEqual(0, rc, msg=output)
             report = _read_latest_report(repo_root)
             self.assertIn(
-                "valid: C_VALID(enabled=True, bookkeeping_mode=tax_excluded, rounding_mode=floor)",
+                "C_VALID(enabled=True, bookkeeping_mode=tax_excluded, rounding_mode=floor)",
                 report,
             )
+            self.assertIn(
+                "C_INCLUDED(enabled=False, bookkeeping_mode=tax_included, rounding_mode=floor)",
+                report,
+            )
+            self.assertIn("valid_mode_consistent", report)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -593,6 +669,104 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
                 report,
             )
             self.assertIn("tax_division_thresholds=missing_or_invalid", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_old_shape_category_overrides_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_old_override_fail_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+            _write_text(
+                repo_root
+                / "clients"
+                / "C_CC_BAD"
+                / "lines"
+                / "credit_card_statement"
+                / "config"
+                / "category_overrides.json",
+                json.dumps(
+                    {
+                        "schema": "belle.category_overrides.v2",
+                        "client_id": "C_CC_BAD",
+                        "generated_at": "2026-04-09T00:00:00Z",
+                        "note_ja": "old shape",
+                        "overrides": {
+                            "known_a": {
+                                "debit_account": "通信費",
+                                "debit_tax_division": "課対仕入内10%適格",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C48 credit_card_statement category_overrides.json follows the target_account/target_tax_division row contract when present | FAIL |",
+                report,
+            )
+            self.assertIn("invalid_present", report)
+            self.assertIn("row_missing_target_keys=1", report)
+            self.assertIn("row_extra_keys=1", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_missing_optional_override_and_valid_present_override_are_distinguished(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_override_states_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+            (
+                repo_root / "clients" / "C_CC_MISSING" / "lines" / "credit_card_statement"
+            ).mkdir(parents=True, exist_ok=True)
+            _write_text(
+                repo_root
+                / "clients"
+                / "C_CC_VALID"
+                / "lines"
+                / "credit_card_statement"
+                / "config"
+                / "category_overrides.json",
+                json.dumps(
+                    {
+                        "schema": "belle.category_overrides.v2",
+                        "client_id": "C_CC_VALID",
+                        "generated_at": "2026-04-09T00:00:00Z",
+                        "note_ja": "valid shape",
+                        "overrides": {
+                            "known_a": {
+                                "target_account": "通信費",
+                                "target_tax_division": "課対仕入内10%適格",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "valid_present: layout=line; path=clients/C_CC_VALID/lines/credit_card_statement/config/category_overrides.json",
+                report,
+            )
+            self.assertIn(
+                "optional_missing: layout=line; path=clients/C_CC_MISSING/lines/credit_card_statement/config/category_overrides.json",
+                report,
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

@@ -33,7 +33,15 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: bool = False) -> None:
+def _write_valid_shared_tax_config(
+    repo_root: Path,
+    client_id: str,
+    *,
+    bookkeeping_mode: str = "tax_excluded",
+    enabled: bool | None = None,
+) -> None:
+    if enabled is None:
+        enabled = bookkeeping_mode == "tax_excluded"
     _write_text(
         repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json",
         json.dumps(
@@ -41,7 +49,7 @@ def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: 
                 "schema": "belle.yayoi_tax_config.v1",
                 "version": "1.0",
                 "enabled": enabled,
-                "bookkeeping_mode": "tax_excluded",
+                "bookkeeping_mode": bookkeeping_mode,
                 "rounding_mode": "floor",
             },
             ensure_ascii=False,
@@ -149,7 +157,7 @@ class SystemDiagnoseDefaultAllTests(unittest.TestCase):
                 parents=True,
                 exist_ok=True,
             )
-            _write_valid_shared_tax_config(temp_root, "TEMPLATE", enabled=False)
+            _write_valid_shared_tax_config(temp_root, "TEMPLATE")
 
             bank_template_root = temp_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
             for rel in [

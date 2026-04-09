@@ -23,6 +23,10 @@ Runs hard/soft readiness checks for this repository and environment, then writes
 - The tracked TEMPLATE shared tax config currently has `enabled: true`; diagnose reports the actual resolved state instead of assuming disabled-by-default wording.
 - For existing non-`TEMPLATE` clients, missing shared tax config is warn-only.
 - For existing non-`TEMPLATE` clients, present-but-invalid shared tax config is treated as a failure.
+- Diagnose also hard-checks bookkeeping-mode bootstrap consistency for present shared tax config values:
+  - `tax_excluded` must resolve to `enabled: true`, `rounding_mode: floor`
+  - `tax_included` must resolve to `enabled: false`, `rounding_mode: floor`
+- Evidence distinguishes `valid_mode_consistent`, `present_inconsistent`, and optional/shared-config-missing states instead of collapsing them into a vague warning.
 - For `receipt`, diagnose now hard-checks that the active ruleset contains the required `tax_division_thresholds` and `tax_division_confidence` sections used by debit-side tax routing.
 - For `credit_card_statement`, diagnose now hard-checks that `clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json` exists and contains the required `tax_division_thresholds` entries.
 - For `receipt` and `credit_card_statement`, present `category_overrides.json` files are validated against the live `target_account` / `target_tax_division` row contract.

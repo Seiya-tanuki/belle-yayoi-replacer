@@ -14,7 +14,15 @@ def _write_text(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
-def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: bool = False) -> None:
+def _write_valid_shared_tax_config(
+    repo_root: Path,
+    client_id: str,
+    *,
+    bookkeeping_mode: str = "tax_excluded",
+    enabled: bool | None = None,
+) -> None:
+    if enabled is None:
+        enabled = bookkeeping_mode == "tax_excluded"
     _write_text(
         repo_root / "clients" / client_id / "config" / "yayoi_tax_config.json",
         json.dumps(
@@ -22,7 +30,7 @@ def _write_valid_shared_tax_config(repo_root: Path, client_id: str, *, enabled: 
                 "schema": "belle.yayoi_tax_config.v1",
                 "version": "1.0",
                 "enabled": enabled,
-                "bookkeeping_mode": "tax_excluded",
+                "bookkeeping_mode": bookkeeping_mode,
                 "rounding_mode": "floor",
             },
             ensure_ascii=False,
@@ -94,7 +102,7 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                 bank_template_root / "config" / "bank_line_config.json",
                 json.dumps({"schema": "belle.bank_line_config.v0", "version": "0.1"}, ensure_ascii=False),
             )
-            _write_valid_shared_tax_config(temp_root, "TEMPLATE", enabled=False)
+            _write_valid_shared_tax_config(temp_root, "TEMPLATE")
 
             _write_text(temp_root / "belle" / "__init__.py", "")
             _write_text(
@@ -103,7 +111,10 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                     [
                         "from __future__ import annotations",
                         "",
+                        "from pathlib import Path",
+                        "",
                         "CANONICAL_LINE_IDS = ['receipt', 'bank_statement', 'credit_card_statement']",
+                        "SUPPORTED_BOOKKEEPING_MODES = ['tax_excluded', 'tax_included']",
                         "",
                         "def validate_line_id(line_id: str) -> str:",
                         "    value = str(line_id or '').strip().lower()",
@@ -113,6 +124,15 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                         "",
                         "def is_line_implemented(line_id: str) -> bool:",
                         "    return validate_line_id(line_id) in {'receipt', 'bank_statement', 'credit_card_statement'}",
+                        "",
+                        "def tracked_category_defaults_relpaths(line_id: str) -> list[Path]:",
+                        "    line = validate_line_id(line_id)",
+                        "    if line == 'receipt' or line == 'credit_card_statement':",
+                        "        return [",
+                        "            Path('defaults') / line / 'category_defaults_tax_excluded.json',",
+                        "            Path('defaults') / line / 'category_defaults_tax_included.json',",
+                        "        ]",
+                        "    return [Path('defaults') / line / 'category_defaults.json']",
                         "",
                     ]
                 ),
@@ -169,7 +189,7 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                 line_root / "artifacts" / "cache" / "client_cache.json",
                 json.dumps({"updated_at": "2026-02-20T00:00:00Z"}, ensure_ascii=False),
             )
-            _write_valid_shared_tax_config(temp_root, "C_WARN", enabled=False)
+            _write_valid_shared_tax_config(temp_root, "C_WARN")
 
             # Forbidden residue directories are intentionally created (empty) and must trigger WARN only.
             (line_root / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
