@@ -19,7 +19,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lexicon_manager import label_queue_lock
-from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+from belle.lines import is_line_implemented, line_mode_independent_asset_paths, validate_line_id
 from belle.paths import get_label_queue_lock_path as _line_label_queue_lock_path
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
@@ -174,7 +174,7 @@ def _write_assets_zip(
     pending_dir: Path | None = None
     lock_path: Path | None = None
     if uses_pending:
-        pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
+        pending_dir = line_mode_independent_asset_paths(repo_root, line_id)["pending_dir"]
         lock_path = get_label_queue_lock_path(repo_root, line_id)
 
     files_manifest: List[Dict[str, object]] = []
@@ -487,7 +487,7 @@ def _restore_pending_with_swap(
     restore_old_dir: Path,
     line_id: str = "receipt",
 ) -> None:
-    dest_pending = line_asset_paths(repo_root, line_id)["pending_dir"]
+    dest_pending = line_mode_independent_asset_paths(repo_root, line_id)["pending_dir"]
     dest_pending.mkdir(parents=True, exist_ok=True)
     (dest_pending / "locks").mkdir(parents=True, exist_ok=True)
     restore_old_dir.mkdir(parents=True, exist_ok=True)
@@ -626,7 +626,7 @@ def main() -> int:
     clients_dir = repo_root / "clients"
     pending_dir: Path | None = None
     if _line_uses_pending(line_id):
-        pending_dir = line_asset_paths(repo_root, line_id)["pending_dir"]
+        pending_dir = line_mode_independent_asset_paths(repo_root, line_id)["pending_dir"]
     overwrite_needed = _dir_has_content(clients_dir) or (
         pending_dir is not None and _dir_has_content(pending_dir)
     )

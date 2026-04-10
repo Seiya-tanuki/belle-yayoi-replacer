@@ -137,9 +137,10 @@ def validate_and_canonicalize(raw_name: str) -> ValidationResult:
 
 def _display_path(path: Path, repo_root: Path) -> str:
     try:
-        return str(path.relative_to(repo_root))
+        relative = path.relative_to(repo_root)
     except ValueError:
-        return str(path)
+        return str(path).replace("/", "\\")
+    return "\\".join(relative.parts) if relative.parts else "."
 
 
 def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path]:

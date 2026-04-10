@@ -12,7 +12,7 @@ from pathlib import Path
 
 from belle.ingest import list_discoverable_files
 from belle.lexicon import load_lexicon
-from belle.lines import is_line_implemented, line_asset_paths, validate_line_id
+from belle.lines import is_line_implemented, line_mode_independent_asset_paths, validate_line_id
 from belle.build_client_cache import ensure_client_cache_updated
 from belle.paths import (
     ensure_client_system_dirs,
@@ -228,7 +228,7 @@ def main() -> None:
             print("[WARN] " + " | ".join(out_manifest["summary"]["warnings"]))
         return
 
-    asset_paths = line_asset_paths(repo_root, line_id)
+    asset_paths = line_mode_independent_asset_paths(repo_root, line_id)
     lex = load_lexicon(asset_paths["lexicon_path"])
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
     config = json.loads(config_path.read_text(encoding="utf-8"))

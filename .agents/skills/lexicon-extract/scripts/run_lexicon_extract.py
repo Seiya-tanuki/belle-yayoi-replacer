@@ -12,7 +12,7 @@ from pathlib import Path
 
 from belle.ingest import list_discoverable_files
 from belle.lexicon import load_lexicon
-from belle.lines import line_asset_paths, validate_line_id
+from belle.lines import line_mode_independent_asset_paths, validate_line_id
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import get_client_root
 
@@ -101,7 +101,7 @@ def main() -> int:
 
     config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
     config = json.loads(config_path.read_text(encoding="utf-8"))
-    asset_paths = line_asset_paths(repo_root, line_id)
+    asset_paths = line_mode_independent_asset_paths(repo_root, line_id)
     pending_dir = asset_paths["pending_dir"]
 
     if args.show_paths:

@@ -61,6 +61,18 @@ def resolve_tracked_category_defaults_path(
     return repo_root / "defaults" / line / _TRACKED_DEFAULTS_FILENAMES_BY_MODE[mode]
 
 
+def line_mode_independent_asset_paths(
+    repo_root: Path,
+    line_id: str,
+) -> dict[str, Path]:
+    line = validate_line_id(line_id)
+    return {
+        "lexicon_path": repo_root / "lexicon" / "lexicon.json",
+        "ruleset_default_path": repo_root / "rulesets" / line / "replacer_config_v1_15.json",
+        "pending_dir": repo_root / "lexicon" / line / "pending",
+    }
+
+
 def line_asset_paths(
     repo_root: Path,
     line_id: str,
@@ -68,6 +80,7 @@ def line_asset_paths(
     bookkeeping_mode: str | None = None,
 ) -> dict[str, Path]:
     line = validate_line_id(line_id)
+    assets = line_mode_independent_asset_paths(repo_root, line)
     if line in _BOOKKEEPING_MODE_AWARE_DEFAULT_LINES:
         if bookkeeping_mode is None:
             raise ValueError(f"bookkeeping_mode is required for line_id={line!r}")
@@ -78,9 +91,5 @@ def line_asset_paths(
         )
     else:
         defaults_path = repo_root / "defaults" / line / "category_defaults.json"
-    return {
-        "lexicon_path": repo_root / "lexicon" / "lexicon.json",
-        "defaults_path": defaults_path,
-        "ruleset_default_path": repo_root / "rulesets" / line / "replacer_config_v1_15.json",
-        "pending_dir": repo_root / "lexicon" / line / "pending",
-    }
+    assets["defaults_path"] = defaults_path
+    return assets
