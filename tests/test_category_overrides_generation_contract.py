@@ -44,13 +44,24 @@ def _run_register(module, repo_root: Path, *, client_id: str) -> tuple[int, str]
     fake_script_path.parent.mkdir(parents=True, exist_ok=True)
     module.__file__ = str(fake_script_path)
 
+    template_cfg = json.loads(
+        (repo_root / "clients" / "TEMPLATE" / "config" / "yayoi_tax_config.json").read_text(encoding="utf-8")
+    )
+    bookkeeping_mode = str(template_cfg.get("bookkeeping_mode") or "").strip()
+
     output_buffer = io.StringIO()
     original_sys_path = list(sys.path)
     try:
-        with mock.patch.object(sys, "argv", ["register_client.py"]):
-            with mock.patch("builtins.input", side_effect=[client_id]):
-                with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
-                    rc = module.main()
+        argv = [
+            "register_client.py",
+            "--client-id",
+            client_id,
+            "--bookkeeping-mode",
+            bookkeeping_mode,
+        ]
+        with mock.patch.object(sys, "argv", argv):
+            with contextlib.redirect_stdout(output_buffer), contextlib.redirect_stderr(output_buffer):
+                rc = module.main()
     finally:
         sys.path[:] = original_sys_path
     return rc, output_buffer.getvalue()

@@ -60,27 +60,25 @@ def _write_min_shared_assets(repo_root: Path) -> None:
         encoding="utf-8",
     )
 
-    defaults_path = repo_root / "defaults" / "credit_card_statement" / "category_defaults.json"
-    defaults_path.parent.mkdir(parents=True, exist_ok=True)
-    defaults_path.write_text(
-        json.dumps(
-            {
-                "schema": "belle.category_defaults.v2",
-                "version": "test",
-                "defaults": {},
-                "global_fallback": {
-                    "target_account": PLACEHOLDER_ACCOUNT,
-                    "target_tax_division": "",
-                    "confidence": 0.35,
-                    "priority": "HIGH",
-                    "reason_code": "global_fallback",
-                },
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
+    defaults_payload = {
+        "schema": "belle.category_defaults.v2",
+        "version": "test",
+        "defaults": {},
+        "global_fallback": {
+            "target_account": PLACEHOLDER_ACCOUNT,
+            "target_tax_division": "",
+            "confidence": 0.35,
+            "priority": "HIGH",
+            "reason_code": "global_fallback",
+        },
+    }
+    defaults_dir = repo_root / "defaults" / "credit_card_statement"
+    defaults_dir.mkdir(parents=True, exist_ok=True)
+    for filename in ("category_defaults_tax_excluded.json", "category_defaults_tax_included.json"):
+        (defaults_dir / filename).write_text(
+            json.dumps(defaults_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
 
 def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_majority: float) -> Path:
