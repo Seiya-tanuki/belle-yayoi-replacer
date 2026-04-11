@@ -714,8 +714,13 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
                 "rulesets/credit_card_statement/teacher_extraction_rules_v1.json",
                 teacher_extraction.get("ruleset_relpath"),
             )
+            self.assertEqual(["未払費用", "未払金"], teacher_extraction.get("payable_candidate_accounts"))
             self.assertEqual([], teacher_extraction.get("manual_include_subaccounts"))
             self.assertEqual([], teacher_extraction.get("manual_exclude_subaccounts"))
+            self.assertEqual(
+                {"min_count": 3, "min_p_majority": 0.9},
+                teacher_extraction.get("canonical_payable_thresholds"),
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

@@ -150,6 +150,23 @@ def _write_cc_config(line_root: Path) -> None:
         ),
         encoding="utf-8",
     )
+    ruleset_path = line_root.parents[3] / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json"
+    ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    ruleset_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.cc_teacher_extraction_rules.v1",
+                "version": "1",
+                "teacher_payable_candidate_accounts": ["未払費用", "未払金"],
+                "hard_include_terms": ["CARD", "カード"],
+                "soft_include_terms": ["VISA"],
+                "exclude_terms": ["デビット", "プリペイド", "ローン"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _write_bank_config(line_root: Path) -> None:

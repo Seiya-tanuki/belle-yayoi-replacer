@@ -259,6 +259,17 @@ class BookkeepingModeBootstrapTests(unittest.TestCase):
                     },
                 },
             )
+            _write_json(
+                repo_root / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json",
+                {
+                    "schema": "belle.cc_teacher_extraction_rules.v1",
+                    "version": "1",
+                    "teacher_payable_candidate_accounts": ["未払費用", "未払金"],
+                    "hard_include_terms": ["CARD", "カード"],
+                    "soft_include_terms": ["VISA"],
+                    "exclude_terms": ["デビット", "プリペイド", "ローン"],
+                },
+            )
             _write_yayoi_rows(line_root / "inputs" / "kari_shiwake" / "target.csv", [_blank_row("MISC")])
 
             cache_update_summary = {"cache_path": str(line_root / "artifacts" / "cache" / "client_cache.json")}

@@ -9,7 +9,7 @@ Current implementation status:
 2. Cache update source is line-scoped `inputs/ledger_ref/`.
 3. Target-account-conditioned tax learning is implemented.
 4. No backward compatibility or migration support is provided for older credit-card cache schema versions in this phase.
-5. Derived teacher extraction scaffolding exists, but cache updates are not wired to `artifacts/derived/cc_teacher/` yet in this phase.
+5. Raw `ledger_ref` ingest is preserved, but cache learning now runs only from derived teacher rows under `artifacts/derived/cc_teacher/`.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
@@ -22,17 +22,19 @@ Canonical path:
 1. `clients/<CLIENT_ID>/lines/credit_card_statement/artifacts/cache/client_cache.json`
 
 Schema:
-1. `schema = "belle.cc_client_cache.v1"`
+1. `schema = "belle.cc_client_cache.v2"`
 
 Version:
-1. `version = "0.2"`
+1. `version = "0.3"`
 
 ## Update model
 
 1. Cache update is append-only.
 2. Each ingested `ledger_ref` file is deduped by SHA256.
-3. Already-applied SHA256 entries must not increment learned counts again.
-4. Normal updates must not destructively rebuild or delete historical evidence.
+3. Each ingested raw source deterministically produces one derived teacher CSV and one manifest entry.
+4. Cache learning applies derived teacher rows only; raw `ledger_ref` rows are never learned directly.
+5. Already-applied derived sources must not increment learned counts again.
+6. Normal updates must not destructively rebuild or delete historical evidence.
 
 ## Required top-level fields
 
@@ -45,11 +47,13 @@ Version:
 7. `append_only`
 8. `decision_thresholds`
 9. `applied_ledger_ref_sha256`
-10. `card_subaccount_candidates`
-11. `merchant_key_account_stats`
-12. `merchant_key_payable_sub_stats`
-13. `merchant_key_target_account_tax_stats`
-14. `payable_sub_global_stats`
+10. `applied_cc_teacher_by_raw_sha256`
+11. `card_subaccount_candidates`
+12. `merchant_key_account_stats`
+13. `merchant_key_payable_sub_stats`
+14. `merchant_key_target_account_tax_stats`
+15. `payable_sub_global_stats`
+16. `canonical_payable`
 
 ## Learned evidence blocks
 
@@ -102,7 +106,7 @@ Interpretation:
 
 Learning constraints:
 1. Learning uses the same `merchant_key` normalization as account learning.
-2. Training reads the opposite/payable-counter side account and tax division from `ledger_ref`.
+2. Training reads the opposite/payable-counter side account and tax division from derived teacher rows only.
 3. Tax learning must skip rows when any of the following are true:
    1. summary is blank
    2. `merchant_key` cannot be derived
@@ -136,6 +140,50 @@ Required credit-card tax section:
 1. `tax_division_thresholds`
 2. `tax_division_thresholds.merchant_key_target_account_exact`
 3. `tax_division_thresholds.merchant_key_target_account_partial`
+
+Required teacher-extraction section:
+1. `teacher_extraction`
+2. `teacher_extraction.payable_candidate_accounts`
+3. `teacher_extraction.soft_match_thresholds`
+4. `teacher_extraction.canonical_payable_thresholds`
+
+## Provenance fields
+
+`applied_ledger_ref_sha256` tracks raw-source provenance:
+1. key: raw `ledger_ref` SHA256
+2. value includes raw stored path plus the derived CSV relpath used for that source
+
+`applied_cc_teacher_by_raw_sha256` tracks derived-teacher learning provenance:
+1. key: raw `ledger_ref` SHA256
+2. value includes:
+   1. applied timestamp
+   2. derived CSV relpath
+   3. derived CSV SHA256
+   4. derived row totals / learned row totals
+
+## Canonical payable
+
+`canonical_payable` is a persisted decision block computed only from actually learned derived teacher rows.
+
+Required fields:
+1. `status`
+2. `account_name`
+3. `sample_total`
+4. `top_count`
+5. `p_majority`
+6. `value_counts`
+7. `reasons`
+
+Status rules:
+1. no learned derived teacher rows -> `EMPTY`
+2. non-unique top / tie -> `REVIEW_REQUIRED`
+3. `sample_total < teacher_extraction.canonical_payable_thresholds.min_count` -> `REVIEW_REQUIRED`
+4. `p_majority < teacher_extraction.canonical_payable_thresholds.min_p_majority` -> `REVIEW_REQUIRED`
+5. otherwise -> `OK`
+
+Runtime note:
+1. `canonical_payable` is persisted for later phases only.
+2. Current `credit_card_statement` runtime replacement does not rewrite output based on this field yet.
 
 ## Compatibility note
 

@@ -320,13 +320,16 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
                 self.assertTrue(cache_path.exists(), msg=output)
 
                 cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-                self.assertEqual("belle.cc_client_cache.v1", cache_obj.get("schema"))
+                self.assertEqual("belle.cc_client_cache.v2", cache_obj.get("schema"))
                 self.assertEqual("credit_card_statement", cache_obj.get("line_id"))
 
                 applied = cache_obj.get("applied_ledger_ref_sha256") or {}
                 self.assertEqual(1, len(applied), msg=output)
+                applied_teacher = cache_obj.get("applied_cc_teacher_by_raw_sha256") or {}
+                self.assertEqual(1, len(applied_teacher), msg=output)
                 self.assertEqual(2, len(cache_obj.get("merchant_key_account_stats") or {}), msg=output)
                 self.assertEqual(2, len(cache_obj.get("merchant_key_payable_sub_stats") or {}), msg=output)
+                self.assertEqual("REVIEW_REQUIRED", ((cache_obj.get("canonical_payable") or {}).get("status") or ""), msg=output)
 
                 telemetry_files = sorted(telemetry_dir.glob("client_cache_update_run_*.json"))
                 self.assertEqual(1, len(telemetry_files), msg=output)

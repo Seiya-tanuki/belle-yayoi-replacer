@@ -2,9 +2,11 @@
   "schema": "belle.cc_teacher_extraction_rules.v1",
   "version": "1",
   "teacher_payable_candidate_accounts": [
+    "未払費用",
     "未払金"
   ],
   "hard_include_terms": [
+    "CARD",
     "カード"
   ],
   "soft_include_terms": [

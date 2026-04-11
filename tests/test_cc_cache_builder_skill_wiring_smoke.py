@@ -71,6 +71,23 @@ def _prepare_cc_client_layout(repo_root: Path, client_id: str) -> Path:
         ),
         encoding="utf-8",
     )
+    ruleset_path = repo_root / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json"
+    ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    ruleset_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.cc_teacher_extraction_rules.v1",
+                "version": "1",
+                "teacher_payable_candidate_accounts": [PAYABLE_ACCOUNT],
+                "hard_include_terms": ["CARD", "カード"],
+                "soft_include_terms": ["VISA"],
+                "exclude_terms": ["デビット", "プリペイド", "ローン"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return line_root
 
 
@@ -151,7 +168,7 @@ class CCCacheBuilderSkillWiringSmokeTests(unittest.TestCase):
             self.assertTrue(cache_path.exists(), msg=buf.getvalue())
 
             cache_obj = json.loads(cache_path.read_text(encoding="utf-8"))
-            self.assertEqual("belle.cc_client_cache.v1", cache_obj.get("schema"))
+            self.assertEqual("belle.cc_client_cache.v2", cache_obj.get("schema"))
             self.assertEqual("credit_card_statement", cache_obj.get("line_id"))
 
             merchant_account_stats = cache_obj.get("merchant_key_account_stats") or {}
@@ -174,6 +191,9 @@ class CCCacheBuilderSkillWiringSmokeTests(unittest.TestCase):
                 (payable_sub_stats.get("SHOPA") or {}).get("top_value"),
                 msg=buf.getvalue(),
             )
+            canonical_payable = cache_obj.get("canonical_payable") or {}
+            self.assertEqual("REVIEW_REQUIRED", canonical_payable.get("status"), msg=buf.getvalue())
+            self.assertEqual(PAYABLE_ACCOUNT, canonical_payable.get("account_name"), msg=buf.getvalue())
 
             applied = cache_obj.get("applied_ledger_ref_sha256") or {}
             self.assertEqual(1, len(applied), msg=buf.getvalue())
@@ -181,6 +201,20 @@ class CCCacheBuilderSkillWiringSmokeTests(unittest.TestCase):
             self.assertTrue(str(applied_entry.get("applied_at") or ""), msg=buf.getvalue())
             self.assertEqual(2, int(applied_entry.get("rows_total") or 0), msg=buf.getvalue())
             self.assertEqual(2, int(applied_entry.get("rows_used") or 0), msg=buf.getvalue())
+            self.assertEqual(2, int(applied_entry.get("derived_rows_total") or 0), msg=buf.getvalue())
+
+            applied_teacher = cache_obj.get("applied_cc_teacher_by_raw_sha256") or {}
+            self.assertEqual(1, len(applied_teacher), msg=buf.getvalue())
+
+            derived_manifest_path = line_root / "artifacts" / "derived" / "cc_teacher_manifest.json"
+            self.assertTrue(derived_manifest_path.exists(), msg=buf.getvalue())
+            derived_manifest = json.loads(derived_manifest_path.read_text(encoding="utf-8"))
+            sources = derived_manifest.get("sources") or {}
+            self.assertEqual(1, len(sources), msg=buf.getvalue())
+            source_entry = next(iter(sources.values()))
+            self.assertTrue(bool(source_entry.get("applied_to_cache_learning")), msg=buf.getvalue())
+            derived_csv_relpath = str(source_entry.get("derived_csv_relpath") or "")
+            self.assertTrue((line_root / Path(derived_csv_relpath)).exists(), msg=buf.getvalue())
 
             telemetry_files = sorted((line_root / "artifacts" / "telemetry").glob("client_cache_update_run_*.json"))
             self.assertEqual(1, len(telemetry_files), msg=buf.getvalue())
@@ -188,11 +222,20 @@ class CCCacheBuilderSkillWiringSmokeTests(unittest.TestCase):
             self.assertEqual("belle.cc_client_cache_update_run.v1", telemetry_obj.get("schema"))
             self.assertEqual("credit_card_statement", telemetry_obj.get("line_id"))
             self.assertEqual(1, int((telemetry_obj.get("summary") or {}).get("applied_new_files") or 0))
+            self.assertEqual(2, int((telemetry_obj.get("summary") or {}).get("derived_rows_selected_added") or 0))
             self.assertEqual(
                 2,
                 int((telemetry_obj.get("cache_stats") or {}).get("merchant_key_account_stats") or 0),
             )
+            self.assertEqual(
+                "REVIEW_REQUIRED",
+                str((telemetry_obj.get("cache_stats") or {}).get("canonical_payable_status") or ""),
+            )
             self.assertEqual(str(cache_path), ((telemetry_obj.get("paths") or {}).get("client_cache") or ""))
+            self.assertEqual(
+                str(derived_manifest_path),
+                ((telemetry_obj.get("paths") or {}).get("derived_teacher_manifest") or ""),
+            )
 
 
 if __name__ == "__main__":

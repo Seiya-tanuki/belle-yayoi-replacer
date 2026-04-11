@@ -38,8 +38,10 @@ clients/<CLIENT_ID>/
       artifacts/
         cache/
           client_cache.json
-        derived/                       # credit_card_statement only; tracked scaffold for derived teacher artifacts
+        derived/                       # credit_card_statement only; managed derived teacher artifacts
+          cc_teacher_manifest.json
           cc_teacher/
+            <RAW_SHA256>__cc_teacher.csv
         ingest/
           ledger_ref/                  # receipt + credit_card_statement only
           kari_shiwake/                # all implemented lines
@@ -100,7 +102,8 @@ Related specs:
 3. `credit_card_statement` uses line-scoped inputs:
    1. `inputs/kari_shiwake/` (target; `0 => SKIP`, `1 => RUN`, `2+ => FAIL`)
    2. `inputs/ledger_ref/` (append-only raw historical teacher input)
-   3. `artifacts/derived/cc_teacher/` is reserved for derived teacher outputs extracted from raw `ledger_ref` rows.
+   3. `artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv` stores derived teacher rows extracted from each raw `ledger_ref` source.
+   4. `artifacts/derived/cc_teacher_manifest.json` stores deterministic raw-to-derived provenance plus cache-application state.
    4. Contract A is required (one statement per target file).
    5. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
    6. Lexicon category routing is fallback-only (secondary to merchant-key routing).

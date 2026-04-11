@@ -10,9 +10,11 @@ import json
 from .client_cache import StatsEntry
 from .io_atomic import atomic_write_text
 
-SCHEMA_CC_CLIENT_CACHE_V1 = "belle.cc_client_cache.v1"
-CC_CLIENT_CACHE_VERSION_V1 = "0.2"
+SCHEMA_CC_CLIENT_CACHE_V2 = "belle.cc_client_cache.v2"
+CC_CLIENT_CACHE_VERSION_V2 = "0.3"
 LINE_ID_CC = "credit_card_statement"
+SCHEMA_CC_CLIENT_CACHE_V1 = SCHEMA_CC_CLIENT_CACHE_V2
+CC_CLIENT_CACHE_VERSION_V1 = CC_CLIENT_CACHE_VERSION_V2
 
 
 def _now_utc_iso() -> str:
@@ -31,6 +33,18 @@ def _as_float(value: Any, default: float = 0.0) -> float:
         return float(value)
     except Exception:
         return float(default)
+
+
+def _canonical_payable_empty() -> Dict[str, Any]:
+    return {
+        "status": "EMPTY",
+        "account_name": "",
+        "sample_total": 0,
+        "top_count": 0,
+        "p_majority": 0.0,
+        "value_counts": {},
+        "reasons": ["no_learned_rows"],
+    }
 
 
 @dataclass
@@ -119,11 +133,13 @@ class CCClientCache:
     append_only: bool
     decision_thresholds: Dict[str, Any]
     applied_ledger_ref_sha256: Dict[str, Dict[str, Any]]
+    applied_cc_teacher_by_raw_sha256: Dict[str, Dict[str, Any]]
     card_subaccount_candidates: Dict[str, Dict[str, Any]]
     merchant_key_account_stats: Dict[str, StatsEntry]
     merchant_key_payable_sub_stats: Dict[str, ValueStatsEntry]
     merchant_key_target_account_tax_stats: Dict[str, Dict[str, ValueStatsEntry]]
     payable_sub_global_stats: ValueStatsEntry
+    canonical_payable: Dict[str, Any]
 
     @staticmethod
     def empty(
@@ -134,8 +150,8 @@ class CCClientCache:
     ) -> "CCClientCache":
         now = created_at or _now_utc_iso()
         return CCClientCache(
-            schema=SCHEMA_CC_CLIENT_CACHE_V1,
-            version=CC_CLIENT_CACHE_VERSION_V1,
+            schema=SCHEMA_CC_CLIENT_CACHE_V2,
+            version=CC_CLIENT_CACHE_VERSION_V2,
             client_id=str(client_id),
             line_id=LINE_ID_CC,
             created_at=now,
@@ -143,11 +159,13 @@ class CCClientCache:
             append_only=True,
             decision_thresholds=thresholds or {},
             applied_ledger_ref_sha256={},
+            applied_cc_teacher_by_raw_sha256={},
             card_subaccount_candidates={},
             merchant_key_account_stats={},
             merchant_key_payable_sub_stats={},
             merchant_key_target_account_tax_stats={},
             payable_sub_global_stats=ValueStatsEntry.empty(),
+            canonical_payable=_canonical_payable_empty(),
         )
 
     @staticmethod
@@ -168,6 +186,14 @@ class CCClientCache:
                 sha = str(v or "").strip()
                 if sha:
                     applied[sha] = {}
+
+        applied_cc_teacher_raw = obj.get("applied_cc_teacher_by_raw_sha256")
+        applied_cc_teacher_by_raw_sha256: Dict[str, Dict[str, Any]] = {}
+        if isinstance(applied_cc_teacher_raw, dict):
+            applied_cc_teacher_by_raw_sha256 = {
+                str(k): (v if isinstance(v, dict) else {})
+                for k, v in applied_cc_teacher_raw.items()
+            }
 
         candidates_raw = obj.get("card_subaccount_candidates")
         if not isinstance(candidates_raw, dict):
@@ -208,13 +234,29 @@ class CCClientCache:
         global_stats_obj = obj.get("payable_sub_global_stats")
         if not isinstance(global_stats_obj, dict):
             global_stats_obj = {}
+        canonical_payable = obj.get("canonical_payable")
+        if not isinstance(canonical_payable, dict):
+            canonical_payable = _canonical_payable_empty()
+        else:
+            canonical_payable = {
+                "status": str(canonical_payable.get("status") or "EMPTY"),
+                "account_name": str(canonical_payable.get("account_name") or ""),
+                "sample_total": _as_int(canonical_payable.get("sample_total"), 0),
+                "top_count": _as_int(canonical_payable.get("top_count"), 0),
+                "p_majority": _as_float(canonical_payable.get("p_majority"), 0.0),
+                "value_counts": {
+                    str(k): _as_int(v)
+                    for k, v in ((canonical_payable.get("value_counts") or {}) if isinstance(canonical_payable.get("value_counts"), dict) else {}).items()
+                },
+                "reasons": [str(v) for v in (canonical_payable.get("reasons") or []) if str(v)],
+            }
 
         created_at = str(obj.get("created_at") or "")
         updated_at = str(obj.get("updated_at") or created_at)
 
         return CCClientCache(
-            schema=str(obj.get("schema") or SCHEMA_CC_CLIENT_CACHE_V1),
-            version=str(obj.get("version") or CC_CLIENT_CACHE_VERSION_V1),
+            schema=str(obj.get("schema") or SCHEMA_CC_CLIENT_CACHE_V2),
+            version=str(obj.get("version") or CC_CLIENT_CACHE_VERSION_V2),
             client_id=str(obj.get("client_id") or ""),
             line_id=str(obj.get("line_id") or LINE_ID_CC),
             created_at=created_at,
@@ -222,11 +264,13 @@ class CCClientCache:
             append_only=bool(obj.get("append_only", True)),
             decision_thresholds=thresholds,
             applied_ledger_ref_sha256=applied,
+            applied_cc_teacher_by_raw_sha256=applied_cc_teacher_by_raw_sha256,
             card_subaccount_candidates=candidates,
             merchant_key_account_stats=merchant_key_account_stats,
             merchant_key_payable_sub_stats=merchant_key_payable_sub_stats,
             merchant_key_target_account_tax_stats=merchant_key_target_account_tax_stats,
             payable_sub_global_stats=ValueStatsEntry.from_obj(global_stats_obj),
+            canonical_payable=canonical_payable,
         )
 
     def to_obj(self) -> Dict[str, Any]:
@@ -240,6 +284,7 @@ class CCClientCache:
             "append_only": bool(self.append_only),
             "decision_thresholds": self.decision_thresholds,
             "applied_ledger_ref_sha256": self.applied_ledger_ref_sha256,
+            "applied_cc_teacher_by_raw_sha256": self.applied_cc_teacher_by_raw_sha256,
             "card_subaccount_candidates": self.card_subaccount_candidates,
             "merchant_key_account_stats": {
                 k: v.to_obj() for k, v in self.merchant_key_account_stats.items()
@@ -255,6 +300,7 @@ class CCClientCache:
                 for merchant_key, account_map in self.merchant_key_target_account_tax_stats.items()
             },
             "payable_sub_global_stats": self.payable_sub_global_stats.to_obj(),
+            "canonical_payable": self.canonical_payable,
         }
 
     @staticmethod

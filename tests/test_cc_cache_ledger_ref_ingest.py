@@ -43,6 +43,23 @@ def _write_cc_config(line_root: Path) -> None:
     cfg_path = line_root / "config" / "credit_card_line_config.json"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    ruleset_path = line_root.parents[3] / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json"
+    ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    ruleset_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.cc_teacher_extraction_rules.v1",
+                "version": "1",
+                "teacher_payable_candidate_accounts": ["未払費用", "未払金"],
+                "hard_include_terms": ["CARD", "カード"],
+                "soft_include_terms": ["VISA"],
+                "exclude_terms": ["デビット", "プリペイド", "ローン"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _build_row(*, summary: str, counter_account: str, payable_subaccount: str) -> list[str]:
@@ -84,6 +101,8 @@ class CCCacheLedgerRefIngestTests(unittest.TestCase):
             self.assertEqual([], remaining)
             self.assertEqual(1, int(summary.get("ingested_new_files") or 0))
             self.assertEqual(1, int(summary.get("applied_new_files") or 0))
+            self.assertEqual(1, int(summary.get("raw_rows_observed_added") or 0))
+            self.assertEqual(1, int(summary.get("derived_rows_selected_added") or 0))
             self.assertEqual(1, int(summary.get("rows_total_added") or 0))
             self.assertEqual(1, int(summary.get("rows_used_added") or 0))
 
@@ -102,6 +121,15 @@ class CCCacheLedgerRefIngestTests(unittest.TestCase):
             self.assertTrue(cache_path.exists())
             applied_entry = next(iter((cache.applied_ledger_ref_sha256 or {}).values()))
             self.assertEqual(stored_relpath, applied_entry.get("stored_relpath"))
+            self.assertEqual(1, int(applied_entry.get("derived_rows_total") or 0))
+
+            derived_manifest_path = line_root / "artifacts" / "derived" / "cc_teacher_manifest.json"
+            self.assertTrue(derived_manifest_path.exists())
+            derived_manifest = json.loads(derived_manifest_path.read_text(encoding="utf-8"))
+            source_entry = next(iter((derived_manifest.get("sources") or {}).values()))
+            self.assertTrue(bool(source_entry.get("applied_to_cache_learning")))
+            derived_relpath = str(source_entry.get("derived_csv_relpath") or "")
+            self.assertTrue((line_root / Path(derived_relpath)).exists())
 
     def test_duplicate_sha_is_ignored_and_cache_counts_do_not_double(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -116,7 +144,7 @@ class CCCacheLedgerRefIngestTests(unittest.TestCase):
             cache1, summary1 = ensure_cc_client_cache_updated(repo_root, client_id)
 
             total1 = int(cache1.payable_sub_global_stats.sample_total)
-            applied1 = len(cache1.applied_ledger_ref_sha256)
+            applied1 = len(cache1.applied_cc_teacher_by_raw_sha256)
             self.assertEqual(1, total1)
             self.assertEqual(1, applied1)
             self.assertEqual(1, int(summary1.get("applied_new_files") or 0))
@@ -125,7 +153,7 @@ class CCCacheLedgerRefIngestTests(unittest.TestCase):
             cache2, summary2 = ensure_cc_client_cache_updated(repo_root, client_id)
 
             total2 = int(cache2.payable_sub_global_stats.sample_total)
-            applied2 = len(cache2.applied_ledger_ref_sha256)
+            applied2 = len(cache2.applied_cc_teacher_by_raw_sha256)
             self.assertEqual(total1, total2)
             self.assertEqual(applied1, applied2)
             self.assertEqual(1, int(summary2.get("ingested_duplicate_files") or 0))

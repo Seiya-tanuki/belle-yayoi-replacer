@@ -189,7 +189,7 @@ def main() -> None:
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         out_manifest = {
             "schema": "belle.cc_client_cache_update_run.v1",
-            "version": "0.1",
+            "version": "0.2",
             "created_at": datetime.now(timezone.utc).isoformat(),
             "client_id": client_id,
             "line_id": line_id,
@@ -197,6 +197,8 @@ def main() -> None:
                 "ingested_new_files": int(summary.get("ingested_new_files") or 0),
                 "ingested_duplicate_files": int(summary.get("ingested_duplicate_files") or 0),
                 "applied_new_files": int(summary.get("applied_new_files") or 0),
+                "raw_rows_observed_added": int(summary.get("raw_rows_observed_added") or 0),
+                "derived_rows_selected_added": int(summary.get("derived_rows_selected_added") or 0),
                 "rows_total_added": int(summary.get("rows_total_added") or 0),
                 "rows_used_added": int(summary.get("rows_used_added") or 0),
                 "warnings": list(summary.get("warnings") or []),
@@ -205,10 +207,12 @@ def main() -> None:
                 "merchant_key_account_stats": len(cache.merchant_key_account_stats or {}),
                 "merchant_key_payable_sub_stats": len(cache.merchant_key_payable_sub_stats or {}),
                 "card_subaccount_candidates": len(cache.card_subaccount_candidates or {}),
+                "canonical_payable_status": str((cache.canonical_payable or {}).get("status") or ""),
             },
             "paths": {
                 "client_cache": str(summary.get("cache_path") or ""),
                 "ingest_manifest": str(summary.get("ingest_manifest_path") or ""),
+                "derived_teacher_manifest": str(summary.get("derived_manifest_path") or ""),
             },
         }
         (telemetry_dir / f"client_cache_update_run_{ts}.json").write_text(

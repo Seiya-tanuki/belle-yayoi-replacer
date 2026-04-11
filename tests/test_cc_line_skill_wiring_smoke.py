@@ -112,6 +112,23 @@ def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_maj
         ),
         encoding="utf-8",
     )
+    ruleset_path = repo_root / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json"
+    ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    ruleset_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.cc_teacher_extraction_rules.v1",
+                "version": "1",
+                "teacher_payable_candidate_accounts": [PAYABLE_ACCOUNT, "未払費用"],
+                "hard_include_terms": ["CARD", "カード"],
+                "soft_include_terms": ["VISA"],
+                "exclude_terms": ["デビット", "プリペイド", "ローン"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
     return line_root
 
 

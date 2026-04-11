@@ -31,18 +31,23 @@ def _base_config(
 ) -> dict:
     return {
         "schema": "belle.credit_card_line_config.v1",
-        "version": "0.2",
+        "version": "0.3",
         "payable_account_name": "未払金",
         "target_payable_placeholder_names": ["未払金"],
         "teacher_extraction": {
             "enabled": True,
             "ruleset_relpath": "rulesets/credit_card_statement/teacher_extraction_rules_v1.json",
+            "payable_candidate_accounts": ["未払費用", "未払金"],
             "manual_include_subaccounts": list(manual_include or []),
             "manual_exclude_subaccounts": list(manual_exclude or []),
             "soft_match_thresholds": {
                 "min_total_count": int(min_total_count),
                 "min_unique_counter_accounts": int(min_unique_counter_accounts),
                 "min_unique_summaries": int(min_unique_summaries),
+            },
+            "canonical_payable_thresholds": {
+                "min_count": 3,
+                "min_p_majority": 0.9,
             },
         },
     }
@@ -52,8 +57,8 @@ def _base_ruleset() -> dict:
     return {
         "schema": "belle.cc_teacher_extraction_rules.v1",
         "version": "1",
-        "teacher_payable_candidate_accounts": ["未払金"],
-        "hard_include_terms": ["カード"],
+        "teacher_payable_candidate_accounts": ["未払費用", "未払金"],
+        "hard_include_terms": ["CARD", "カード"],
         "soft_include_terms": ["VISA"],
         "exclude_terms": ["デビット"],
     }
@@ -98,6 +103,40 @@ class CCTeacherExtractTests(unittest.TestCase):
         self.assertEqual(2, manifest["row_counts"]["source_rows_total"])
         self.assertEqual(1, manifest["row_counts"]["payable_candidate_rows"])
         self.assertEqual(1, manifest["reasons"]["row_reason_counts"]["payable_account_not_candidate"])
+
+    def test_payable_candidate_gate_accepts_both_unpaid_accounts(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="法人カードA",
+                    summary="S1",
+                ),
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払費用",
+                    credit_subaccount="法人カードB",
+                    summary="S2",
+                ),
+            ],
+            source_identity={"source": "dual_payable_accounts"},
+            config=_base_config(manual_include=["法人カードA", "法人カードB"]),
+            ruleset=_base_ruleset(),
+        )
+
+        self.assertEqual(2, len(result["selected_rows"]))
+        self.assertEqual(2, result["manifest"]["row_counts"]["payable_candidate_rows"])
+        selected_accounts = sorted(
+            {
+                account
+                for detail in result["manifest"]["selected_subaccounts"]
+                for account in detail["payable_accounts_seen"]
+            }
+        )
+        self.assertEqual(["未払費用", "未払金"], selected_accounts)
 
     def test_manual_exclude_precedence_wins_over_manual_include_and_hard_match(self) -> None:
         result = extract_cc_teacher_rows(
@@ -296,7 +335,10 @@ class CCTeacherExtractTests(unittest.TestCase):
 
             self.assertEqual(ruleset_path, resolved_ruleset_path)
             self.assertEqual(["未払金"], config["target_payable_placeholder_names"])
-            self.assertEqual(["未払金"], ruleset["teacher_payable_candidate_accounts"])
+            teacher_extraction = config["teacher_extraction"]
+            self.assertEqual(["未払費用", "未払金"], teacher_extraction["payable_candidate_accounts"])
+            self.assertEqual({"min_count": 3, "min_p_majority": 0.9}, teacher_extraction["canonical_payable_thresholds"])
+            self.assertEqual(["未払費用", "未払金"], ruleset["teacher_payable_candidate_accounts"])
 
 
 if __name__ == "__main__":

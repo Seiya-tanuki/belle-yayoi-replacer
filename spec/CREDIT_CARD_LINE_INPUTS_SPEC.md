@@ -60,13 +60,19 @@ Learning rules:
 4. applied SHA256 tracking prevents double-learning on re-run with the same teacher file
 5. multiple historical files can be accumulated over time
 
-## Derived teacher artifact scaffolding
+## Derived teacher artifacts
 
-This phase introduces tracked scaffolding for a future derived-teacher pipeline:
-1. `artifacts/derived/cc_teacher/` is the managed location for teacher rows derived from raw `ledger_ref`.
-2. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json` defines the tracked extraction ruleset.
-3. `config/credit_card_line_config.json` now carries `teacher_extraction` scaffolding for later phases.
-4. Current runtime replacement behavior is unchanged in this phase; raw `ledger_ref` remains the operative learning source.
+Raw `ledger_ref` remains the source-of-truth input, but cache learning now flows through managed derived teacher artifacts:
+1. `artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv` is materialized for each ingested raw `ledger_ref` source.
+2. `artifacts/derived/cc_teacher_manifest.json` is the deterministic manifest index for those derived outputs.
+3. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json` defines the tracked extraction ruleset.
+4. `config/credit_card_line_config.json` carries `teacher_extraction` settings, including:
+   1. payable candidate accounts
+   2. soft-match thresholds
+   3. canonical payable thresholds
+5. Cache learning must use derived teacher rows only; raw `ledger_ref` rows are not learned directly.
+6. A raw source that yields zero selected rows must still appear in `cc_teacher_manifest.json` and contributes zero learned rows.
+7. Runtime replacement behavior remains unchanged in this phase; the new canonical payable decision is cache-only for now.
 
 ## Inference field constraint
 

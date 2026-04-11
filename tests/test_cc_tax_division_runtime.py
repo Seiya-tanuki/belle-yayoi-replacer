@@ -121,6 +121,23 @@ def _write_cc_config(
     cfg_path = line_root / "config" / "credit_card_line_config.json"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     cfg_path.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    ruleset_path = line_root.parents[3] / "rulesets" / "credit_card_statement" / "teacher_extraction_rules_v1.json"
+    ruleset_path.parent.mkdir(parents=True, exist_ok=True)
+    ruleset_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.cc_teacher_extraction_rules.v1",
+                "version": "1",
+                "teacher_payable_candidate_accounts": [PAYABLE_ACCOUNT, "未払費用"],
+                "hard_include_terms": ["CARD", "カード"],
+                "soft_include_terms": ["VISA"],
+                "exclude_terms": ["デビット", "プリペイド", "ローン"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
 
 
 def _write_minimal_lexicon(repo_root: Path) -> Path:
@@ -249,8 +266,8 @@ class CCTaxDivisionRuntimeTests(unittest.TestCase):
 
             cache, summary = ensure_cc_client_cache_updated(repo_root, client_id)
 
-            self.assertEqual("belle.cc_client_cache.v1", cache.schema)
-            self.assertEqual("0.2", cache.version)
+            self.assertEqual("belle.cc_client_cache.v2", cache.schema)
+            self.assertEqual("0.3", cache.version)
             self.assertEqual(2, int(summary.get("tax_rows_learned_added") or 0))
             stats_travel = cache.merchant_key_target_account_tax_stats["SHOPA"][ACCOUNT_TRAVEL]
             stats_supplies = cache.merchant_key_target_account_tax_stats["SHOPA"][ACCOUNT_SUPPLIES]
