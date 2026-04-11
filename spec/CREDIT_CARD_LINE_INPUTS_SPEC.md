@@ -72,7 +72,8 @@ Raw `ledger_ref` remains the source-of-truth input, but cache learning now flows
    3. canonical payable thresholds
 5. Cache learning must use derived teacher rows only; raw `ledger_ref` rows are not learned directly.
 6. A raw source that yields zero selected rows must still appear in `cc_teacher_manifest.json` and contributes zero learned rows.
-7. Runtime replacement behavior remains unchanged in this phase; the new canonical payable decision is cache-only for now.
+7. Raw target payable account names in `inputs/kari_shiwake/` are placeholders for payable-side detection and are not authoritative final output account names.
+8. Final authoritative payable-side output account comes from cache `canonical_payable` when runtime can safely use it.
 
 ## Inference field constraint
 

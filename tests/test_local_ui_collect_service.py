@@ -254,6 +254,17 @@ class LocalUiCollectServiceTests(unittest.TestCase):
                 [
                     {
                         "status": "success",
+                        "ui_reason_code": "RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED",
+                    }
+                ]
+            ),
+        )
+        self.assertEqual(
+            "処理は完了しましたが確認が必要です",
+            overall_result_title(
+                [
+                    {
+                        "status": "success",
                         "ui_reason_code": "RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED",
                     }
                 ]

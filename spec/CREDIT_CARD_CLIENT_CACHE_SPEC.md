@@ -182,8 +182,9 @@ Status rules:
 5. otherwise -> `OK`
 
 Runtime note:
-1. `canonical_payable` is persisted for later phases only.
-2. Current `credit_card_statement` runtime replacement does not rewrite output based on this field yet.
+1. `credit_card_statement` runtime payable-side detection depends on this block together with `target_payable_placeholder_names`.
+2. Runtime rewrites the payable-side output account only when `canonical_payable.status == OK`.
+3. When payable side is required but `canonical_payable.status != OK`, runtime fail-closes with review-required strict stop rather than treating the raw target payable placeholder as authoritative.
 
 ## Compatibility note
 

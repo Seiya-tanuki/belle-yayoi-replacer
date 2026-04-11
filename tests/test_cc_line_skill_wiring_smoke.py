@@ -25,6 +25,7 @@ from belle.yayoi_columns import (
 
 PLACEHOLDER_ACCOUNT = "仮払金"
 PAYABLE_ACCOUNT = "未払金"
+CANONICAL_PAYABLE_ACCOUNT = "未払費用"
 ACCOUNT_TRAVEL = "旅費交通費"
 ACCOUNT_SUPPLIES = "消耗品費"
 
@@ -81,7 +82,14 @@ def _write_min_shared_assets(repo_root: Path) -> None:
         )
 
 
-def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_majority: float) -> Path:
+def _prepare_cc_client_layout(
+    repo_root: Path,
+    client_id: str,
+    *,
+    file_min_p_majority: float,
+    canonical_min_count: int = 1,
+    canonical_min_p_majority: float = 0.5,
+) -> Path:
     _write_min_shared_assets(repo_root)
     line_root = _line_root(repo_root, client_id)
     (line_root / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
@@ -94,11 +102,18 @@ def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_maj
                 "version": "0.1",
                 "placeholder_account_name": PLACEHOLDER_ACCOUNT,
                 "payable_account_name": PAYABLE_ACCOUNT,
+                "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
                 "training": {"exclude_counter_accounts": []},
                 "thresholds": {
                     "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
                     "merchant_key_payable_subaccount": {"min_count": 1, "min_p_majority": 0.5},
                     "file_level_card_inference": {"min_votes": 1, "min_p_majority": float(file_min_p_majority)},
+                },
+                "teacher_extraction": {
+                    "canonical_payable_thresholds": {
+                        "min_count": canonical_min_count,
+                        "min_p_majority": canonical_min_p_majority,
+                    }
                 },
                 "candidate_extraction": {
                     "min_total_count": 1,
@@ -119,7 +134,7 @@ def _prepare_cc_client_layout(repo_root: Path, client_id: str, *, file_min_p_maj
             {
                 "schema": "belle.cc_teacher_extraction_rules.v1",
                 "version": "1",
-                "teacher_payable_candidate_accounts": [PAYABLE_ACCOUNT, "未払費用"],
+                "teacher_payable_candidate_accounts": [PAYABLE_ACCOUNT, CANONICAL_PAYABLE_ACCOUNT],
                 "hard_include_terms": ["CARD", "カード"],
                 "soft_include_terms": ["VISA"],
                 "exclude_terms": ["デビット", "プリペイド", "ローン"],
@@ -180,14 +195,14 @@ class CCLineSkillWiringSmokeTests(unittest.TestCase):
                         date_text="2026/01/05",
                         summary="SHOPA /x",
                         debit_account=ACCOUNT_TRAVEL,
-                        credit_account=PAYABLE_ACCOUNT,
+                        credit_account=CANONICAL_PAYABLE_ACCOUNT,
                         credit_subaccount="CARD_A",
                     ),
                     _build_row(
                         date_text="2026/01/06",
                         summary="SHOPB /y",
                         debit_account=ACCOUNT_SUPPLIES,
-                        credit_account=PAYABLE_ACCOUNT,
+                        credit_account=CANONICAL_PAYABLE_ACCOUNT,
                         credit_subaccount="CARD_A",
                     ),
                 ],
@@ -250,6 +265,8 @@ class CCLineSkillWiringSmokeTests(unittest.TestCase):
             rows = _read_rows(replaced_csv_files[0])
             self.assertEqual(ACCOUNT_TRAVEL, rows[0][COL_DEBIT_ACCOUNT], msg=buf.getvalue())
             self.assertEqual(ACCOUNT_SUPPLIES, rows[1][COL_DEBIT_ACCOUNT], msg=buf.getvalue())
+            self.assertEqual(CANONICAL_PAYABLE_ACCOUNT, rows[0][COL_CREDIT_ACCOUNT], msg=buf.getvalue())
+            self.assertEqual(CANONICAL_PAYABLE_ACCOUNT, rows[1][COL_CREDIT_ACCOUNT], msg=buf.getvalue())
             self.assertEqual("CARD_A", rows[0][COL_CREDIT_SUBACCOUNT], msg=buf.getvalue())
             self.assertEqual("CARD_A", rows[1][COL_CREDIT_SUBACCOUNT], msg=buf.getvalue())
 
@@ -260,7 +277,92 @@ class CCLineSkillWiringSmokeTests(unittest.TestCase):
             self.assertTrue(replacer_manifest_path.exists(), msg=buf.getvalue())
             replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
             self.assertEqual("OK", (replacer_manifest.get("file_card_inference") or {}).get("status"))
+            self.assertFalse(bool(replacer_manifest.get("canonical_payable_required_failed")))
             self.assertFalse(bool(replacer_manifest.get("payable_sub_fill_required_failed")))
+
+    def test_credit_card_line_non_ok_canonical_payable_triggers_distinct_strict_stop(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C_CC_SMOKE_CANONICAL_FAIL"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            line_root = _prepare_cc_client_layout(
+                temp_repo_root,
+                client_id,
+                file_min_p_majority=0.5,
+                canonical_min_count=2,
+                canonical_min_p_majority=0.9,
+            )
+
+            _write_yayoi_rows(
+                line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
+                [
+                    _build_row(
+                        date_text="2026/01/05",
+                        summary="SHOPA /x",
+                        debit_account=ACCOUNT_TRAVEL,
+                        credit_account=CANONICAL_PAYABLE_ACCOUNT,
+                        credit_subaccount="CARD_A",
+                    )
+                ],
+            )
+
+            _write_yayoi_rows(
+                line_root / "inputs" / "kari_shiwake" / "target.csv",
+                [
+                    _build_row(
+                        date_text="2026/02/01",
+                        summary="SHOPA /target",
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=PAYABLE_ACCOUNT,
+                        credit_subaccount="",
+                    )
+                ],
+            )
+
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            buf = io.StringIO()
+            with self.assertRaises(SystemExit) as ctx:
+                with contextlib.redirect_stdout(buf):
+                    with contextlib.redirect_stderr(buf):
+                        with mock.patch.object(
+                            sys,
+                            "argv",
+                            [
+                                "run_yayoi_replacer.py",
+                                "--client",
+                                client_id,
+                                "--line",
+                                "credit_card_statement",
+                                "--yes",
+                            ],
+                        ):
+                            module.main()
+            self.assertEqual(2, int(ctx.exception.code), msg=buf.getvalue())
+
+            latest_path = line_root / "outputs" / "LATEST.txt"
+            self.assertTrue(latest_path.exists(), msg=buf.getvalue())
+            run_id = latest_path.read_text(encoding="utf-8").strip()
+            run_dir = line_root / "outputs" / "runs" / run_id
+            run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual("FAIL", run_manifest.get("exit_status"))
+            self.assertEqual(
+                "RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED",
+                run_manifest.get("ui_reason_code"),
+            )
+
+            replacer_manifest_path = Path(str(run_manifest.get("replacer_manifest_path") or ""))
+            replacer_manifest = json.loads(replacer_manifest_path.read_text(encoding="utf-8"))
+            self.assertTrue(bool(replacer_manifest.get("canonical_payable_required_failed")))
+            self.assertFalse(bool(replacer_manifest.get("payable_sub_fill_required_failed")))
+
+            replaced_csv_files = sorted(run_dir.glob("*_replaced_*.csv"))
+            rows = _read_rows(replaced_csv_files[0])
+            self.assertEqual(PAYABLE_ACCOUNT, rows[0][COL_CREDIT_ACCOUNT], msg=buf.getvalue())
+            self.assertEqual("", rows[0][COL_CREDIT_SUBACCOUNT], msg=buf.getvalue())
 
     def test_credit_card_line_ambiguous_file_card_inference_triggers_strict_stop(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]

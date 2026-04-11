@@ -58,6 +58,21 @@ class LocalUiDonePageTests(unittest.TestCase):
             text,
         )
 
+    def test_detail_markdown_for_card_canonical_needs_review_uses_notebooklm_message(self) -> None:
+        from belle.local_ui.pages.done import detail_markdown_for_result
+
+        text = detail_markdown_for_result(
+            {"ui_reason_code": "RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED"}
+        )
+        self.assertIn(
+            "貸借の未払側は見つかりましたが、最終出力に使う canonical payable account を安全に確定できませんでした。",
+            text,
+        )
+        self.assertIn(
+            "RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED が発生しました。原因と対処法を教えてください。",
+            text,
+        )
+
     def test_detail_markdown_for_bank_needs_review_uses_notebooklm_message(self) -> None:
         from belle.local_ui.pages.done import detail_markdown_for_result
 

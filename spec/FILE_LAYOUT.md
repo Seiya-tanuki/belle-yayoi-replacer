@@ -105,7 +105,7 @@ Related specs:
    3. `artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv` stores derived teacher rows extracted from each raw `ledger_ref` source.
    4. `artifacts/derived/cc_teacher_manifest.json` stores deterministic raw-to-derived provenance plus cache-application state.
    4. Contract A is required (one statement per target file).
-   5. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
+   5. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true` or `canonical_payable_required_failed == true`.
    6. Lexicon category routing is fallback-only (secondary to merchant-key routing).
    7. Per-client overrides path is `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`.
 

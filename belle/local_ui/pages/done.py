@@ -8,6 +8,7 @@ from belle.local_ui.state import get_state, line_label, reset_state
 from belle.local_ui.theme import page_shell, primary_button, secondary_button
 from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID,
 )
@@ -56,6 +57,13 @@ def detail_markdown_for_result(result: dict[str, object]) -> str:
             "カードを推定する十分な根拠が得られず、補助科目が置換されませんでした。\n\n"
             "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
             f"{markdown_code_block('RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED が発生しました。原因と対処法を教えてください。')}"
+        )
+    if ui_reason_code == RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED:
+        return (
+            "注意事項:\n"
+            "貸借の未払側は見つかりましたが、最終出力に使う canonical payable account を安全に確定できませんでした。\n\n"
+            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
+            f"{markdown_code_block('RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED が発生しました。原因と対処法を教えてください。')}"
         )
     if ui_reason_code == RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED:
         return (

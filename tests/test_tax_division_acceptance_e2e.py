@@ -342,11 +342,15 @@ def _write_credit_card_assets(repo_root: Path, client_id: str) -> None:
                 "version": "0.2",
                 "placeholder_account_name": PLACEHOLDER_ACCOUNT,
                 "payable_account_name": PAYABLE_ACCOUNT,
+                "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
                 "training": {"exclude_counter_accounts": []},
                 "thresholds": {
                     "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
                     "merchant_key_payable_subaccount": {"min_count": 1, "min_p_majority": 0.5},
                     "file_level_card_inference": {"min_votes": 1, "min_p_majority": 0.5},
+                },
+                "teacher_extraction": {
+                    "canonical_payable_thresholds": {"min_count": 1, "min_p_majority": 0.5}
                 },
                 "tax_division_thresholds": {
                     "merchant_key_target_account_exact": {"min_count": 1, "min_p_majority": 0.5},

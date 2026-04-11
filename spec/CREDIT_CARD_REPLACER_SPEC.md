@@ -7,7 +7,8 @@ This spec applies only to `line_id=credit_card_statement`.
 Current implementation status:
 1. Target-side account replacement is implemented.
 2. Target-side tax-division replacement is implemented.
-3. Payable-side subaccount fill is implemented.
+3. Payable-side canonical account rewrite is implemented.
+4. Payable-side subaccount fill is implemented.
 4. Shared Yayoi tax postprocess runs after credit-card tax-division replacement.
 
 Related specs:
@@ -19,9 +20,11 @@ Related specs:
 
 1. Replace placeholder account `仮払金` on the target side with a predicted target account.
 2. Replace target-side tax division before the shared tax postprocess runs.
-3. Fill payable-side subaccount when account name is `未払金` and subaccount is empty.
-4. In the same run, the shared tax postprocess may later fill tax amount fields when configured/applicable.
-5. Preserve all other non-target fields.
+3. Detect the payable side from target-side placeholder names plus cache `canonical_payable`.
+4. Rewrite the payable-side output account to the canonical payable account when cache `canonical_payable.status == OK`.
+5. Fill payable-side subaccount after canonical payable rewrite when the payable side is uniquely detected and subaccount is empty.
+6. In the same run, the shared tax postprocess may later fill tax amount fields when configured/applicable.
+7. Preserve all other non-target fields.
 
 ## Target-side rule
 
@@ -35,7 +38,28 @@ Related specs:
 Intent remains unchanged:
 1. First prefer learned `merchant_key_account_stats`.
 2. If that does not resolve, category-default fallback may supply `target_account`.
-3. Payable-side subaccount inference semantics are unchanged.
+3. Payable-side detection must not reuse teacher-side candidate logic directly; it uses target-side placeholder names plus runtime canonical payable only.
+
+## Payable-side detection and canonical rewrite
+
+1. Raw target payable placeholder names are not authoritative final output accounts.
+2. Runtime payable-side detection uses:
+   1. `target_payable_placeholder_names`
+   2. cache `canonical_payable.account_name` only when `canonical_payable.status == OK`
+3. Detection outcomes are explicit:
+   1. unique debit-side match -> payable side is `debit`
+   2. unique credit-side match -> payable side is `credit`
+   3. both sides match -> `ambiguous`
+   4. neither side matches -> `none`
+4. When payable side is uniquely detected and `canonical_payable.status == OK`, runtime rewrites that side's account cell in output to `canonical_payable.account_name`.
+5. If the raw payable-side account is already equal to `canonical_payable.account_name`, runtime records a no-op rewrite rather than a failure.
+6. Review/report must preserve raw payable-side before-values even when final output writes the canonical payable account.
+
+## Payable-side ordering
+
+1. Payable-side detection runs before payable-side canonical rewrite.
+2. Payable-side subaccount fill runs after canonical rewrite and targets that same payable side.
+3. Ambiguous payable-side detection must not silently choose a side for rewrite or subaccount fill.
 
 ## Tax-division decision timing
 
@@ -96,21 +120,28 @@ Partial-route note:
 ## Review report observability
 
 Credit-card review report adds these columns immediately before the shared tax-amount appendix columns:
-1. `target_tax_side`
-2. `target_tax_division_before`
-3. `target_tax_division_after`
-4. `target_tax_division_changed`
-5. `tax_evidence_type`
-6. `tax_lookup_key`
-7. `tax_confidence`
-8. `tax_sample_total`
-9. `tax_p_majority`
-10. `tax_reasons`
+1. `payable_side_detected`
+2. `payable_account_before_raw`
+3. `payable_account_after_canonical`
+4. `payable_account_rewritten`
+5. `payable_account_rewrite_reason`
+6. `canonical_payable_status`
+7. `target_tax_side`
+8. `target_tax_division_before`
+9. `target_tax_division_after`
+10. `target_tax_division_changed`
+11. `tax_evidence_type`
+12. `tax_lookup_key`
+13. `tax_confidence`
+14. `tax_sample_total`
+15. `tax_p_majority`
+16. `tax_reasons`
 
 ## Manifest observability
 
 Replacer manifest includes additive block:
 1. `tax_division_replacement`
+2. `canonical_payable`
 
 Required fields:
 1. `changed_count`
@@ -121,23 +152,32 @@ Required fields:
 6. `global_fallback_applied_count`
 7. `target_side_counts`
 
+`canonical_payable` required fields:
+1. `cache_snapshot`
+2. `rewrite_count`
+3. `noop_count`
+4. `required_failed_count`
+5. `status_counts`
+6. `rewrite_reason_counts`
+
 `changed_count` semantics:
 1. Final row diff is recomputed after account replacement, tax-division replacement, payable-subaccount fill, and shared tax postprocess.
 2. Tax-only row changes must therefore be visible in final `changed` and `changed_count`.
 
 ## Strict-stop contract
 
-Strict-stop behavior is unchanged and remains payable-subaccount specific:
-1. `payable_sub_fill_required_failed == true` triggers runner-level strict stop.
-2. Tax replacement alone does not introduce a new strict-stop condition.
+1. `payable_sub_fill_required_failed == true` still triggers the existing runner-level strict stop for payable-subaccount inference failure.
+2. `canonical_payable_required_failed == true` triggers a distinct runner-level strict stop when payable side is required but cache canonical payable is not safely usable.
+3. Tax replacement alone does not introduce a new strict-stop condition.
 
 ## Runtime summary
 
 The current live credit-card runtime performs all of the following within one run:
 1. target-side account replacement
 2. target-side tax-division replacement on the placeholder side
-3. payable-side subaccount fill
-4. shared tax postprocess tax-amount fill when configured/applicable
+3. payable-side canonical account rewrite when cache canonical payable is `OK`
+4. payable-side subaccount fill
+5. shared tax postprocess tax-amount fill when configured/applicable
 
 ## Explicit exclusions
 

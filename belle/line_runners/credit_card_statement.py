@@ -33,6 +33,7 @@ from belle.tax_postprocess import (
     load_yayoi_tax_postprocess_config,
 )
 from belle.ui_reason_codes import (
+    RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
     build_ui_reason_event,
@@ -226,18 +227,36 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     if not isinstance(reports_obj, dict):
         reports_obj = {}
     replacer_manifest_path = str(reports_obj.get("manifest_json") or "")
-    strict_stop = bool(replacer_manifest.get("payable_sub_fill_required_failed"))
+    canonical_payable_strict_stop = bool(replacer_manifest.get("canonical_payable_required_failed"))
+    payable_sub_strict_stop = bool(replacer_manifest.get("payable_sub_fill_required_failed"))
+    strict_stop = canonical_payable_strict_stop or payable_sub_strict_stop
     reasons: list[str] = []
     warnings: list[str] = list(category_overrides_warnings)
     exit_status = "OK"
     if strict_stop:
         exit_status = "FAIL"
-        reasons.append("payable_sub_fill_required_failed")
-        file_inference = replacer_manifest.get("file_card_inference")
-        if isinstance(file_inference, dict):
-            infer_status = str(file_inference.get("status") or "").strip()
-            if infer_status:
-                reasons.append(f"file_card_inference_status={infer_status}")
+        if canonical_payable_strict_stop:
+            reasons.append("canonical_payable_required_failed")
+            canonical_block = replacer_manifest.get("canonical_payable")
+            if isinstance(canonical_block, dict):
+                canonical_snapshot = canonical_block.get("cache_snapshot")
+                if isinstance(canonical_snapshot, dict):
+                    canonical_status = str(canonical_snapshot.get("status") or "").strip()
+                    if canonical_status:
+                        reasons.append(f"canonical_payable_status={canonical_status}")
+        if payable_sub_strict_stop:
+            reasons.append("payable_sub_fill_required_failed")
+            file_inference = replacer_manifest.get("file_card_inference")
+            if isinstance(file_inference, dict):
+                infer_status = str(file_inference.get("status") or "").strip()
+                if infer_status:
+                    reasons.append(f"file_card_inference_status={infer_status}")
+
+    ui_reason_code = RUN_OK
+    if canonical_payable_strict_stop:
+        ui_reason_code = RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED
+    elif payable_sub_strict_stop:
+        ui_reason_code = RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED
 
     run_manifest = {
         "schema": "belle.cc_runner_manifest.v1",
@@ -270,7 +289,7 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         "strict_stop_applied": strict_stop,
         "exit_status": exit_status,
         "reasons": reasons,
-        "ui_reason_code": RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED if strict_stop else RUN_OK,
+        "ui_reason_code": ui_reason_code,
         "ui_reason_detail": {
             "line_id": LINE_ID_CARD,
             "strict_stop_applied": strict_stop,
@@ -295,17 +314,28 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
         print("[WARN] " + " | ".join(warnings))
 
     if strict_stop:
+        strict_stop_reason_code = (
+            RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED
+            if canonical_payable_strict_stop
+            else RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED
+        )
         print(
             build_ui_reason_event(
-                RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
+                strict_stop_reason_code,
                 line_id=LINE_ID_CARD,
                 detail={"strict_stop_applied": True, "reasons": reasons},
             )
         )
-        print(
-            "[ERROR] strict-stop: Contract A failed "
-            "(payable_sub_fill_required_failed=True)."
-        )
+        if canonical_payable_strict_stop:
+            print(
+                "[ERROR] strict-stop: Contract A failed "
+                "(canonical_payable_required_failed=True)."
+            )
+        else:
+            print(
+                "[ERROR] strict-stop: Contract A failed "
+                "(payable_sub_fill_required_failed=True)."
+            )
         raise SystemExit(2)
 
     return {

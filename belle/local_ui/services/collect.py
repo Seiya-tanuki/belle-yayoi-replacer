@@ -16,6 +16,7 @@ from belle.ui_reason_codes import (
     COLLECT_FAIL_UNKNOWN,
     COLLECT_OK_EXACT,
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+    RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
 )
 
@@ -200,6 +201,7 @@ def overall_result_title(run_results: list[dict[str, object]]) -> str:
         return "処理に失敗しました"
     if reason_codes & {
         RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+        RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
         RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     }:
         return "処理は完了しましたが確認が必要です"

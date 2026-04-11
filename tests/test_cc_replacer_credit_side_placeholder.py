@@ -35,11 +35,15 @@ def _write_cc_config(line_root: Path) -> None:
         "version": "0.1",
         "placeholder_account_name": PLACEHOLDER_ACCOUNT,
         "payable_account_name": PAYABLE_ACCOUNT,
+        "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
         "training": {"exclude_counter_accounts": []},
         "thresholds": {
             "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
             "merchant_key_payable_subaccount": {"min_count": 1, "min_p_majority": 0.5},
             "file_level_card_inference": {"min_votes": 1, "min_p_majority": 0.5},
+        },
+        "teacher_extraction": {
+            "canonical_payable_thresholds": {"min_count": 1, "min_p_majority": 0.5}
         },
         "candidate_extraction": {
             "min_total_count": 1,

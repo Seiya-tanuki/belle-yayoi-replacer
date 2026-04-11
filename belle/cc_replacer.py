@@ -68,6 +68,7 @@ class CCRowDecision:
     merchant_key: str
     placeholder_side: str
     payable_side: str
+    payable_side_detected: str
     changed: bool
     account_changed: int
     evidence_type: str
@@ -77,6 +78,12 @@ class CCRowDecision:
     top_count: int
     predicted_account: str
     account_partial_match_used: bool
+    payable_account_before_raw: str
+    payable_account_after_canonical: str
+    payable_account_rewritten: bool
+    payable_account_rewrite_reason: str
+    canonical_payable_status: str
+    canonical_payable_required_failed: bool
     payable_sub_before: str
     payable_sub_after: str
     payable_sub_changed: bool
@@ -663,6 +670,96 @@ def _detect_side(debit_account: str, credit_account: str, target_account: str) -
     return "none"
 
 
+def _detect_side_from_candidates(
+    debit_account: str,
+    credit_account: str,
+    candidate_accounts: Iterable[str],
+) -> str:
+    normalized_candidates = {
+        normalize_name(str(account or ""))
+        for account in candidate_accounts
+        if normalize_name(str(account or ""))
+    }
+    if not normalized_candidates:
+        return "none"
+    debit_match = debit_account in normalized_candidates
+    credit_match = credit_account in normalized_candidates
+    if debit_match and not credit_match:
+        return "debit"
+    if credit_match and not debit_match:
+        return "credit"
+    if debit_match and credit_match:
+        return "ambiguous"
+    return "none"
+
+
+def _target_payable_placeholder_names(config: Dict[str, Any]) -> List[str]:
+    raw = config.get("target_payable_placeholder_names")
+    names: List[str] = []
+    if isinstance(raw, list):
+        for value in raw:
+            text = str(value or "").strip()
+            if text:
+                names.append(text)
+    if names:
+        return names
+
+    bridge_name = str(config.get("payable_account_name") or _PAYABLE_DEFAULT).strip()
+    return [bridge_name] if bridge_name else [_PAYABLE_DEFAULT]
+
+
+def _canonical_payable_snapshot(cache: CCClientCache) -> Dict[str, Any]:
+    raw = cache.canonical_payable if isinstance(cache.canonical_payable, dict) else {}
+    reasons_raw = raw.get("reasons") if isinstance(raw.get("reasons"), list) else []
+    value_counts_raw = raw.get("value_counts") if isinstance(raw.get("value_counts"), dict) else {}
+    return {
+        "status": str(raw.get("status") or "EMPTY").strip() or "EMPTY",
+        "account_name": str(raw.get("account_name") or "").strip(),
+        "sample_total": int(_as_int(raw.get("sample_total"), 0)),
+        "top_count": int(_as_int(raw.get("top_count"), 0)),
+        "p_majority": float(_as_float(raw.get("p_majority"), 0.0)),
+        "value_counts": {str(k): int(_as_int(v, 0)) for k, v in value_counts_raw.items()},
+        "reasons": [str(reason) for reason in reasons_raw if str(reason or "").strip()],
+    }
+
+
+def _detect_payable_side(
+    *,
+    debit_account: str,
+    credit_account: str,
+    config: Dict[str, Any],
+    cache: CCClientCache,
+) -> Tuple[str, Dict[str, Any]]:
+    canonical_payable = _canonical_payable_snapshot(cache)
+    candidate_accounts = list(_target_payable_placeholder_names(config))
+    if canonical_payable["status"] == "OK" and canonical_payable["account_name"]:
+        candidate_accounts.append(str(canonical_payable["account_name"]))
+    return (
+        _detect_side_from_candidates(
+            debit_account=debit_account,
+            credit_account=credit_account,
+            candidate_accounts=candidate_accounts,
+        ),
+        canonical_payable,
+    )
+
+
+def _account_col_from_side(side: str) -> Optional[int]:
+    if side == "debit":
+        return COL_DEBIT_ACCOUNT
+    if side == "credit":
+        return COL_CREDIT_ACCOUNT
+    return None
+
+
+def _subaccount_col_from_side(side: str) -> Optional[int]:
+    if side == "debit":
+        return COL_DEBIT_SUBACCOUNT
+    if side == "credit":
+        return COL_CREDIT_SUBACCOUNT
+    return None
+
+
 def _account_threshold_pass(
     *,
     stats: StatsEntry,
@@ -879,15 +976,18 @@ def decide_cc_row(
     credit_sub_before = _safe_text(tokens, COL_CREDIT_SUBACCOUNT, encoding)
 
     placeholder_account_name = str(config.get("placeholder_account_name") or _PLACEHOLDER_DEFAULT)
-    payable_account_name = str(config.get("payable_account_name") or _PAYABLE_DEFAULT)
 
     debit_key = normalize_name(debit_account_before)
     credit_key = normalize_name(credit_account_before)
     placeholder_key = normalize_name(placeholder_account_name)
-    payable_key = normalize_name(payable_account_name)
 
     placeholder_side = _detect_side(debit_key, credit_key, placeholder_key)
-    payable_side = _detect_side(debit_key, credit_key, payable_key)
+    payable_side, canonical_payable = _detect_payable_side(
+        debit_account=debit_key,
+        credit_account=credit_key,
+        config=config,
+        cache=cache,
+    )
     merchant_key = merchant_key_from_summary(summary, config)
     partial_cfg = (
         partial_match_settings
@@ -911,6 +1011,7 @@ def decide_cc_row(
         merchant_key=merchant_key,
         placeholder_side=placeholder_side,
         payable_side=payable_side,
+        payable_side_detected=payable_side,
         changed=False,
         account_changed=0,
         evidence_type=_NONE_EVIDENCE,
@@ -920,6 +1021,12 @@ def decide_cc_row(
         top_count=0,
         predicted_account="",
         account_partial_match_used=False,
+        payable_account_before_raw="",
+        payable_account_after_canonical="",
+        payable_account_rewritten=False,
+        payable_account_rewrite_reason="",
+        canonical_payable_status=str(canonical_payable.get("status") or "EMPTY"),
+        canonical_payable_required_failed=False,
         payable_sub_before="",
         payable_sub_after="",
         payable_sub_changed=False,
@@ -1027,23 +1134,47 @@ def decide_cc_row(
             else:
                 decision.reasons.append("category_no_rule")
 
-    payable_sub_col: Optional[int] = None
+    payable_account_col = _account_col_from_side(payable_side)
+    payable_sub_col = _subaccount_col_from_side(payable_side)
     payable_sub_before = ""
     if payable_side == "debit":
-        payable_sub_col = COL_DEBIT_SUBACCOUNT
+        decision.payable_account_before_raw = debit_account_before
+        decision.payable_account_after_canonical = debit_account_before
         payable_sub_before = debit_sub_before
     elif payable_side == "credit":
-        payable_sub_col = COL_CREDIT_SUBACCOUNT
+        decision.payable_account_before_raw = credit_account_before
+        decision.payable_account_after_canonical = credit_account_before
         payable_sub_before = credit_sub_before
     elif payable_side == "ambiguous":
+        decision.payable_account_rewrite_reason = "payable_side_ambiguous"
         decision.reasons.append("payable_side_ambiguous")
     else:
+        decision.payable_account_rewrite_reason = "payable_side_none"
         decision.reasons.append("payable_side_none")
+
+    if payable_account_col is not None:
+        canonical_account_name = str(canonical_payable.get("account_name") or "").strip()
+        if decision.canonical_payable_status == "OK" and canonical_account_name:
+            _set_text(new_tokens, payable_account_col, encoding, canonical_account_name)
+            decision.payable_account_after_canonical = _safe_text(new_tokens, payable_account_col, encoding)
+            if decision.payable_account_before_raw == decision.payable_account_after_canonical:
+                decision.payable_account_rewrite_reason = "already_canonical"
+                decision.reasons.append("payable_account_already_canonical")
+            else:
+                decision.payable_account_rewritten = True
+                decision.payable_account_rewrite_reason = "raw_placeholder_to_canonical"
+                decision.reasons.append("payable_account_rewritten")
+        else:
+            decision.canonical_payable_required_failed = True
+            decision.payable_account_rewrite_reason = "canonical_payable_not_ok"
+            decision.reasons.append("canonical_payable_not_ok")
 
     decision.payable_sub_before = payable_sub_before
     decision.payable_sub_after = payable_sub_before
 
-    if payable_sub_col is not None and payable_sub_before == "":
+    if payable_sub_col is not None and decision.canonical_payable_required_failed:
+        decision.reasons.append("payable_sub_skipped_canonical_payable_not_ok")
+    elif payable_sub_col is not None and payable_sub_before == "":
         inferred_value = str(inferred_payable_subaccount_opt or "").strip()
         if inferred_value:
             _set_text(new_tokens, payable_sub_col, encoding, inferred_value)
@@ -1060,8 +1191,10 @@ def decide_cc_row(
     decision.credit_sub_after = _safe_text(new_tokens, COL_CREDIT_SUBACCOUNT, encoding)
 
     if payable_side == "debit":
+        decision.payable_account_after_canonical = decision.debit_account_after
         decision.payable_sub_after = decision.debit_sub_after
     elif payable_side == "credit":
+        decision.payable_account_after_canonical = decision.credit_account_after
         decision.payable_sub_after = decision.credit_sub_after
 
     tax_decision = decide_cc_tax(
@@ -1091,7 +1224,10 @@ def decide_cc_row(
 
     decision.payable_sub_changed = decision.payable_sub_before != decision.payable_sub_after
     decision.changed = bool(
-        decision.account_changed or decision.payable_sub_changed or decision.target_tax_division_changed
+        decision.account_changed
+        or decision.payable_account_rewritten
+        or decision.payable_sub_changed
+        or decision.target_tax_division_changed
     )
     return new_tokens, decision
 
@@ -1161,6 +1297,12 @@ def replace_credit_card_yayoi_csv(
     account_partial_rows_used = 0
     votes_partial_used = int(file_inference.votes_partial_used)
     partial_examples: List[Tuple[str, str]] = []
+    canonical_payable_snapshot = _canonical_payable_snapshot(cache)
+    canonical_payable_rewrite_count = 0
+    canonical_payable_noop_count = 0
+    canonical_payable_required_failed_count = 0
+    canonical_payable_status_counts: Dict[str, int] = {}
+    canonical_payable_rewrite_reason_counts: Dict[str, int] = {}
     for input_key, matched_key in file_inference.partial_examples:
         _append_partial_example(partial_examples, input_key, matched_key)
 
@@ -1184,6 +1326,12 @@ def replace_credit_card_yayoi_csv(
         if "partial_match_used" in decision.reasons:
             account_partial_rows_used += 1
             _append_partial_example(partial_examples, decision.merchant_key, decision.lookup_key)
+        if decision.payable_account_rewritten:
+            canonical_payable_rewrite_count += 1
+        elif decision.payable_account_rewrite_reason == "already_canonical":
+            canonical_payable_noop_count += 1
+        if decision.canonical_payable_required_failed:
+            canonical_payable_required_failed_count += 1
         if decision.payable_sub_changed:
             payable_sub_changed_count += 1
         if decision.target_tax_division_changed:
@@ -1192,6 +1340,14 @@ def replace_credit_card_yayoi_csv(
         payable_sub_evidence_counts[decision.payable_sub_evidence] = (
             payable_sub_evidence_counts.get(decision.payable_sub_evidence, 0) + 1
         )
+        canonical_payable_status_counts[decision.canonical_payable_status] = (
+            canonical_payable_status_counts.get(decision.canonical_payable_status, 0) + 1
+        )
+        canonical_reason = str(decision.payable_account_rewrite_reason or "").strip()
+        if canonical_reason:
+            canonical_payable_rewrite_reason_counts[canonical_reason] = (
+                canonical_payable_rewrite_reason_counts.get(canonical_reason, 0) + 1
+            )
         if decision.tax_evidence_type == _NONE_EVIDENCE:
             tax_unresolved_count += 1
         else:
@@ -1230,6 +1386,7 @@ def replace_credit_card_yayoi_csv(
         "merchant_key",
         "placeholder_side",
         "payable_side",
+        "payable_side_detected",
         "changed",
         "account_changed",
         "evidence_type",
@@ -1238,6 +1395,12 @@ def replace_credit_card_yayoi_csv(
         "p_majority",
         "top_count",
         "predicted_account",
+        "payable_account_before_raw",
+        "payable_account_after_canonical",
+        "payable_account_rewritten",
+        "payable_account_rewrite_reason",
+        "canonical_payable_status",
+        "canonical_payable_required_failed",
         "payable_sub_before",
         "payable_sub_after",
         "payable_sub_changed",
@@ -1287,6 +1450,7 @@ def replace_credit_card_yayoi_csv(
                     decision.merchant_key,
                     decision.placeholder_side,
                     decision.payable_side,
+                    decision.payable_side_detected,
                     "1" if decision.changed else "0",
                     str(int(decision.account_changed)),
                     decision.evidence_type,
@@ -1295,6 +1459,12 @@ def replace_credit_card_yayoi_csv(
                     f"{decision.p_majority:.6f}",
                     str(decision.top_count),
                     decision.predicted_account,
+                    decision.payable_account_before_raw,
+                    decision.payable_account_after_canonical,
+                    "1" if decision.payable_account_rewritten else "0",
+                    decision.payable_account_rewrite_reason,
+                    decision.canonical_payable_status,
+                    "1" if decision.canonical_payable_required_failed else "0",
                     decision.payable_sub_before,
                     decision.payable_sub_after,
                     "1" if decision.payable_sub_changed else "0",
@@ -1334,6 +1504,7 @@ def replace_credit_card_yayoi_csv(
             )
 
     row_count = len(csv_obj.rows)
+    canonical_payable_required_failed = bool(canonical_payable_required_failed_count)
     payable_sub_fill_required_failed = (
         file_inference.status != "OK"
         and any(
@@ -1361,6 +1532,15 @@ def replace_credit_card_yayoi_csv(
         "payable_sub_changed_count": int(payable_sub_changed_count),
         "evidence_counts": evidence_counts,
         "payable_sub_evidence_counts": payable_sub_evidence_counts,
+        "canonical_payable_required_failed": bool(canonical_payable_required_failed),
+        "canonical_payable": {
+            "cache_snapshot": canonical_payable_snapshot,
+            "rewrite_count": int(canonical_payable_rewrite_count),
+            "noop_count": int(canonical_payable_noop_count),
+            "required_failed_count": int(canonical_payable_required_failed_count),
+            "status_counts": canonical_payable_status_counts,
+            "rewrite_reason_counts": canonical_payable_rewrite_reason_counts,
+        },
         "file_card_inference": {
             "status": file_inference.status,
             "inferred_payable_subaccount": file_inference.inferred_payable_subaccount,
