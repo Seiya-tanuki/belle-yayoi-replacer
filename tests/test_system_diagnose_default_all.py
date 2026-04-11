@@ -91,10 +91,13 @@ def _minimal_credit_card_line_config_json() -> str:
             "schema": "belle.credit_card_line_config.v1",
             "version": "0.2",
             "placeholder_account_name": "仮払金",
-            "payable_account_name": "未払金",
+            "target_payable_placeholder_names": ["未払金"],
             "thresholds": {
                 "merchant_key_account": {"min_count": 3, "min_p_majority": 0.9},
                 "file_level_card_inference": {"min_votes": 3, "min_p_majority": 0.9},
+            },
+            "teacher_extraction": {
+                "canonical_payable_thresholds": {"min_count": 3, "min_p_majority": 0.9}
             },
             "tax_division_thresholds": {
                 "merchant_key_target_account_exact": {"min_count": 3, "min_p_majority": 0.9},

@@ -20,7 +20,7 @@ clients/<CLIENT_ID>/
       config/
         category_overrides.json        # receipt + credit_card_statement only; shared override rows use target_account / target_tax_division
         bank_line_config.json          # bank_statement only
-        credit_card_line_config.json   # credit_card_statement only; tax_division_thresholds live here
+        credit_card_line_config.json   # credit_card_statement only; target_payable_placeholder_names + teacher_extraction.canonical_payable_thresholds live here
       inputs/
         kari_shiwake/                  # target draft CSV for the selected line (all implemented lines)
         ledger_ref/                    # receipt + credit_card_statement only

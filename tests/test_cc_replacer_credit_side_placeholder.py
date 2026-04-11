@@ -34,7 +34,6 @@ def _write_cc_config(line_root: Path) -> None:
         "schema": "belle.credit_card_line_config.v0",
         "version": "0.1",
         "placeholder_account_name": PLACEHOLDER_ACCOUNT,
-        "payable_account_name": PAYABLE_ACCOUNT,
         "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
         "training": {"exclude_counter_accounts": []},
         "thresholds": {

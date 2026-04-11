@@ -240,7 +240,7 @@ class BookkeepingModeBootstrapTests(unittest.TestCase):
                     "schema": "belle.credit_card_line_config.v1",
                     "version": "0.2",
                     "placeholder_account_name": "仮払金",
-                    "payable_account_name": "未払金",
+                    "target_payable_placeholder_names": ["未払金"],
                     "training": {"exclude_counter_accounts": []},
                     "thresholds": {
                         "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
@@ -250,6 +250,9 @@ class BookkeepingModeBootstrapTests(unittest.TestCase):
                     "tax_division_thresholds": {
                         "merchant_key_target_account_exact": {"min_count": 1, "min_p_majority": 0.5},
                         "merchant_key_target_account_partial": {"min_count": 1, "min_p_majority": 0.5},
+                    },
+                    "teacher_extraction": {
+                        "canonical_payable_thresholds": {"min_count": 1, "min_p_majority": 0.5}
                     },
                     "candidate_extraction": {
                         "min_total_count": 1,

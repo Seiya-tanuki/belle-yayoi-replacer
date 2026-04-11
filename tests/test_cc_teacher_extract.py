@@ -32,7 +32,6 @@ def _base_config(
     return {
         "schema": "belle.credit_card_line_config.v1",
         "version": "0.3",
-        "payable_account_name": "未払金",
         "target_payable_placeholder_names": ["未払金"],
         "teacher_extraction": {
             "enabled": True,

@@ -41,14 +41,14 @@ For credit_card_statement line:
   - 0 => SKIP
   - 1 => RUN
   - 2+ => FAIL
-- Runtime strict-stop may exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`
+- `config/credit_card_line_config.json` must explicitly provide `target_payable_placeholder_names` and `teacher_extraction.canonical_payable_thresholds`
+- Runtime strict-stop may exit `2` after artifacts are written when `payable_sub_fill_required_failed == true` or `canonical_payable_required_failed == true`
 
 Shared client config:
 
 - `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
   - Shared Yayoi tax postprocess config
-  - Phase 1 adds the config contract only
-  - Runtime wiring is intentionally deferred to a later phase
+  - Runtime wiring is live for `receipt`, `bank_statement`, and `credit_card_statement`
   - Missing config currently resolves to the default disabled behavior for the shared foundation module
 
 See spec/FILE_LAYOUT.md.

@@ -132,11 +132,14 @@ def _write_cc_config(line_root: Path) -> None:
                 "schema": "belle.credit_card_line_config.v0",
                 "version": "0.1",
                 "placeholder_account_name": "仮払金",
-                "payable_account_name": "未払金",
+                "target_payable_placeholder_names": ["未払金"],
                 "training": {"exclude_counter_accounts": []},
                 "thresholds": {
                     "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
                     "file_level_card_inference": {"min_votes": 1, "min_p_majority": 0.5},
+                },
+                "teacher_extraction": {
+                    "canonical_payable_thresholds": {"min_count": 1, "min_p_majority": 0.5}
                 },
                 "candidate_extraction": {
                     "min_total_count": 1,

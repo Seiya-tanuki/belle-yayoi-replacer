@@ -95,7 +95,7 @@ def _write_cc_config(
         "schema": "belle.credit_card_line_config.v0",
         "version": "0.1",
         "placeholder_account_name": PLACEHOLDER_ACCOUNT,
-        "payable_account_name": PAYABLE_ACCOUNT,
+        "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
         "training": {"exclude_counter_accounts": []},
         "thresholds": {
             "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},
@@ -104,6 +104,9 @@ def _write_cc_config(
                 "min_votes": int(file_min_votes),
                 "min_p_majority": float(file_min_p_majority),
             },
+        },
+        "teacher_extraction": {
+            "canonical_payable_thresholds": {"min_count": 1, "min_p_majority": 0.5}
         },
         "candidate_extraction": candidate_extraction
         if candidate_extraction is not None

@@ -8,7 +8,7 @@ Current implementation status:
 1. `credit_card_statement` cache learning is implemented.
 2. Cache update source is line-scoped `inputs/ledger_ref/`.
 3. Target-account-conditioned tax learning is implemented.
-4. No backward compatibility or migration support is provided for older credit-card cache schema versions in this phase.
+4. No backward compatibility or migration support is provided for older credit-card cache schema versions.
 5. Raw `ledger_ref` ingest is preserved, but cache learning now runs only from derived teacher rows under `artifacts/derived/cc_teacher/`.
 
 Related specs:
@@ -146,6 +146,7 @@ Required teacher-extraction section:
 2. `teacher_extraction.payable_candidate_accounts`
 3. `teacher_extraction.soft_match_thresholds`
 4. `teacher_extraction.canonical_payable_thresholds`
+5. Cache update must fail-closed when `teacher_extraction.canonical_payable_thresholds` is missing or invalid.
 
 ## Provenance fields
 
@@ -185,7 +186,8 @@ Runtime note:
 1. `credit_card_statement` runtime payable-side detection depends on this block together with `target_payable_placeholder_names`.
 2. Runtime rewrites the payable-side output account only when `canonical_payable.status == OK`.
 3. When payable side is required but `canonical_payable.status != OK`, runtime fail-closes with review-required strict stop rather than treating the raw target payable placeholder as authoritative.
+4. Teacher-side candidate account extraction remains separate from runtime placeholder detection; cache learning must not derive teacher candidates from legacy runtime-only fields.
 
 ## Compatibility note
 
-1. This phase does not provide compatibility shims for legacy credit-card cache schema versions.
+1. No compatibility shims are provided for legacy credit-card cache schema versions.

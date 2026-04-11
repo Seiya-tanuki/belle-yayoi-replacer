@@ -9,7 +9,7 @@ Current implementation status:
 2. Target-side tax-division replacement is implemented.
 3. Payable-side canonical account rewrite is implemented.
 4. Payable-side subaccount fill is implemented.
-4. Shared Yayoi tax postprocess runs after credit-card tax-division replacement.
+5. Shared Yayoi tax postprocess runs after credit-card tax-division replacement.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`
@@ -20,7 +20,7 @@ Related specs:
 
 1. Replace placeholder account `仮払金` on the target side with a predicted target account.
 2. Replace target-side tax division before the shared tax postprocess runs.
-3. Detect the payable side from target-side placeholder names plus cache `canonical_payable`.
+3. Detect the payable side from explicit target-side placeholder names plus cache `canonical_payable`.
 4. Rewrite the payable-side output account to the canonical payable account when cache `canonical_payable.status == OK`.
 5. Fill payable-side subaccount after canonical payable rewrite when the payable side is uniquely detected and subaccount is empty.
 6. In the same run, the shared tax postprocess may later fill tax amount fields when configured/applicable.
@@ -54,6 +54,7 @@ Intent remains unchanged:
 4. When payable side is uniquely detected and `canonical_payable.status == OK`, runtime rewrites that side's account cell in output to `canonical_payable.account_name`.
 5. If the raw payable-side account is already equal to `canonical_payable.account_name`, runtime records a no-op rewrite rather than a failure.
 6. Review/report must preserve raw payable-side before-values even when final output writes the canonical payable account.
+7. Top-level legacy `payable_account_name` is not part of the authoritative runtime contract and must not be used as a fallback for payable-side detection.
 
 ## Payable-side ordering
 
@@ -93,6 +94,19 @@ Route requirements:
 
 Runtime config path:
 1. `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json`
+
+Required runtime payable-side section:
+1. `target_payable_placeholder_names`
+2. value must normalize to at least one non-blank placeholder name
+3. missing / empty / blank-only values must fail-closed with a clear configuration error
+
+Required cache/extraction section:
+1. `teacher_extraction.canonical_payable_thresholds`
+2. `teacher_extraction.canonical_payable_thresholds.min_count`
+3. `teacher_extraction.canonical_payable_thresholds.min_p_majority`
+4. `min_count` must be an integer `>= 1`
+5. `min_p_majority` must be `> 0` and `<= 1`
+6. missing / invalid values must fail-closed before cache learning proceeds
 
 Required tax section:
 1. `tax_division_thresholds`
@@ -183,4 +197,4 @@ The current live credit-card runtime performs all of the following within one ru
 
 1. Receipt tax behavior is unchanged in this phase.
 2. Bank tax behavior is unchanged in this phase.
-3. No backward compatibility or migration support is provided for older credit-card manifests in this phase.
+3. No backward compatibility or migration support is provided for older credit-card manifests.

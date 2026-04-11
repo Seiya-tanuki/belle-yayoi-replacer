@@ -32,7 +32,7 @@ def _write_cc_config(
         "schema": "belle.credit_card_line_config.v1",
         "version": "0.3",
         "placeholder_account_name": "仮払金",
-        "payable_account_name": "未払金",
+        "target_payable_placeholder_names": ["未払金"],
         "training": {"exclude_counter_accounts": ["普通預金", "当座預金"]},
         "thresholds": {
             "merchant_key_account": {"min_count": 1, "min_p_majority": 0.5},

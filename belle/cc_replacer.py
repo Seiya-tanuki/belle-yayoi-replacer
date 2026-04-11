@@ -45,7 +45,6 @@ _ROUTE_TAX_PARTIAL = "merchant_key_target_account_partial"
 _ROUTE_TAX_CATEGORY_DEFAULT = "category_default"
 _ROUTE_TAX_GLOBAL_FALLBACK = "global_fallback"
 _PLACEHOLDER_DEFAULT = "\u4eee\u6255\u91d1"
-_PAYABLE_DEFAULT = "\u672a\u6255\u91d1"
 _SPACES_RE = re.compile(r"[ \u3000]+")
 
 
@@ -695,17 +694,23 @@ def _detect_side_from_candidates(
 
 def _target_payable_placeholder_names(config: Dict[str, Any]) -> List[str]:
     raw = config.get("target_payable_placeholder_names")
+    if not isinstance(raw, list):
+        raise ValueError(
+            "invalid credit_card_line_config.json (fail-closed): "
+            "target_payable_placeholder_names is required and must be a list of non-blank strings"
+        )
     names: List[str] = []
-    if isinstance(raw, list):
-        for value in raw:
-            text = str(value or "").strip()
-            if text:
-                names.append(text)
-    if names:
-        return names
-
-    bridge_name = str(config.get("payable_account_name") or _PAYABLE_DEFAULT).strip()
-    return [bridge_name] if bridge_name else [_PAYABLE_DEFAULT]
+    for value in raw:
+        text = str(value or "").strip()
+        if text:
+            names.append(text)
+    normalized = sorted(set(names))
+    if not normalized:
+        raise ValueError(
+            "invalid credit_card_line_config.json (fail-closed): "
+            "target_payable_placeholder_names must contain at least one non-blank value"
+        )
+    return normalized
 
 
 def _canonical_payable_snapshot(cache: CCClientCache) -> Dict[str, Any]:
@@ -1246,6 +1251,7 @@ def replace_credit_card_yayoi_csv(
     csv_obj = read_yayoi_csv(in_path)
     original_row_tokens = _clone_row_tokens([row.tokens for row in csv_obj.rows])
     cache = CCClientCache.load(cache_path)
+    _target_payable_placeholder_names(config)
     partial_match_settings = _resolve_partial_match_settings(config, cache)
     partial_enabled = (
         bool(partial_match_settings.get("enabled"))

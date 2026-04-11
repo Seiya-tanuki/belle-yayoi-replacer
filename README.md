@@ -14,7 +14,7 @@ The current taxonomy is the reconstructed 69-category operational/posting taxono
 
 1. `receipt`: replace debit account and debit-side tax division; inference uses summary column (column 17) only; memo column (column 22) is not used.
 2. `bank_statement`: replace only the fields defined by `spec/BANK_REPLACER_SPEC.md`; bank keeps its own tax-division replacement logic, then shared tax postprocess may fill tax amount.
-3. `credit_card_statement`: replace placeholder-side account, placeholder-side tax division, and payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; the placeholder side may be `debit` or `credit`.
+3. `credit_card_statement`: replace placeholder-side account, placeholder-side tax division, rewrite the payable side to cache `canonical_payable` when safe, and fill payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; the placeholder side may be `debit` or `credit`.
 4. Keep everything offline (no network dependency).
 
 ## Defaults / overrides contract

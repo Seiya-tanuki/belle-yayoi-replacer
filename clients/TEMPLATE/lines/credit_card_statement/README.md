@@ -29,7 +29,8 @@ Strict file-count behavior:
 
 1. This managed directory is reserved for derived teacher rows extracted from raw `ledger_ref`.
 2. The extraction ruleset is tracked at `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`.
-3. This phase adds the scaffold only; current runtime still learns directly from raw `inputs/ledger_ref`.
+3. Cache learning materializes one derived teacher CSV per raw `ledger_ref` source and learns from those derived rows only.
+4. Raw `ledger_ref` files remain preserved as the source-of-truth ingest input.
 
 ## Learning + Dedup
 
@@ -43,30 +44,35 @@ Strict file-count behavior:
 
 1. Placeholder-side tax division is decided before the shared Yayoi tax postprocess runs.
 2. The placeholder side may be `debit` or `credit`; tax replacement writes to that same side.
-2. Learned tax routes use `merchant_key + target_account` evidence.
-3. Static fallback routes can use non-empty `target_tax_division` from:
+3. Learned tax routes use `merchant_key + target_account` evidence.
+4. Static fallback routes can use non-empty `target_tax_division` from:
    1. `defaults/credit_card_statement/category_defaults.json`
    2. `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`
    3. shared `global_fallback`
-4. Blank fallback tax values mean "no fallback" and preserve the current cell.
-5. Shared tax postprocess runs after placeholder-side tax replacement and may fill target-side tax amount in the same run.
+5. Blank fallback tax values mean "no fallback" and preserve the current cell.
+6. Shared tax postprocess runs after placeholder-side tax replacement and may fill target-side tax amount in the same run.
 
 ## Operator config
 
 1. Runtime config path is `config/credit_card_line_config.json`.
-2. Credit-card tax decision thresholds are configured under `tax_division_thresholds`.
-3. Learned tax routes currently covered by config are:
+2. `target_payable_placeholder_names` is required explicitly for runtime payable-side placeholder detection.
+3. `teacher_extraction.canonical_payable_thresholds` is required explicitly for derived-teacher cache learning.
+4. Credit-card tax decision thresholds are configured under `tax_division_thresholds`.
+5. Learned tax routes currently covered by config are:
    1. `merchant_key_target_account_exact`
    2. `merchant_key_target_account_partial`
-4. Shared tax postprocess config path is `clients/<CLIENT_ID>/config/yayoi_tax_config.json`.
-5. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
-6. Upcoming derived-teacher phases use `teacher_extraction` fields in the same config file.
+6. Shared tax postprocess config path is `clients/<CLIENT_ID>/config/yayoi_tax_config.json`.
+7. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
+8. Runtime canonical payable authority comes from cache `canonical_payable`; raw target placeholder names are not authoritative final payable accounts.
 
 ## Failure modes + How to fix
 
 ### When strict stop triggers
 
-Strict stop is triggered when payable-side subaccount fill is required for at least one row, but file-level card inference is not `OK`.
+Strict stop is triggered when either of the following occurs:
+1. payable-side subaccount fill is required for at least one row, but file-level card inference is not `OK`
+2. payable side is required, but cache `canonical_payable` is not safely usable
+
 Runner exits with code `2`.
 
 ### Artifacts to inspect

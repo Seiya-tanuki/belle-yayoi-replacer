@@ -56,6 +56,48 @@ def _normalize_str_list(value: Any, *, default: list[str]) -> list[str]:
     return sorted(set(out))
 
 
+def _normalize_required_str_list(value: Any, *, field_name: str) -> list[str]:
+    if not isinstance(value, list):
+        raise ValueError(f"{field_name} is required and must be a list of non-blank strings")
+    out: list[str] = []
+    for item in value:
+        text = str(item or "").strip()
+        if text:
+            out.append(text)
+    normalized = sorted(set(out))
+    if not normalized:
+        raise ValueError(f"{field_name} must contain at least one non-blank value")
+    return normalized
+
+
+def _require_dict(value: Any, *, field_name: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{field_name} is required and must be an object")
+    return value
+
+
+def _require_int(value: Any, *, field_name: str, minimum: int) -> int:
+    try:
+        parsed = int(value)
+    except Exception as exc:
+        raise ValueError(f"{field_name} must be an integer >= {minimum}") from exc
+    if parsed < minimum:
+        raise ValueError(f"{field_name} must be an integer >= {minimum}")
+    return parsed
+
+
+def _require_float(value: Any, *, field_name: str, minimum_exclusive: float, maximum_inclusive: float) -> float:
+    try:
+        parsed = float(value)
+    except Exception as exc:
+        raise ValueError(
+            f"{field_name} must be > {minimum_exclusive:g} and <= {maximum_inclusive:g}"
+        ) from exc
+    if parsed <= minimum_exclusive or parsed > maximum_inclusive:
+        raise ValueError(f"{field_name} must be > {minimum_exclusive:g} and <= {maximum_inclusive:g}")
+    return parsed
+
+
 def _normalize_match_text(value: Any) -> str:
     return unicodedata.normalize("NFKC", str(value or "")).strip().upper()
 
@@ -88,29 +130,29 @@ def load_credit_card_teacher_extraction_config(repo_root: Path, client_id: str) 
         raise ValueError(f"failed to parse credit_card_line_config.json (fail-closed): {cfg_path}: {exc}") from exc
     if not isinstance(raw, dict):
         raise ValueError(f"credit_card_line_config.json must be a JSON object (fail-closed): {cfg_path}")
-    return normalize_credit_card_teacher_extraction_config(raw)
+    try:
+        return normalize_credit_card_teacher_extraction_config(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid credit_card_line_config.json (fail-closed): {cfg_path}: {exc}") from exc
 
 
 def normalize_credit_card_teacher_extraction_config(raw: Dict[str, Any]) -> Dict[str, Any]:
-    teacher_raw = raw.get("teacher_extraction") if isinstance(raw.get("teacher_extraction"), dict) else {}
+    teacher_raw = _require_dict(raw.get("teacher_extraction"), field_name="teacher_extraction")
     soft_raw = (
         teacher_raw.get("soft_match_thresholds")
         if isinstance(teacher_raw.get("soft_match_thresholds"), dict)
         else {}
     )
-    canonical_payable_raw = (
-        teacher_raw.get("canonical_payable_thresholds")
-        if isinstance(teacher_raw.get("canonical_payable_thresholds"), dict)
-        else {}
+    canonical_payable_raw = _require_dict(
+        teacher_raw.get("canonical_payable_thresholds"),
+        field_name="teacher_extraction.canonical_payable_thresholds",
     )
-    payable_account_name = str(raw.get("payable_account_name") or "未払金").strip() or "未払金"
     return {
         "schema": str(raw.get("schema") or "belle.credit_card_line_config.v1"),
         "version": str(raw.get("version") or ""),
-        "payable_account_name": payable_account_name,
-        "target_payable_placeholder_names": _normalize_str_list(
+        "target_payable_placeholder_names": _normalize_required_str_list(
             raw.get("target_payable_placeholder_names"),
-            default=[payable_account_name],
+            field_name="target_payable_placeholder_names",
         ),
         "teacher_extraction": {
             "enabled": bool(teacher_raw.get("enabled", True)),
@@ -133,8 +175,17 @@ def normalize_credit_card_teacher_extraction_config(raw: Dict[str, Any]) -> Dict
                 "min_unique_summaries": _as_int(soft_raw.get("min_unique_summaries"), 2),
             },
             "canonical_payable_thresholds": {
-                "min_count": _as_int(canonical_payable_raw.get("min_count"), 3),
-                "min_p_majority": _as_float(canonical_payable_raw.get("min_p_majority"), 0.9),
+                "min_count": _require_int(
+                    canonical_payable_raw.get("min_count"),
+                    field_name="teacher_extraction.canonical_payable_thresholds.min_count",
+                    minimum=1,
+                ),
+                "min_p_majority": _require_float(
+                    canonical_payable_raw.get("min_p_majority"),
+                    field_name="teacher_extraction.canonical_payable_thresholds.min_p_majority",
+                    minimum_exclusive=0.0,
+                    maximum_inclusive=1.0,
+                ),
             },
         },
     }
@@ -182,11 +233,7 @@ def effective_cc_teacher_payable_candidate_accounts(
     configured = _normalize_str_list(teacher_config.get("payable_candidate_accounts"), default=[])
     if configured:
         return configured
-    candidate_accounts = list(normalized_ruleset["teacher_payable_candidate_accounts"])
-    payable_account_name = str(normalized_config.get("payable_account_name") or "").strip()
-    if payable_account_name and payable_account_name not in candidate_accounts:
-        candidate_accounts.append(payable_account_name)
-    return sorted(set(candidate_accounts))
+    return list(normalized_ruleset["teacher_payable_candidate_accounts"])
 
 
 def cc_teacher_ruleset_identity(*, ruleset_path: Path, ruleset: Dict[str, Any]) -> Dict[str, Any]:

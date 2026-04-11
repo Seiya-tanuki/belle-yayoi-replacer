@@ -28,6 +28,8 @@ Allowed input directories:
    1. `artifacts/derived/cc_teacher/`
 4. required line config:
    1. `config/credit_card_line_config.json` must exist; if missing, PLAN must fail-closed (`FAIL`).
+   2. runtime requires explicit `target_payable_placeholder_names`
+   3. cache / teacher extraction requires explicit `teacher_extraction.canonical_payable_thresholds`
 5. tracked extraction ruleset:
    1. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`
 
@@ -70,10 +72,11 @@ Raw `ledger_ref` remains the source-of-truth input, but cache learning now flows
    1. payable candidate accounts
    2. soft-match thresholds
    3. canonical payable thresholds
-5. Cache learning must use derived teacher rows only; raw `ledger_ref` rows are not learned directly.
-6. A raw source that yields zero selected rows must still appear in `cc_teacher_manifest.json` and contributes zero learned rows.
-7. Raw target payable account names in `inputs/kari_shiwake/` are placeholders for payable-side detection and are not authoritative final output account names.
-8. Final authoritative payable-side output account comes from cache `canonical_payable` when runtime can safely use it.
+5. `target_payable_placeholder_names` is the explicit runtime contract for payable-side placeholder detection; missing / empty / blank-only values are invalid.
+6. Cache learning must use derived teacher rows only; raw `ledger_ref` rows are not learned directly.
+7. A raw source that yields zero selected rows must still appear in `cc_teacher_manifest.json` and contributes zero learned rows.
+8. Raw target payable account names in `inputs/kari_shiwake/` are placeholders for payable-side detection and are not authoritative final output account names.
+9. Final authoritative payable-side output account comes from cache `canonical_payable` when runtime can safely use it.
 
 ## Inference field constraint
 

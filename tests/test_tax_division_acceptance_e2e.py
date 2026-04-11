@@ -341,7 +341,6 @@ def _write_credit_card_assets(repo_root: Path, client_id: str) -> None:
                 "schema": "belle.credit_card_line_config.v1",
                 "version": "0.2",
                 "placeholder_account_name": PLACEHOLDER_ACCOUNT,
-                "payable_account_name": PAYABLE_ACCOUNT,
                 "target_payable_placeholder_names": [PAYABLE_ACCOUNT],
                 "training": {"exclude_counter_accounts": []},
                 "thresholds": {

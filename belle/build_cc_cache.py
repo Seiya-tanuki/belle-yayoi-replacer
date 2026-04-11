@@ -205,13 +205,15 @@ def load_credit_card_line_config(repo_root: Path, client_id: str) -> Dict[str, A
         else {}
     )
     partial_match_raw = raw.get("partial_match") if isinstance(raw.get("partial_match"), dict) else {}
-    teacher_config = normalize_credit_card_teacher_extraction_config(raw)
+    try:
+        teacher_config = normalize_credit_card_teacher_extraction_config(raw)
+    except ValueError as exc:
+        raise ValueError(f"invalid credit_card_line_config.json (fail-closed): {cfg_path}: {exc}") from exc
 
     loaded: Dict[str, Any] = {
         "schema": str(raw.get("schema") or "belle.credit_card_line_config.v1"),
         "version": str(raw.get("version") or "0.3"),
         "placeholder_account_name": str(raw.get("placeholder_account_name") or "仮払金"),
-        "payable_account_name": str(raw.get("payable_account_name") or "未払金"),
         "target_payable_placeholder_names": list(teacher_config["target_payable_placeholder_names"]),
         "merchant_key_normalization": {
             "nfkc": bool(merchant_key_norm_raw.get("nfkc", True)),

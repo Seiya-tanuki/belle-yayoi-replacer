@@ -11,4 +11,4 @@ Shared category fallback rules for `credit_card_statement`.
 - `target_tax_division` fallback is conservative by policy:
   learned `merchant_key + target_account` evidence is preferred, then non-empty per-category overrides/defaults, then non-empty global fallback.
 - Blank `target_tax_division` values in tracked defaults or overrides mean "no tax fallback"; they do not blank existing tax-division cells.
-- This phase changes the tracked asset split only; credit-card learning and tax replacement logic are unchanged.
+- Credit-card cache learning preserves raw `ledger_ref` ingest, learns from derived teacher rows, and keeps payable-side canonical authority separate from target-side placeholder detection.
