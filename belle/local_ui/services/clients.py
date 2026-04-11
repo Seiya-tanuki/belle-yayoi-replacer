@@ -56,7 +56,13 @@ def preview_client_id(raw_name: str, root: Path | None = None) -> str:
     return result.canonical if result.ok else ""
 
 
-def create_client(raw_name: str, bookkeeping_mode: str, root: Path | None = None) -> ClientCreateResult:
+def create_client(
+    raw_name: str,
+    bookkeeping_mode: str,
+    root: Path | None = None,
+    *,
+    teacher_path: Path | None = None,
+) -> ClientCreateResult:
     current_root = root or repo_root()
     module = _load_register_module()
     validation = module.validate_and_canonicalize(raw_name)
@@ -77,12 +83,12 @@ def create_client(raw_name: str, bookkeeping_mode: str, root: Path | None = None
 
     buffer = io.StringIO()
     original_sys_path = list(sys.path)
+    argv = ["--client-id", raw_name, "--bookkeeping-mode", bookkeeping_mode, "--yes"]
+    if teacher_path is not None:
+        argv.extend(["--category-override-teacher-path", str(teacher_path)])
     try:
         with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
-            rc = module.main(
-                argv=["--client-id", raw_name, "--bookkeeping-mode", bookkeeping_mode, "--yes"],
-                repo_root=current_root,
-            )
+            rc = module.main(argv=argv, repo_root=current_root)
     finally:
         sys.path[:] = original_sys_path
 

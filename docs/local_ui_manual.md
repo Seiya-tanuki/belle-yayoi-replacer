@@ -14,6 +14,7 @@ It is intentionally narrow and delegates actual replacement and collection work 
 
 - Select or create a client
 - Choose bookkeeping mode when creating a new client
+- Optionally attach one teacher CSV / TXT during new-client creation
 - Select document lines for the current session
 - Stage input files into canonical client paths
 - Run precheck and execution through `yayoi-replacer`
@@ -47,5 +48,10 @@ It is intentionally narrow and delegates actual replacement and collection work 
 - NiceGUI import is shimmed for current Python 3.14 behavior via `belle/local_ui/nicegui_compat.py`.
 - New client creation requires an explicit bookkeeping-mode selection: `税抜経理` or `税込経理`.
 - That creation-time selection is passed to `client-register`, which writes `clients/<CLIENT_ID>/config/yayoi_tax_config.json` and seeds `receipt` / `credit_card_statement` `category_overrides.json` from the corresponding defaults variant.
+- New client creation can optionally attach one teacher CSV / TXT for registration-time category override bootstrap.
+- The local UI stages that optional file under repo-root `.tmp/local_ui/client_register_bootstrap/<SESSION_TOKEN>/<ORIGINAL_BASENAME>`.
+- Repo-root `.tmp` is reused when it already exists and is created with `mkdir(..., exist_ok=True)` when it does not.
+- The new-client page preview is intentionally minimal and non-technical: it shows only the Japanese category label and the replacement account that would be auto-set.
+- Final bootstrap application, audit manifest writing, and registration-time validation still belong to the Phase 1 registration backend (`client-register`); the local UI only stages the optional file, shows the minimal preview, and passes the path through.
 - The local UI does not later edit `target_tax_division`, `clients/<CLIENT_ID>/config/yayoi_tax_config.json`, or any line-level tax-threshold config; operators manage those assets outside the UI after creation.
 - `exports/` remains outside Git tracking; operational progress files live there by bundle design.

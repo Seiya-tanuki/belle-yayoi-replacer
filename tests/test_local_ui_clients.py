@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import importlib
 import json
 import shutil
@@ -128,10 +129,24 @@ def _prepare_shared_assets(repo_root: Path) -> None:
                     "negative_terms": {"n0": [], "n1": []},
                 }
             ],
-            "term_rows": [["n0", "dummy", 1, 1.0, "S"]],
+            "term_rows": [["n0", "DUMMY", 1, 1.0, "S"]],
             "learned": {"policy": {"core_weight": 1.0}},
         },
     )
+
+
+def _write_yayoi_rows(path: Path, rows: list[list[str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="cp932", newline="") as fh:
+        writer = csv.writer(fh, lineterminator="\r\n", quoting=csv.QUOTE_MINIMAL)
+        writer.writerows(rows)
+
+
+def _teacher_row(summary: str, debit_account: str) -> list[str]:
+    row = [""] * 25
+    row[4] = debit_account
+    row[16] = summary
+    return row
 
 
 class LocalUiClientServicesTests(unittest.TestCase):
@@ -250,6 +265,59 @@ class LocalUiClientServicesTests(unittest.TestCase):
             self.assertEqual("", result.client_id)
             self.assertEqual("クライアントを作成できませんでした。入力内容を確認してください。", result.error_message)
             self.assertIn("Already exists", result.stdout)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_create_client_with_teacher_path_bootstraps_override_accounts(self) -> None:
+        repo_root = self.test_tmp_root / f"local_ui_clients_teacher_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            teacher_path = repo_root / ".tmp" / "local_ui" / "client_register_bootstrap" / "session_1" / "teacher.csv"
+            _write_yayoi_rows(
+                teacher_path,
+                [
+                    _teacher_row("dummy lunch", "交際費"),
+                    _teacher_row("dummy taxi", "交際費"),
+                ],
+            )
+            from belle.local_ui.services.clients import create_client
+
+            result = create_client("ABC_TEACHER", "tax_excluded", repo_root, teacher_path=teacher_path)
+            self.assertTrue(result.ok, msg=result.stdout)
+
+            receipt_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_TEACHER"
+                    / "lines"
+                    / "receipt"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+            cc_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_TEACHER"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                {"target_account": "交際費", "target_tax_division": ""},
+                (receipt_overrides.get("overrides") or {}).get("misc"),
+            )
+            self.assertEqual(
+                {"target_account": "交際費", "target_tax_division": ""},
+                (cc_overrides.get("overrides") or {}).get("misc"),
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
