@@ -6,6 +6,7 @@ import json
 import shutil
 import unittest
 from pathlib import Path
+from unittest import mock
 from uuid import uuid4
 
 from belle.local_ui.services.client_bootstrap import (
@@ -428,6 +429,28 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
             self.assertNotEqual(state.preview, recomputed.preview)
             self.assertEqual(1, len(state.preview.sections))
             self.assertEqual(_NO_VISIBLE_CHANGES_MESSAGE, recomputed.preview.note)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_preview_generation_does_not_require_register_client_private_helpers(self) -> None:
+        repo_root = self._make_repo_root("local_ui_bootstrap_no_register_private")
+        try:
+            with mock.patch(
+                "belle.local_ui.services.clients._load_register_module",
+                side_effect=RuntimeError("register_client private helper should not be used"),
+            ):
+                state = stage_teacher_file(
+                    empty_teacher_file_state(),
+                    filename="teacher.csv",
+                    content=self._teacher_bytes_for_food("交際費"),
+                    bookkeeping_mode="tax_excluded",
+                    root=repo_root,
+                )
+
+            self.assertFalse(state.submit_blocked)
+            self.assertEqual("", state.error_message)
+            self.assertEqual(1, len(state.preview.sections))
+            self.assertEqual("交際費", state.preview.sections[0].rows[0].replacement_account)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

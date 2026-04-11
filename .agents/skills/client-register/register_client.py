@@ -209,18 +209,14 @@ def _initialize_category_overrides(
     *,
     bookkeeping_mode: str,
 ) -> None:
-    from belle.defaults import generate_full_category_overrides, load_category_defaults
-    from belle.lexicon import load_lexicon
-    from belle.lines import line_asset_paths
+    from belle.client_registration_overrides import write_registration_category_overrides
 
-    assets = line_asset_paths(repo_root, line_id, bookkeeping_mode=bookkeeping_mode)
-    lex = load_lexicon(assets["lexicon_path"])
-    global_defaults = load_category_defaults(assets["defaults_path"])
-    generate_full_category_overrides(
+    write_registration_category_overrides(
         path=destination_line_root / "config" / "category_overrides.json",
+        repo_root=repo_root,
         client_id=client_id,
-        global_defaults=global_defaults,
-        lexicon_category_keys=set(lex.categories_by_key.keys()),
+        line_id=line_id,
+        bookkeeping_mode=bookkeeping_mode,
     )
 
 
@@ -262,9 +258,9 @@ def _apply_category_override_teacher_bootstrap(
 
     from belle.category_override_bootstrap import (
         analyze_category_override_teacher,
-        apply_category_override_bootstrap,
         category_override_bootstrap_rules_manifest,
     )
+    from belle.client_registration_overrides import apply_registration_category_override_bootstrap_file
 
     try:
         analysis = analyze_category_override_teacher(
@@ -284,9 +280,10 @@ def _apply_category_override_teacher_bootstrap(
             continue
         overrides_path = staging_dir / "lines" / line_id / "config" / "category_overrides.json"
         try:
-            changes = apply_category_override_bootstrap(
+            changes = apply_registration_category_override_bootstrap_file(
                 overrides_path=overrides_path,
                 analysis=analysis,
+                line_id=line_id,
             )
         except Exception as exc:
             raise RegistrationError(

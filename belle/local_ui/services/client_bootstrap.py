@@ -8,9 +8,12 @@ from uuid import uuid4
 from belle.category_override_bootstrap import (
     CategoryOverrideBootstrapAnalysis,
     analyze_category_override_teacher,
-    apply_category_override_bootstrap,
 )
-from belle.local_ui.services.clients import _load_register_module, repo_root
+from belle.client_registration_overrides import (
+    apply_registration_category_override_bootstrap_payload,
+    generate_registration_category_overrides_payload,
+)
+from belle.local_ui.services.clients import repo_root
 
 
 PREVIEW_LINE_IDS = ("receipt", "credit_card_statement")
@@ -130,7 +133,6 @@ def refresh_teacher_file(
     try:
         preview = _build_preview(
             current_root=current_root,
-            teacher_path=staged_path,
             bookkeeping_mode=bookkeeping_mode,
             analysis=analysis,
         )
@@ -163,30 +165,21 @@ def cleanup_after_success(current_state: StagedTeacherFileState, root: Path | No
 def _build_preview(
     *,
     current_root: Path,
-    teacher_path: Path,
     bookkeeping_mode: str,
     analysis: CategoryOverrideBootstrapAnalysis,
 ) -> ClientBootstrapPreview:
-    preview_workspace = teacher_path.parent / "__preview__"
-    if preview_workspace.exists():
-        shutil.rmtree(preview_workspace, ignore_errors=True)
-    preview_workspace.mkdir(parents=True, exist_ok=True)
-
-    register_module = _load_register_module()
     changes_by_line: dict[str, tuple[ClientBootstrapPreviewRow, ...]] = {}
     for line_id in PREVIEW_LINE_IDS:
-        line_root = preview_workspace / "lines" / line_id
-        (line_root / "config").mkdir(parents=True, exist_ok=True)
-        register_module._initialize_category_overrides(
-            current_root,
-            "__local_ui_preview__",
-            line_id,
-            line_root,
+        payload = generate_registration_category_overrides_payload(
+            repo_root=current_root,
+            client_id="__local_ui_preview__",
+            line_id=line_id,
             bookkeeping_mode=bookkeeping_mode,
         )
-        changes = apply_category_override_bootstrap(
-            overrides_path=line_root / "config" / "category_overrides.json",
+        changes = apply_registration_category_override_bootstrap_payload(
+            payload=payload,
             analysis=analysis,
+            line_id=line_id,
         )
         changes_by_line[line_id] = tuple(
             ClientBootstrapPreviewRow(
