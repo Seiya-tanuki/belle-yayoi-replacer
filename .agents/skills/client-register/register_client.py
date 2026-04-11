@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 import re
 import shutil
@@ -17,6 +18,8 @@ RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
 REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
 CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
 SHARED_YAYOI_TAX_CONFIG_REL_PATH = Path("config") / "yayoi_tax_config.json"
+CLIENT_REGISTRATION_RUN_MANIFEST_SCHEMA = "belle.client_registration_init.run_manifest.v1"
+CLIENT_REGISTRATION_RUN_MANIFEST_VERSION = "1.0"
 BOOKKEEPING_MODE_CHOICES = {
     "1": ("税抜き", "tax_excluded"),
     "2": ("税込み", "tax_included"),
@@ -62,6 +65,12 @@ class ValidationResult:
 class RegistrationError(RuntimeError):
     headline: str
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class StagedClientRegistration:
+    bookkeeping_mode: str
+    category_override_bootstrap_manifest: dict[str, object]
 
 
 def _contains_control_chars(value: str) -> bool:
@@ -188,6 +197,10 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
+def _utc_now_isoformat() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _initialize_category_overrides(
     repo_root: Path,
     client_id: str,
@@ -209,6 +222,105 @@ def _initialize_category_overrides(
         global_defaults=global_defaults,
         lexicon_category_keys=set(lex.categories_by_key.keys()),
     )
+
+
+def _resolve_teacher_path(repo_root: Path, teacher_path_arg: str | None) -> Path | None:
+    if teacher_path_arg is None:
+        return None
+    candidate = Path(teacher_path_arg)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    return candidate.resolve()
+
+
+def _default_category_override_bootstrap_manifest(*, requested: bool) -> dict[str, object]:
+    from belle.category_override_bootstrap import category_override_bootstrap_rules_manifest
+
+    return {
+        "requested": requested,
+        "status": "skipped_no_teacher" if not requested else "no_changes",
+        "teacher_source_basename": "",
+        "teacher_source_sha256": "",
+        "row_count": 0,
+        "clear_rows": 0,
+        "ambiguous_rows": 0,
+        "none_rows": 0,
+        "rules_used": category_override_bootstrap_rules_manifest(),
+        "per_line": {},
+    }
+
+
+def _apply_category_override_teacher_bootstrap(
+    *,
+    repo_root: Path,
+    staging_dir: Path,
+    selected_lines: tuple[str, ...],
+    teacher_path: Path | None,
+) -> dict[str, object]:
+    if teacher_path is None:
+        return _default_category_override_bootstrap_manifest(requested=False)
+
+    from belle.category_override_bootstrap import (
+        analyze_category_override_teacher,
+        apply_category_override_bootstrap,
+        category_override_bootstrap_rules_manifest,
+    )
+
+    try:
+        analysis = analyze_category_override_teacher(
+            teacher_path=teacher_path,
+            lexicon_path=repo_root / "lexicon" / "lexicon.json",
+        )
+    except Exception as exc:
+        raise RegistrationError(
+            "Failed to bootstrap category_overrides.json from teacher file.",
+            str(exc),
+        ) from exc
+
+    per_line: dict[str, dict[str, object]] = {}
+    total_changes = 0
+    for line_id in selected_lines:
+        if line_id not in CATEGORY_OVERRIDES_LINES:
+            continue
+        overrides_path = staging_dir / "lines" / line_id / "config" / "category_overrides.json"
+        try:
+            changes = apply_category_override_bootstrap(
+                overrides_path=overrides_path,
+                analysis=analysis,
+            )
+        except Exception as exc:
+            raise RegistrationError(
+                f"Failed to apply category override bootstrap for line={line_id}.",
+                str(exc),
+            ) from exc
+
+        total_changes += len(changes)
+        per_line[line_id] = {
+            "applied_count": len(changes),
+            "changes": [
+                {
+                    "category_key": change.category_key,
+                    "category_label": change.category_label,
+                    "from_target_account": change.from_target_account,
+                    "to_target_account": change.to_target_account,
+                }
+                for change in changes
+            ],
+        }
+
+    status = "applied" if total_changes > 0 else "no_changes"
+    return {
+        "requested": True,
+        "status": status,
+        "teacher_source_basename": analysis.teacher_source_basename,
+        "teacher_source_sha256": analysis.teacher_source_sha256,
+        "row_count": analysis.row_count,
+        "clear_rows": analysis.clear_rows,
+        "ambiguous_rows": analysis.ambiguous_rows,
+        "none_rows": analysis.none_rows,
+        "rules_used": category_override_bootstrap_rules_manifest(),
+        "per_line": per_line,
+    }
 
 
 def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Path) -> None:
@@ -367,7 +479,8 @@ def _initialize_staged_client(
     client_id: str,
     selected_lines: tuple[str, ...],
     bookkeeping_mode: str,
-) -> None:
+    teacher_path: Path | None,
+) -> StagedClientRegistration:
     shutil.copytree(template_dir, staging_dir)
     (staging_dir / "config").mkdir(parents=True, exist_ok=True)
     _prune_unselected_lines(staging_dir, selected_lines)
@@ -427,6 +540,17 @@ def _initialize_staged_client(
         if not line_root.exists() or not line_root.is_dir():
             raise RegistrationError(f"{line_id} line directory is missing after registration.")
 
+    category_override_bootstrap_manifest = _apply_category_override_teacher_bootstrap(
+        repo_root=repo_root,
+        staging_dir=staging_dir,
+        selected_lines=selected_lines,
+        teacher_path=teacher_path,
+    )
+    return StagedClientRegistration(
+        bookkeeping_mode=bookkeeping_mode,
+        category_override_bootstrap_manifest=category_override_bootstrap_manifest,
+    )
+
 
 def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path) -> None:
     if destination.exists():
@@ -435,6 +559,38 @@ def _publish_staged_client(staging_dir: Path, destination: Path, repo_root: Path
         staging_dir.rename(destination)
     except Exception as exc:
         raise RegistrationError("Failed to publish staged client directory.", str(exc)) from exc
+
+
+def _write_client_registration_audit_manifest(
+    *,
+    repo_root: Path,
+    client_id: str,
+    selected_lines: tuple[str, ...],
+    bookkeeping_mode: str,
+    category_override_bootstrap_manifest: dict[str, object],
+) -> str:
+    from belle.paths import (
+        get_client_registration_latest_path,
+        make_client_registration_run_dir,
+    )
+
+    run_id, run_dir = make_client_registration_run_dir(repo_root, client_id)
+    manifest = {
+        "schema": CLIENT_REGISTRATION_RUN_MANIFEST_SCHEMA,
+        "version": CLIENT_REGISTRATION_RUN_MANIFEST_VERSION,
+        "client_id": client_id,
+        "run_id": run_id,
+        "created_at": _utc_now_isoformat(),
+        "selected_lines": list(selected_lines),
+        "bookkeeping_mode": bookkeeping_mode,
+        "category_override_bootstrap": category_override_bootstrap_manifest,
+    }
+    (run_dir / "run_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    get_client_registration_latest_path(repo_root, client_id).write_text(f"{run_id}\n", encoding="utf-8")
+    return run_id
 
 
 def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
@@ -475,6 +631,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--yes",
         action="store_true",
         help="Allow substantial canonicalization change in non-interactive mode.",
+    )
+    parser.add_argument(
+        "--category-override-teacher-path",
+        help="Optional Yayoi CSV/TXT teacher file used only during new-client category_overrides bootstrap.",
     )
     return parser.parse_args(argv)
 
@@ -560,6 +720,11 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
         sys.path.insert(0, str(repo_root))
     from belle.lines import is_line_implemented
 
+    teacher_path = _resolve_teacher_path(repo_root, args.category_override_teacher_path)
+    if teacher_path is not None and selected_lines == ("bank_statement",):
+        print("[ERROR] --category-override-teacher-path is unsupported when --line bank_statement is selected.")
+        return 1
+
     for line_id in selected_lines:
         if not is_line_implemented(line_id):
             print(f"[ERROR] line is unimplemented: {line_id}")
@@ -598,15 +763,23 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
 
     staging_dir = _make_staging_destination(clients_dir, result.canonical)
     try:
-        _initialize_staged_client(
+        staged_registration = _initialize_staged_client(
             repo_root=repo_root,
             template_dir=template_dir,
             staging_dir=staging_dir,
             client_id=result.canonical,
             selected_lines=selected_lines,
             bookkeeping_mode=bookkeeping_mode,
+            teacher_path=teacher_path,
         )
         _publish_staged_client(staging_dir, destination, repo_root)
+        _write_client_registration_audit_manifest(
+            repo_root=repo_root,
+            client_id=result.canonical,
+            selected_lines=selected_lines,
+            bookkeeping_mode=staged_registration.bookkeeping_mode,
+            category_override_bootstrap_manifest=staged_registration.category_override_bootstrap_manifest,
+        )
     except RegistrationError as exc:
         cleanup_error = _cleanup_staging_directory(staging_dir)
         print(f"[ERROR] {exc.headline}")
@@ -618,10 +791,13 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
         return 2
     except Exception as exc:
         cleanup_error = _cleanup_staging_directory(staging_dir)
-        print("[ERROR] Client registration failed before publish.")
+        if destination.exists():
+            cleanup_error = cleanup_error or _cleanup_staging_directory(destination)
+        print("[ERROR] Client registration failed before completion.")
         print(f"[ERROR] {exc}")
         if cleanup_error is not None:
-            print(f"[ERROR] Failed to clean up staging directory: {_display_path(staging_dir, repo_root)}")
+            cleanup_target = destination if destination.exists() else staging_dir
+            print(f"[ERROR] Failed to clean up staging directory: {_display_path(cleanup_target, repo_root)}")
             print(f"[ERROR] {cleanup_error}")
         return 2
 

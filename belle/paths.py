@@ -50,6 +50,18 @@ def get_artifacts_root(repo_root: Path, client_id: str, line_id: Optional[str] =
     return get_client_root(repo_root, client_id, line_id=line_id) / "artifacts"
 
 
+def get_client_registration_artifacts_dir(repo_root: Path, client_id: str) -> Path:
+    return get_artifacts_root(repo_root, client_id) / "client_registration"
+
+
+def get_client_registration_runs_dir(repo_root: Path, client_id: str) -> Path:
+    return get_client_registration_artifacts_dir(repo_root, client_id) / "runs"
+
+
+def get_client_registration_latest_path(repo_root: Path, client_id: str) -> Path:
+    return get_client_registration_artifacts_dir(repo_root, client_id) / "LATEST.txt"
+
+
 def get_artifacts_cache_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
     return get_artifacts_root(repo_root, client_id, line_id=line_id) / "cache"
 
@@ -180,6 +192,30 @@ def make_run_dir(
         except FileExistsError:
             continue
     raise RuntimeError("Could not allocate unique RUN_ID after multiple attempts.")
+
+
+def make_client_registration_run_dir(
+    repo_root: Path,
+    client_id: str,
+    run_id: Optional[str] = None,
+) -> Tuple[str, Path]:
+    runs_dir = get_client_registration_runs_dir(repo_root, client_id)
+    runs_dir.mkdir(parents=True, exist_ok=True)
+
+    if run_id:
+        run_dir = runs_dir / run_id
+        run_dir.mkdir(parents=True, exist_ok=False)
+        return run_id, run_dir
+
+    for _ in range(16):
+        candidate = generate_run_id()
+        run_dir = runs_dir / candidate
+        try:
+            run_dir.mkdir(parents=True, exist_ok=False)
+            return candidate, run_dir
+        except FileExistsError:
+            continue
+    raise RuntimeError("Could not allocate unique client registration RUN_ID after multiple attempts.")
 
 
 def ensure_client_system_dirs(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> None:

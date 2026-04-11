@@ -9,6 +9,10 @@ only validated rows. These generated files are not tracked as repository assets 
 baseline.
 The live row contract is `target_account` / `target_tax_division`; older v1-style `debit_account`
 wording is not part of the current runtime contract.
+New-client registration may apply a deterministic bootstrap step after file generation that rewrites
+only `target_account` for eligible categories using one teacher Yayoi CSV/TXT. The bootstrap audit/provenance
+is stored separately under `clients/<CLIENT_ID>/artifacts/client_registration/`; no bootstrap metadata is embedded
+inside `category_overrides.json`.
 Phase D line scope:
 1. `receipt`: used.
 2. `credit_card_statement`: used.
@@ -48,6 +52,17 @@ Top-level keys:
 5. `target_tax_division` must be a string and may be blank.
 6. `receipt` may use non-empty `target_tax_division` as a fallback route after learned receipt tax evidence.
 7. `credit_card_statement` may use non-empty `target_tax_division` as a placeholder-side fallback after learned merchant-key tax evidence.
+
+## Registration-time initialization
+
+1. New-client registration generates a full-expanded file from the selected bookkeeping-mode defaults variant and current lexicon keys.
+2. After generation, registration may optionally bootstrap `target_account` from one teacher Yayoi CSV/TXT for:
+   1. `receipt`
+   2. `credit_card_statement`
+3. The bootstrap must not rewrite `target_tax_division`.
+4. `bank_statement` does not use `category_overrides.json` and does not support this bootstrap input.
+5. Bootstrap provenance belongs only in the shared client-registration audit area defined by `spec/CLIENT_REGISTRATION_INIT_SPEC.md`.
+6. The on-disk schema remains `belle.category_overrides.v2`; registration must not inject provenance, extra versioning, or audit metadata into this file.
 
 ## Runtime validation semantics (best-effort)
 

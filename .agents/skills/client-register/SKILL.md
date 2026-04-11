@@ -29,7 +29,16 @@ Creates a new client workspace from the template.
    1. Initializes `receipt` `config/category_overrides.json` from the selected bookkeeping-mode defaults variant.
    2. Initializes `credit_card_statement` `config/category_overrides.json` from the selected bookkeeping-mode defaults variant.
    3. Ensures `bank_statement` `config/bank_line_config.json` exists.
-7. `credit_card_statement` line is provisioned for runnable flow (Contract A and strict-stop are runtime-enforced).
+7. Optionally bootstraps newly generated `category_overrides.json` from one teacher Yayoi CSV/TXT via `--category-override-teacher-path`:
+   1. scope is registration-time only
+   2. scope is only `receipt` and `credit_card_statement`
+   3. only `target_account` may be rewritten
+   4. `target_tax_division` is never rewritten by this bootstrap
+   5. `--line bank_statement` with this argument is unsupported and fails closed
+8. Writes a shared client-registration audit run under:
+   1. `clients/<CLIENT_ID>/artifacts/client_registration/runs/<RUN_ID>/run_manifest.json`
+   2. `clients/<CLIENT_ID>/artifacts/client_registration/LATEST.txt`
+9. `credit_card_statement` line is provisioned for runnable flow (Contract A and strict-stop are runtime-enforced).
 
 ## Execution
 1. All lines (default):
@@ -39,6 +48,10 @@ python .agents/skills/client-register/register_client.py --bookkeeping-mode tax_
 2. Single line:
 ```bash
 python .agents/skills/client-register/register_client.py --line credit_card_statement --bookkeeping-mode tax_included
+```
+3. With category override bootstrap teacher:
+```bash
+python .agents/skills/client-register/register_client.py --bookkeeping-mode tax_excluded --category-override-teacher-path path/to/teacher.csv
 ```
 
 ## Notes
@@ -56,7 +69,10 @@ python .agents/skills/client-register/register_client.py --line credit_card_stat
    2. `credit_card_statement`: placeholder side (`debit` or `credit`)
 5. category_overrides generation is best-effort; missing per-category defaults are filled with `global_fallback`.
 6. Generated `category_overrides.json` files are runtime/client assets and are not tracked in the repository baseline.
-7. `bank_statement` does not use category_overrides.
+7. Registration bootstrap teacher input must be exactly one Yayoi import CSV/TXT using the repository's 25-column cp932 contract.
+8. Registration bootstrap teacher analysis uses only summary (column 17) and debit account (column 5).
+9. `bank_statement` does not use category_overrides.
+10. The audit manifest contract is defined by `spec/CLIENT_REGISTRATION_INIT_SPEC.md`.
 
 ## Template contract (must preserve)
 1. `clients/TEMPLATE/lines/receipt/config/` exists.

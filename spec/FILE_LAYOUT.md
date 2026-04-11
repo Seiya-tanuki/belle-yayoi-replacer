@@ -15,6 +15,12 @@ All runtime data must be isolated by client and line.
 clients/<CLIENT_ID>/
   config/
     yayoi_tax_config.json             # live shared tax postprocess config for all implemented lines
+  artifacts/
+    client_registration/              # shared new-client registration audit (onboarding provenance only)
+      runs/
+        <RUN_ID>/
+          run_manifest.json
+      LATEST.txt
   lines/
     <line_id>/
       config/
@@ -136,6 +142,9 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 4. The tracked template currently sets `bookkeeping_mode: tax_excluded`.
 5. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
 6. `receipt` / `credit_card_statement` tracked defaults are dual assets selected by `bookkeeping_mode`.
+7. `clients/<CLIENT_ID>/artifacts/client_registration/` is the shared audit location for successful new-client registration runs.
+8. `clients/<CLIENT_ID>/artifacts/client_registration/runs/<RUN_ID>/run_manifest.json` stores onboarding provenance only; it is not a runtime replacer artifact.
+9. `clients/<CLIENT_ID>/artifacts/client_registration/LATEST.txt` points to the latest successful registration audit run.
 
 ## Runtime-managed assets (ignored)
 

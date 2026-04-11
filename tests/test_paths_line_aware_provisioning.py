@@ -4,7 +4,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from belle.paths import ensure_client_system_dirs, get_cc_teacher_derived_dir
+from belle.paths import (
+    ensure_client_system_dirs,
+    get_cc_teacher_derived_dir,
+    get_client_registration_artifacts_dir,
+    get_client_registration_latest_path,
+    get_client_registration_runs_dir,
+    make_client_registration_run_dir,
+)
 
 
 class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
@@ -58,6 +65,42 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
                 get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement"),
             )
             self.assertTrue(get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement").is_dir())
+
+    def test_client_registration_audit_helpers_resolve_shared_client_root_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C_REG_AUDIT"
+            run_id, run_dir = make_client_registration_run_dir(repo_root, client_id, run_id="RID_AUDIT")
+
+            self.assertEqual("RID_AUDIT", run_id)
+            self.assertEqual(
+                repo_root / "clients" / client_id / "artifacts" / "client_registration",
+                get_client_registration_artifacts_dir(repo_root, client_id),
+            )
+            self.assertEqual(
+                repo_root / "clients" / client_id / "artifacts" / "client_registration" / "runs",
+                get_client_registration_runs_dir(repo_root, client_id),
+            )
+            self.assertEqual(
+                repo_root
+                / "clients"
+                / client_id
+                / "artifacts"
+                / "client_registration"
+                / "LATEST.txt",
+                get_client_registration_latest_path(repo_root, client_id),
+            )
+            self.assertEqual(
+                repo_root
+                / "clients"
+                / client_id
+                / "artifacts"
+                / "client_registration"
+                / "runs"
+                / "RID_AUDIT",
+                run_dir,
+            )
+            self.assertTrue(run_dir.is_dir())
 
 
 if __name__ == "__main__":
