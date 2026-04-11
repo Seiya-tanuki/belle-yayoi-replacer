@@ -336,6 +336,7 @@ def _write_receipt_inputs(repo_root: Path, client_id: str) -> Path:
             _receipt_row(
                 summary="KNOWNSTORE / meal T1234567890123",
                 debit_account="BEFORE_ACCOUNT",
+                debit_tax_division="対象外",
             )
         ],
     )

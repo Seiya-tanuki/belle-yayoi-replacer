@@ -84,6 +84,7 @@ For each row, compute suggestion in this order:
 ## Receipt tax-division decision order
 
 After the debit account has been decided for the row, compute debit-side tax division in this order:
+0. original debit-side tax division gate
 1. `t_number + category + target_account`
 2. `t_number + target_account`
 3. `vendor_key + target_account`
@@ -95,10 +96,14 @@ After the debit account has been decided for the row, compute debit-side tax div
 
 Rules:
 1. Learned tax routes are conditioned on the chosen debit account and must not cross-pollute across accounts.
-2. Static fallback routes must not blank an existing tax division cell when `target_tax_division == ""`.
-3. Receipt tax-division replacement runs before the shared tax postprocess.
-4. Receipt target side remains the debit side.
-5. No backward compatibility or migration support is provided for older receipt client_cache schema in this phase.
+2. Receipt tax-division replacement runs only when the original debit-side tax division, normalized with NFKC and trimmed, is exactly `対象外`.
+3. Blank original debit-side tax division is not replaceable and must be preserved as-is.
+4. When the original normalized tax division is not `対象外`, runtime must preserve the original tax division value, record review reason `tax:receipt_original_tax_preserved`, and skip learned/default/global tax routing for that row.
+5. Rows preserved by the original-tax gate must be counted in `tax_division_replacement.gated_by_original_tax_count` and excluded from `tax_division_replacement.unresolved_count`.
+6. Static fallback routes must not blank an existing tax division cell when `target_tax_division == ""`.
+7. Receipt tax-division replacement runs before the shared tax postprocess.
+8. Receipt target side remains the debit side.
+9. No backward compatibility or migration support is provided for older receipt client_cache schema in this phase.
 
 ## Outputs
 

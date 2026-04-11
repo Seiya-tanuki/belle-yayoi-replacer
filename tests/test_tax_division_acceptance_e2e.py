@@ -409,6 +409,7 @@ class TaxDivisionAcceptanceE2ETests(unittest.TestCase):
                     _receipt_row(
                         summary="KNOWNSTORE / meal T1234567890123",
                         debit_account="BEFORE_ACCOUNT",
+                        debit_tax_division="対象外",
                     )
                 ],
             )
@@ -434,7 +435,7 @@ class TaxDivisionAcceptanceE2ETests(unittest.TestCase):
                 RECEIPT_TAX_REVIEW_COLUMNS,
                 fieldnames[-len(POSTPROCESS_COLUMNS) - len(RECEIPT_TAX_REVIEW_COLUMNS) : -len(POSTPROCESS_COLUMNS)],
             )
-            self.assertEqual("", review_rows[0]["debit_tax_division_before"])
+            self.assertEqual("対象外", review_rows[0]["debit_tax_division_before"])
             self.assertEqual("課対仕入内10%適格", review_rows[0]["debit_tax_division_after"])
             self.assertEqual("55", review_rows[0]["debit_tax_amount_after"])
             self.assertIn("tax_division_replacement", replacer_manifest)
@@ -442,6 +443,7 @@ class TaxDivisionAcceptanceE2ETests(unittest.TestCase):
                 1,
                 int(((replacer_manifest["tax_division_replacement"]["route_counts"]).get("t_number_x_category_target_account")) or 0),
             )
+            self.assertEqual(0, int((replacer_manifest["tax_division_replacement"].get("gated_by_original_tax_count")) or 0))
             self.assertEqual(True, bool((run_manifest.get("yayoi_tax_config") or {}).get("enabled")))
 
     def test_bank_acceptance_keeps_tax_division_replacement_and_tax_postprocess_in_one_run(self) -> None:

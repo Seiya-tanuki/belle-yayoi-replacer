@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv as csv_lib
 import json
 import math
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,6 +35,7 @@ ROUTE_TAX_GLOBAL_TARGET_ACCOUNT = "global_target_account"
 ROUTE_TAX_CATEGORY_DEFAULT = "category_default"
 ROUTE_TAX_GLOBAL_FALLBACK = "global_fallback"
 ROUTE_TAX_NONE = "none"
+REVIEW_REASON_RECEIPT_ORIGINAL_TAX_PRESERVED = "tax:receipt_original_tax_preserved"
 
 
 @dataclass
@@ -503,6 +505,11 @@ def _evaluate_tax_route(
     )
 
 
+def _receipt_original_tax_division_replaceable(original_tax_division: str) -> bool:
+    normalized = unicodedata.normalize("NFKC", original_tax_division).strip()
+    return normalized == "対象外"
+
+
 def decide_tax_division(
     *,
     row_decision: RowDecision,
@@ -523,6 +530,18 @@ def decide_tax_division(
             sample_total=0,
             p_majority=0.0,
             reasons=["tax:dummy_row_preserved"],
+        )
+
+    if not _receipt_original_tax_division_replaceable(before):
+        return TaxDivisionDecision(
+            debit_tax_division_before=before,
+            debit_tax_division_after=before,
+            changed=False,
+            evidence_type=ROUTE_TAX_NONE,
+            confidence=0.0,
+            sample_total=0,
+            p_majority=0.0,
+            reasons=[REVIEW_REASON_RECEIPT_ORIGINAL_TAX_PRESERVED],
         )
 
     if not target_account:
@@ -662,6 +681,7 @@ def replace_yayoi_csv(
     tax_route_counts: Dict[str, int] = {}
     tax_division_changed_count = 0
     tax_unresolved_count = 0
+    gated_by_original_tax_count = 0
 
     for i, row in enumerate(csv.rows, start=1):
         summary = token_to_text(row.tokens[16], csv.encoding)
@@ -700,7 +720,9 @@ def replace_yayoi_csv(
         dec.tax_p_majority = tax_dec.p_majority
         dec.tax_reasons = list(tax_dec.reasons)
 
-        if tax_dec.evidence_type == ROUTE_TAX_NONE:
+        if REVIEW_REASON_RECEIPT_ORIGINAL_TAX_PRESERVED in tax_dec.reasons:
+            gated_by_original_tax_count += 1
+        elif tax_dec.evidence_type == ROUTE_TAX_NONE:
             tax_unresolved_count += 1
         else:
             tax_route_counts[tax_dec.evidence_type] = tax_route_counts.get(tax_dec.evidence_type, 0) + 1
@@ -842,6 +864,7 @@ def replace_yayoi_csv(
             "changed_count": int(tax_division_changed_count),
             "route_counts": tax_route_counts,
             "unresolved_count": int(tax_unresolved_count),
+            "gated_by_original_tax_count": int(gated_by_original_tax_count),
             "category_default_applied_count": int(tax_route_counts.get(ROUTE_TAX_CATEGORY_DEFAULT) or 0),
             "global_fallback_applied_count": int(tax_route_counts.get(ROUTE_TAX_GLOBAL_FALLBACK) or 0),
         },

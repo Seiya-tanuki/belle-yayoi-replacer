@@ -247,7 +247,13 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             out_path = run_dir / "out.csv"
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="KNOWNSTORE / taxi T1234567890123", debit_account="BEFORE_ACCOUNT")],
+                [
+                    _receipt_row(
+                        summary="KNOWNSTORE / taxi T1234567890123",
+                        debit_account="BEFORE_ACCOUNT",
+                        debit_tax_division="対象外",
+                    )
+                ],
             )
 
             manifest = replace_yayoi_csv(
@@ -280,7 +286,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             lex = load_lexicon(_write_minimal_lexicon(repo_root))
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="KNOWNSTORE / default", debit_account="BEFORE_ACCOUNT")],
+                [_receipt_row(summary="KNOWNSTORE / default", debit_account="BEFORE_ACCOUNT", debit_tax_division="対象外")],
             )
 
             replace_yayoi_csv(
@@ -307,7 +313,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             lex = load_lexicon(_write_minimal_lexicon(repo_root))
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="KNOWNSTORE / keep", debit_account="BEFORE_ACCOUNT", debit_tax_division="KEEP_ME")],
+                [_receipt_row(summary="KNOWNSTORE / keep", debit_account="BEFORE_ACCOUNT", debit_tax_division="対象外")],
             )
 
             replace_yayoi_csv(
@@ -322,7 +328,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             )
 
             rows = _load_rows(out_path)
-            self.assertEqual("KEEP_ME", rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual("対象外", rows[0][COL_DEBIT_TAX_DIVISION])
 
     def test_unresolved_tax_decision_preserves_existing_tax_division(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -333,7 +339,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             lex = load_lexicon(_write_minimal_lexicon(repo_root))
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="UNKNOWN SHOP", debit_account="BEFORE_ACCOUNT", debit_tax_division="KEEP_UNKNOWN")],
+                [_receipt_row(summary="UNKNOWN SHOP", debit_account="BEFORE_ACCOUNT", debit_tax_division="対象外")],
             )
 
             manifest = replace_yayoi_csv(
@@ -348,8 +354,120 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             )
 
             rows = _load_rows(out_path)
-            self.assertEqual("KEEP_UNKNOWN", rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual("対象外", rows[0][COL_DEBIT_TAX_DIVISION])
             self.assertEqual(1, int(((manifest.get("tax_division_replacement") or {}).get("unresolved_count") or 0)))
+
+    def test_non_target_original_tax_division_is_preserved_and_excluded_from_unresolved(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            run_dir = repo_root / "run"
+            in_path = repo_root / "input.csv"
+            out_path = run_dir / "out.csv"
+            lex = load_lexicon(_write_minimal_lexicon(repo_root))
+            _write_yayoi_rows(
+                in_path,
+                [
+                    _receipt_row(
+                        summary="KNOWNSTORE / preserve",
+                        debit_account="BEFORE_ACCOUNT",
+                        debit_tax_division="課対仕入内10%適格",
+                    )
+                ],
+            )
+
+            manifest = replace_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                lex=lex,
+                client_cache=None,
+                defaults=_defaults(category_tax=TAX_B),
+                config=_config(),
+                run_dir=run_dir,
+                artifact_prefix="receipt_tax_preserve_non_target",
+            )
+
+            rows = _load_rows(out_path)
+            review_path = Path(str((manifest.get("reports") or {}).get("review_report_csv") or ""))
+            fieldnames, review_rows = _load_review(review_path)
+
+            self.assertEqual(1, int(manifest["changed_count"]))
+            self.assertEqual("1", review_rows[0]["changed"])
+            self.assertEqual(DEFAULT_ACCOUNT, rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual("課対仕入内10%適格", rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual("課対仕入内10%適格", review_rows[0]["debit_tax_division_after"])
+            self.assertEqual("0", review_rows[0]["debit_tax_division_changed"])
+            self.assertEqual("none", review_rows[0]["tax_evidence_type"])
+            self.assertIn("tax:receipt_original_tax_preserved", review_rows[0]["tax_reasons"])
+            self.assertEqual(1, int(((manifest.get("tax_division_replacement") or {}).get("gated_by_original_tax_count") or 0)))
+            self.assertEqual(0, int(((manifest.get("tax_division_replacement") or {}).get("unresolved_count") or 0)))
+            self.assertEqual({}, (manifest.get("tax_division_replacement") or {}).get("route_counts") or {})
+            self.assertEqual(NEW_TAX_COLUMNS, fieldnames[-len(POSTPROCESS_COLUMNS) - len(NEW_TAX_COLUMNS) : -len(POSTPROCESS_COLUMNS)])
+            self.assertIn("tax_division_replacement", manifest)
+
+    def test_blank_original_tax_division_is_preserved_and_not_treated_as_replaceable(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            run_dir = repo_root / "run"
+            in_path = repo_root / "input.csv"
+            out_path = run_dir / "out.csv"
+            lex = load_lexicon(_write_minimal_lexicon(repo_root))
+            _write_yayoi_rows(
+                in_path,
+                [_receipt_row(summary="KNOWNSTORE / blank preserve", debit_account="BEFORE_ACCOUNT", debit_tax_division="")],
+            )
+
+            manifest = replace_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                lex=lex,
+                client_cache=None,
+                defaults=_defaults(category_tax=TAX_A),
+                config=_config(),
+                run_dir=run_dir,
+                artifact_prefix="receipt_tax_preserve_blank",
+            )
+
+            rows = _load_rows(out_path)
+            review_path = Path(str((manifest.get("reports") or {}).get("review_report_csv") or ""))
+            _, review_rows = _load_review(review_path)
+
+            self.assertEqual(DEFAULT_ACCOUNT, rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual("", rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual("", review_rows[0]["debit_tax_division_after"])
+            self.assertEqual("0", review_rows[0]["debit_tax_division_changed"])
+            self.assertEqual("none", review_rows[0]["tax_evidence_type"])
+            self.assertIn("tax:receipt_original_tax_preserved", review_rows[0]["tax_reasons"])
+            self.assertEqual(1, int(((manifest.get("tax_division_replacement") or {}).get("gated_by_original_tax_count") or 0)))
+            self.assertEqual(0, int(((manifest.get("tax_division_replacement") or {}).get("unresolved_count") or 0)))
+
+    def test_normalized_original_target_tax_division_passes_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            run_dir = repo_root / "run"
+            in_path = repo_root / "input.csv"
+            out_path = run_dir / "out.csv"
+            lex = load_lexicon(_write_minimal_lexicon(repo_root))
+            _write_yayoi_rows(
+                in_path,
+                [_receipt_row(summary="KNOWNSTORE / normalized", debit_account="BEFORE_ACCOUNT", debit_tax_division="　対象外　")],
+            )
+
+            manifest = replace_yayoi_csv(
+                in_path=in_path,
+                out_path=out_path,
+                lex=lex,
+                client_cache=None,
+                defaults=_defaults(category_tax=TAX_A),
+                config=_config(),
+                run_dir=run_dir,
+                artifact_prefix="receipt_tax_normalized_gate",
+            )
+
+            rows = _load_rows(out_path)
+            self.assertEqual(DEFAULT_ACCOUNT, rows[0][COL_DEBIT_ACCOUNT])
+            self.assertEqual(TAX_A, rows[0][COL_DEBIT_TAX_DIVISION])
+            self.assertEqual(1, int(((manifest.get("tax_division_replacement") or {}).get("category_default_applied_count") or 0)))
+            self.assertEqual(0, int(((manifest.get("tax_division_replacement") or {}).get("gated_by_original_tax_count") or 0)))
 
     def test_tax_only_change_updates_changed_and_observability(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -360,7 +478,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             lex = load_lexicon(_write_minimal_lexicon(repo_root))
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="UNKNOWN SHOP", debit_account=GLOBAL_ACCOUNT, debit_tax_division="")],
+                [_receipt_row(summary="UNKNOWN SHOP", debit_account=GLOBAL_ACCOUNT, debit_tax_division="対象外")],
             )
 
             manifest = replace_yayoi_csv(
@@ -382,6 +500,7 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             self.assertEqual(TAX_A, review_rows[0]["debit_tax_division_after"])
             self.assertEqual("1", review_rows[0]["debit_tax_division_changed"])
             self.assertEqual("global_fallback", review_rows[0]["tax_evidence_type"])
+            self.assertEqual(0, int(((manifest.get("tax_division_replacement") or {}).get("gated_by_original_tax_count") or 0)))
             self.assertEqual(NEW_TAX_COLUMNS, fieldnames[-len(POSTPROCESS_COLUMNS) - len(NEW_TAX_COLUMNS) : -len(POSTPROCESS_COLUMNS)])
             self.assertIn("tax_division_replacement", manifest)
 
@@ -414,7 +533,14 @@ class ReceiptTaxDivisionRuntimeTests(unittest.TestCase):
             out_path = run_dir / "out.csv"
             _write_yayoi_rows(
                 in_path,
-                [_receipt_row(summary="KNOWNSTORE / meal T1234567890123", debit_account="BEFORE_ACCOUNT", debit_amount="605")],
+                [
+                    _receipt_row(
+                        summary="KNOWNSTORE / meal T1234567890123",
+                        debit_account="BEFORE_ACCOUNT",
+                        debit_tax_division="対象外",
+                        debit_amount="605",
+                    )
+                ],
             )
 
             manifest = replace_yayoi_csv(
