@@ -68,6 +68,10 @@ Raw `ledger_ref` remains the source-of-truth input, but cache learning now flows
 1. `artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv` is materialized for each ingested raw `ledger_ref` source.
 2. `artifacts/derived/cc_teacher_manifest.json` is the deterministic manifest index for those derived outputs.
 3. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json` defines the tracked extraction ruleset.
+   1. `hard_include_terms` are strong positive lexical matches.
+   2. `soft_include_terms` are positive lexical matches gated by configured thresholds.
+   3. `exclude_terms` are hard negatives.
+   4. `soft_negative_terms` are discouraging lexical matches that reject only when sufficient positive lexical evidence is absent.
 4. `config/credit_card_line_config.json` carries `teacher_extraction` settings, including:
    1. payable candidate accounts
    2. soft-match thresholds
@@ -77,6 +81,7 @@ Raw `ledger_ref` remains the source-of-truth input, but cache learning now flows
 7. A raw source that yields zero selected rows must still appear in `cc_teacher_manifest.json` and contributes zero learned rows.
 8. Raw target payable account names in `inputs/kari_shiwake/` are placeholders for payable-side detection and are not authoritative final output account names.
 9. Final authoritative payable-side output account comes from cache `canonical_payable` when runtime can safely use it.
+10. This lexical tuning phase does not introduce the richer proposal feature model (`purchase_rows`, `settlement_rows`, `taxable_purchase_ratio`, `unique_merchants`).
 
 ## Inference field constraint
 

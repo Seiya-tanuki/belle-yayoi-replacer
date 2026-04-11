@@ -25,7 +25,7 @@ SCHEMA_CC_TEACHER_EXTRACTION_RULES_V1 = "belle.cc_teacher_extraction_rules.v1"
 SCHEMA_CC_TEACHER_EXTRACTION_MANIFEST_V1 = "belle.cc_teacher_extract_manifest.v1"
 SCHEMA_CC_TEACHER_MANIFEST_INDEX_V1 = "belle.cc_teacher_manifest_index.v1"
 SCHEMA_CC_TEACHER_EXTRACTOR_V1 = "belle.cc_teacher_extract.v1"
-CC_TEACHER_EXTRACTOR_VERSION_V1 = "0.2"
+CC_TEACHER_EXTRACTOR_VERSION_V1 = "0.3"
 DEFAULT_CC_TEACHER_RULESET_RELPATH = "rulesets/credit_card_statement/teacher_extraction_rules_v1.json"
 
 
@@ -220,6 +220,7 @@ def normalize_cc_teacher_extraction_ruleset(raw: Dict[str, Any]) -> Dict[str, An
         "hard_include_terms": _normalize_terms(_normalize_str_list(raw.get("hard_include_terms"), default=[])),
         "soft_include_terms": _normalize_terms(_normalize_str_list(raw.get("soft_include_terms"), default=[])),
         "exclude_terms": _normalize_terms(_normalize_str_list(raw.get("exclude_terms"), default=[])),
+        "soft_negative_terms": _normalize_terms(_normalize_str_list(raw.get("soft_negative_terms"), default=[])),
     }
 
 
@@ -388,6 +389,7 @@ def extract_cc_teacher_rows(
     hard_terms = list(normalized_ruleset["hard_include_terms"])
     soft_terms = list(normalized_ruleset["soft_include_terms"])
     exclude_terms = list(normalized_ruleset["exclude_terms"])
+    soft_negative_terms = list(normalized_ruleset["soft_negative_terms"])
 
     candidate_row_entries: list[dict[str, Any]] = []
     row_reason_counts: dict[str, int] = {}
@@ -439,6 +441,7 @@ def extract_cc_teacher_rows(
         matched_exclude_terms = _find_matched_terms(subaccount, exclude_terms)
         matched_hard_terms = _find_matched_terms(subaccount, hard_terms)
         matched_soft_terms = _find_matched_terms(subaccount, soft_terms)
+        matched_soft_negative_terms = _find_matched_terms(subaccount, soft_negative_terms)
 
         total_count = len(group_rows)
         unique_counter_accounts = len({str(entry["counter_account"]) for entry in group_rows if str(entry["counter_account"])})
@@ -449,6 +452,17 @@ def extract_cc_teacher_rows(
             and unique_counter_accounts >= int(thresholds["min_unique_counter_accounts"])
             and unique_summaries >= int(thresholds["min_unique_summaries"])
         )
+        positive_reason = ""
+        positive_strength = ""
+        if matched_hard_terms:
+            positive_reason = "hard_include_term"
+            positive_strength = "hard"
+        elif matched_soft_terms and meets_soft_thresholds:
+            positive_reason = "soft_include_term"
+            positive_strength = "soft"
+        elif matched_soft_terms:
+            positive_reason = "soft_include_threshold_failed"
+            positive_strength = "weak_soft"
 
         if normalized_subaccount in manual_exclude:
             selected = False
@@ -459,15 +473,27 @@ def extract_cc_teacher_rows(
         elif matched_exclude_terms:
             selected = False
             reason = "exclude_term"
-        elif matched_hard_terms:
+        elif positive_strength == "hard" and matched_soft_negative_terms:
+            selected = True
+            reason = "soft_negative_overridden_by_hard_include"
+        elif positive_strength == "soft" and matched_soft_negative_terms:
+            selected = True
+            reason = "soft_negative_overridden_by_soft_include"
+        elif positive_strength == "hard":
             selected = True
             reason = "hard_include_term"
-        elif matched_soft_terms and meets_soft_thresholds:
+        elif positive_strength == "soft":
             selected = True
             reason = "soft_include_term"
-        elif matched_soft_terms:
+        elif positive_strength == "weak_soft" and matched_soft_negative_terms:
+            selected = False
+            reason = "soft_negative_insufficient_positive"
+        elif positive_strength == "weak_soft":
             selected = False
             reason = "soft_include_threshold_failed"
+        elif matched_soft_negative_terms:
+            selected = False
+            reason = "soft_negative_only"
         elif not subaccount.strip():
             selected = False
             reason = "blank_payable_subaccount"
@@ -488,6 +514,12 @@ def extract_cc_teacher_rows(
                 "exclude_terms": matched_exclude_terms,
                 "hard_include_terms": matched_hard_terms,
                 "soft_include_terms": matched_soft_terms,
+                "soft_negative_terms": matched_soft_negative_terms,
+            },
+            "evaluation": {
+                "positive_reason": positive_reason,
+                "positive_strength": positive_strength,
+                "meets_soft_thresholds": bool(meets_soft_thresholds),
             },
             "payable_accounts_seen": sorted({str(entry["payable_account"]) for entry in group_rows if str(entry["payable_account"])}),
         }

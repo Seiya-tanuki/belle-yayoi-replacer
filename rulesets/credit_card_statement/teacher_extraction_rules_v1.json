@@ -1,6 +1,6 @@
 {
   "schema": "belle.cc_teacher_extraction_rules.v1",
-  "version": "1",
+  "version": "2",
   "teacher_payable_candidate_accounts": [
     "未払費用",
     "未払金"
@@ -13,8 +13,16 @@
     "AMEX",
     "DINERS",
     "JCB",
+    "LUXURY",
     "MASTER",
+    "MASTERCARD",
     "NICOS",
+    "オーナーズ",
+    "アメックス",
+    "セゾン",
+    "ビジネスクラシック",
+    "ラグジュアリー",
+    "三井住友",
     "SAISON",
     "UC",
     "VISA"
@@ -22,6 +30,13 @@
   "exclude_terms": [
     "デビット",
     "プリペイド",
-    "ローン"
+    "ローン",
+    "給与",
+    "報酬",
+    "源泉",
+    "社会保険"
+  ],
+  "soft_negative_terms": [
+    "ファイナンス"
   ]
 }

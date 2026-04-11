@@ -55,11 +55,22 @@ def _base_config(
 def _base_ruleset() -> dict:
     return {
         "schema": "belle.cc_teacher_extraction_rules.v1",
-        "version": "1",
+        "version": "2",
         "teacher_payable_candidate_accounts": ["未払費用", "未払金"],
         "hard_include_terms": ["CARD", "カード"],
-        "soft_include_terms": ["VISA"],
-        "exclude_terms": ["デビット"],
+        "soft_include_terms": [
+            "VISA",
+            "LUXURY",
+            "MASTERCARD",
+            "オーナーズ",
+            "アメックス",
+            "セゾン",
+            "ビジネスクラシック",
+            "ラグジュアリー",
+            "三井住友",
+        ],
+        "exclude_terms": ["デビット", "給与", "報酬", "源泉", "社会保険"],
+        "soft_negative_terms": ["ファイナンス"],
     }
 
 
@@ -243,6 +254,195 @@ class CCTeacherExtractTests(unittest.TestCase):
         excluded = result["manifest"]["excluded_subaccounts"][0]
         self.assertEqual("soft_include_threshold_failed", excluded["reason"])
         self.assertEqual(1, result["manifest"]["reasons"]["row_reason_counts"]["soft_include_threshold_failed"])
+
+    def test_saison_family_soft_include_selects_when_thresholds_met(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="セゾンプラチナビジネス",
+                    summary="SHOP_A",
+                ),
+                _row(
+                    debit_account="旅費交通費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="セゾンプラチナビジネス",
+                    summary="SHOP_B",
+                ),
+            ],
+            source_identity={"source": "saison"},
+            config=_base_config(min_total_count=2, min_unique_counter_accounts=2, min_unique_summaries=2),
+            ruleset=_base_ruleset(),
+        )
+
+        selected = result["manifest"]["selected_subaccounts"][0]
+        self.assertEqual("soft_include_term", selected["reason"])
+        self.assertEqual(["セゾン"], selected["matched_terms"]["soft_include_terms"])
+
+    def test_mitsui_sumitomo_soft_include_selects_when_thresholds_met(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="三井住友",
+                    summary="SHOP_A",
+                ),
+                _row(
+                    debit_account="旅費交通費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="三井住友",
+                    summary="SHOP_B",
+                ),
+            ],
+            source_identity={"source": "mitsui_sumitomo"},
+            config=_base_config(min_total_count=2, min_unique_counter_accounts=2, min_unique_summaries=2),
+            ruleset=_base_ruleset(),
+        )
+
+        selected = result["manifest"]["selected_subaccounts"][0]
+        self.assertEqual("soft_include_term", selected["reason"])
+        self.assertEqual(["三井住友"], selected["matched_terms"]["soft_include_terms"])
+
+    def test_amex_family_soft_include_selects_when_thresholds_met(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="アメックス21008",
+                    summary="SHOP_A",
+                ),
+                _row(
+                    debit_account="旅費交通費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="アメックス21008",
+                    summary="SHOP_B",
+                ),
+            ],
+            source_identity={"source": "amex"},
+            config=_base_config(min_total_count=2, min_unique_counter_accounts=2, min_unique_summaries=2),
+            ruleset=_base_ruleset(),
+        )
+
+        selected = result["manifest"]["selected_subaccounts"][0]
+        self.assertEqual("soft_include_term", selected["reason"])
+        self.assertEqual(["アメックス"], selected["matched_terms"]["soft_include_terms"])
+
+    def test_finance_only_soft_negative_rejects_without_positive_evidence(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="トヨタファイナンス",
+                    summary="SHOP_A",
+                )
+            ],
+            source_identity={"source": "finance_only"},
+            config=_base_config(),
+            ruleset=_base_ruleset(),
+        )
+
+        self.assertEqual([], result["selected_rows"])
+        excluded = result["manifest"]["excluded_subaccounts"][0]
+        self.assertEqual("soft_negative_only", excluded["reason"])
+        self.assertEqual(["ファイナンス"], excluded["matched_terms"]["soft_negative_terms"])
+
+    def test_positive_card_and_finance_soft_negative_can_still_select(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="トヨタファイナンス/カード6322",
+                    summary="SHOP_A",
+                )
+            ],
+            source_identity={"source": "finance_with_card_positive"},
+            config=_base_config(),
+            ruleset=_base_ruleset(),
+        )
+
+        selected = result["manifest"]["selected_subaccounts"][0]
+        self.assertEqual(1, len(result["selected_rows"]))
+        self.assertEqual("soft_negative_overridden_by_hard_include", selected["reason"])
+        self.assertEqual(["カード"], selected["matched_terms"]["hard_include_terms"])
+        self.assertEqual(["ファイナンス"], selected["matched_terms"]["soft_negative_terms"])
+        self.assertEqual("hard_include_term", selected["evaluation"]["positive_reason"])
+
+    def test_salary_social_insurance_and_withholding_terms_are_rejected(self) -> None:
+        rows = [
+            _row(
+                debit_account="消耗品費",
+                debit_subaccount="",
+                credit_account="未払金",
+                credit_subaccount="給与",
+                summary="S1",
+            ),
+            _row(
+                debit_account="消耗品費",
+                debit_subaccount="",
+                credit_account="未払金",
+                credit_subaccount="役員報酬",
+                summary="S2",
+            ),
+            _row(
+                debit_account="消耗品費",
+                debit_subaccount="",
+                credit_account="未払金",
+                credit_subaccount="社会保険料",
+                summary="S3",
+            ),
+            _row(
+                debit_account="消耗品費",
+                debit_subaccount="",
+                credit_account="未払金",
+                credit_subaccount="源泉所得税",
+                summary="S4",
+            ),
+        ]
+
+        result = extract_cc_teacher_rows(
+            rows,
+            source_identity={"source": "negative_terms"},
+            config=_base_config(),
+            ruleset=_base_ruleset(),
+        )
+
+        self.assertEqual([], result["selected_rows"])
+        self.assertEqual(
+            {"exclude_term"},
+            {detail["reason"] for detail in result["manifest"]["excluded_subaccounts"]},
+        )
+
+    def test_etc_is_not_treated_as_unconditional_hard_positive(self) -> None:
+        result = extract_cc_teacher_rows(
+            [
+                _row(
+                    debit_account="消耗品費",
+                    debit_subaccount="",
+                    credit_account="未払金",
+                    credit_subaccount="ETC協同組合",
+                    summary="SHOP_A",
+                )
+            ],
+            source_identity={"source": "etc_context_sensitive"},
+            config=_base_config(min_total_count=2, min_unique_counter_accounts=2, min_unique_summaries=2),
+            ruleset=_base_ruleset(),
+        )
+
+        self.assertEqual([], result["selected_rows"])
+        self.assertEqual("no_include_match", result["manifest"]["excluded_subaccounts"][0]["reason"])
 
     def test_source_rows_are_not_mutated(self) -> None:
         rows = [
