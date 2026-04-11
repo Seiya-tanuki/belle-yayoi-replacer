@@ -15,5 +15,6 @@ Tracked defaults layout:
 - `bank_statement` has no tracked category defaults asset.
 
 For `receipt` / `credit_card_statement`, runtime selects the tracked defaults variant from the client shared tax config `bookkeeping_mode`.
-This phase changes tracked asset resolution only. Tax learning and tax replacement order remain unchanged.
-See `spec/CATEGORY_DEFAULTS_SPEC.md`.
+This document describes tracked defaults asset structure and bookkeeping-mode-based resolution only.
+Live runtime tax-routing semantics are defined by the selected line's replacer spec; for `receipt`, `target_tax_division` fallback is relevant only after the original-tax gate in `spec/REPLACER_SPEC.md` passes.
+See `spec/CATEGORY_DEFAULTS_SPEC.md` and `spec/REPLACER_SPEC.md`.

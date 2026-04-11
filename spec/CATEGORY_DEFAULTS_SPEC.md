@@ -19,6 +19,9 @@ For `receipt` and `credit_card_statement`, runtime/bootstrap selects the tracked
 1. `tax_excluded` -> `category_defaults_tax_excluded.json`
 2. `tax_included` -> `category_defaults_tax_included.json`
 
+This spec describes tracked category-default assets and bookkeeping-mode-based resolution only.
+Live runtime semantics remain line-specific and are defined by each line's replacer spec.
+
 This is deliberately **opinionated** to increase replacement coverage.
 Human review remains the source of truth.
 
@@ -41,12 +44,12 @@ Top-level keys:
 - Defaults are shared across lines but interpreted by each line's target side:
   - `receipt`: target side is the debit side.
   - `credit_card_statement`: target side is the placeholder side.
-- `receipt` may use non-empty `target_tax_division` as a fallback route after learned receipt tax evidence.
+- `receipt` may use non-empty `target_tax_division` as a fallback route only for rows that pass the receipt original-tax gate; see `spec/REPLACER_SPEC.md`.
 - `credit_card_statement` may use non-empty `target_tax_division` as a placeholder-side tax fallback after learned merchant-key tax evidence.
 - `target_tax_division` must exist in tracked defaults, but it may be blank.
 - Defaults should use commonly available Japanese account names to reduce import risk.
 - Defaults are not client-specific; client_cache overrides them when evidence is strong enough.
 - Tracked defaults are aligned to the shared `lexicon/lexicon.json` category keyset for each supported line.
 - If the client has an allowlist of valid accounts (optional future), defaults should be filtered against it.
-- This phase changes tracked asset structure and mode-aware resolution only. Tax learning and tax replacement order are unchanged.
+- This spec does not define live runtime replacement order. For `receipt`, including the original-tax gate before `target_tax_division` fallback, see `spec/REPLACER_SPEC.md`.
 

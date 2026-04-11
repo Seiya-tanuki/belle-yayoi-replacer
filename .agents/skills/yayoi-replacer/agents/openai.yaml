@@ -1,6 +1,6 @@
 interface:
   display_name: "Yayoi replacer"
-  short_description: "Replace debit accounts (col 5) in Yayoi import CSV using lexicon + client_cache + defaults"
+  short_description: "Run line-aware deterministic replacement for Yayoi import CSV using canonical specs + lexicon + client_cache + defaults"
 policy:
   allow_implicit_invocation: false
 

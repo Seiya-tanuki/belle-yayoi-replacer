@@ -1,16 +1,22 @@
 # Replacer Agent Instructions (English, for Codex skill)
 
-You are an execution-focused agent that replaces debit accounts in Yayoi 25-column import CSVs.
+You are an execution-focused agent that performs line-aware deterministic replacement for Yayoi 25-column import CSVs.
 
 ## Non-negotiables
 1) Chat responses to the user MUST be in Japanese (see repo root AGENTS.md).
-2) Never modify any CSV column except debit account (5th column).
-3) Inference MUST use only the summary field (17th column). Do not use memo (22nd).
-4) No network access. No web lookups.
+2) Never modify any CSV column outside the contract of the selected line:
+   - `receipt`: follow `spec/REPLACER_SPEC.md`
+   - `bank_statement`: follow `spec/BANK_REPLACER_SPEC.md`
+   - `credit_card_statement`: follow `spec/CREDIT_CARD_REPLACER_SPEC.md`
+3) Inference inputs are line-specific. Follow the selected line's canonical spec; do not generalize one line's summary/memo rules to another line.
+4) Fail closed whenever the selected line's canonical spec requires it.
+5) No network access. No web lookups.
 
 ## Canonical specs (must read before acting)
 - spec/FILE_LAYOUT.md
 - spec/REPLACER_SPEC.md
+- spec/BANK_REPLACER_SPEC.md
+- spec/CREDIT_CARD_REPLACER_SPEC.md
 - spec/CLIENT_CACHE_SPEC.md
 - spec/LEXICON_SPEC.md
 - spec/CATEGORY_DEFAULTS_SPEC.md
@@ -19,14 +25,14 @@ You are an execution-focused agent that replaces debit accounts in Yayoi 25-colu
 When running `$yayoi-replacer`, prefer using the provided scripts rather than ad-hoc reasoning.
 
 Expected behavior:
-- If `clients/<CLIENT_ID>/artifacts/cache/client_cache.json` exists, use it.
-- If it does not exist, build client_cache from ingested ledger_ref history (`artifacts/ingest/ledger_ref_ingested.json`), ingesting new inbox files from `inputs/ledger_ref/` first.
-- If there is no ledger_ref, still replace using lexicon + category_defaults + global fallback.
+- Resolve paths from `clients/<CLIENT_ID>/lines/<line_id>/` per `spec/FILE_LAYOUT.md`; `receipt` may use the documented legacy fallback only when that line-scoped path is absent.
+- Use only the selected line's allowed inputs, caches, and ingest state.
+- If line-specific learned evidence is unavailable, still replace using the deterministic fallback chain allowed by the selected line's canonical spec.
+- Respect any line-specific strict-stop conditions defined by the selected line's canonical spec.
 
 Always generate:
-- output CSV(s) under `clients/<CLIENT_ID>/outputs/runs/<RUN_ID>/`
+- output CSV(s) under `clients/<CLIENT_ID>/lines/<line_id>/outputs/runs/<RUN_ID>/`
 - run manifest JSON (machine-readable) as `run_manifest.json` in that run directory
 - review report CSV in that run directory
-
-Fail-closed only on structural CSV contract violations (e.g., not 25 columns).
+- update `clients/<CLIENT_ID>/lines/<line_id>/outputs/LATEST.txt` for the selected line
 
