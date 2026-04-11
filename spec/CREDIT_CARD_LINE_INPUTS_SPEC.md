@@ -22,10 +22,14 @@ Canonical base path:
 Allowed input directories:
 1. target draft:
    1. `inputs/kari_shiwake/`
-2. learning teacher:
+2. raw learning teacher:
    1. `inputs/ledger_ref/`
-3. required line config:
+3. managed derived teacher artifacts:
+   1. `artifacts/derived/cc_teacher/`
+4. required line config:
    1. `config/credit_card_line_config.json` must exist; if missing, PLAN must fail-closed (`FAIL`).
+5. tracked extraction ruleset:
+   1. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`
 
 ## Contract A (required): single statement per target file
 
@@ -50,11 +54,19 @@ Current scope:
 `inputs/ledger_ref/` accepts `0+` files.
 
 Learning rules:
-1. `ledger_ref` is the only teacher input (Yayoi finalized exports)
+1. `ledger_ref` is the raw teacher input (Yayoi finalized exports)
 2. learning updates are append-only
 3. ingestion dedupe is by per-file SHA256
 4. applied SHA256 tracking prevents double-learning on re-run with the same teacher file
 5. multiple historical files can be accumulated over time
+
+## Derived teacher artifact scaffolding
+
+This phase introduces tracked scaffolding for a future derived-teacher pipeline:
+1. `artifacts/derived/cc_teacher/` is the managed location for teacher rows derived from raw `ledger_ref`.
+2. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json` defines the tracked extraction ruleset.
+3. `config/credit_card_line_config.json` now carries `teacher_extraction` scaffolding for later phases.
+4. Current runtime replacement behavior is unchanged in this phase; raw `ledger_ref` remains the operative learning source.
 
 ## Inference field constraint
 

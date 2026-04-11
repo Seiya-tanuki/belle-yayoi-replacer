@@ -3,6 +3,9 @@
   "version": "0.2",
   "placeholder_account_name": "仮払金",
   "payable_account_name": "未払金",
+  "target_payable_placeholder_names": [
+    "未払金"
+  ],
   "merchant_key_normalization": {
     "nfkc": true,
     "trim": true,
@@ -42,5 +45,16 @@
     "min_total_count": 5,
     "min_unique_merchants": 3,
     "min_unique_counter_accounts": 2
+  },
+  "teacher_extraction": {
+    "enabled": true,
+    "ruleset_relpath": "rulesets/credit_card_statement/teacher_extraction_rules_v1.json",
+    "manual_include_subaccounts": [],
+    "manual_exclude_subaccounts": [],
+    "soft_match_thresholds": {
+      "min_total_count": 2,
+      "min_unique_counter_accounts": 2,
+      "min_unique_summaries": 2
+    }
   }
 }

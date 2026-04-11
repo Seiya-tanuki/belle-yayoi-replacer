@@ -699,12 +699,23 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertEqual(0, rc, msg=output)
 
             client_root = repo_root / "clients" / "C_CC_ONLY"
+            cc_root = client_root / "lines" / "credit_card_statement"
             self.assertFalse((client_root / "lines" / "receipt").exists())
             self.assertFalse((client_root / "lines" / "bank_statement").exists())
-            self.assertTrue((client_root / "lines" / "credit_card_statement").is_dir())
-            self.assertTrue(
-                (client_root / "lines" / "credit_card_statement" / "config" / "category_overrides.json").exists()
+            self.assertTrue(cc_root.is_dir())
+            self.assertTrue((cc_root / "config" / "category_overrides.json").exists())
+            self.assertTrue((cc_root / "artifacts" / "derived").is_dir())
+            self.assertTrue((cc_root / "artifacts" / "derived" / "cc_teacher").is_dir())
+
+            config_obj = json.loads((cc_root / "config" / "credit_card_line_config.json").read_text(encoding="utf-8"))
+            self.assertEqual(["未払金"], config_obj.get("target_payable_placeholder_names"))
+            teacher_extraction = config_obj.get("teacher_extraction") or {}
+            self.assertEqual(
+                "rulesets/credit_card_statement/teacher_extraction_rules_v1.json",
+                teacher_extraction.get("ruleset_relpath"),
             )
+            self.assertEqual([], teacher_extraction.get("manual_include_subaccounts"))
+            self.assertEqual([], teacher_extraction.get("manual_exclude_subaccounts"))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from belle.paths import ensure_client_system_dirs
+from belle.paths import ensure_client_system_dirs, get_cc_teacher_derived_dir
 
 
 class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
@@ -52,6 +52,12 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
             line_root = repo_root / "clients" / client_id / "lines" / "credit_card_statement"
             self.assertTrue((line_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
             self.assertTrue((line_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
+            self.assertTrue((line_root / "artifacts" / "derived").is_dir())
+            self.assertEqual(
+                line_root / "artifacts" / "derived" / "cc_teacher",
+                get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement"),
+            )
+            self.assertTrue(get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement").is_dir())
 
 
 if __name__ == "__main__":

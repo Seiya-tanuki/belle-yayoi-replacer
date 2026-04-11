@@ -38,6 +38,8 @@ clients/<CLIENT_ID>/
       artifacts/
         cache/
           client_cache.json
+        derived/                       # credit_card_statement only; tracked scaffold for derived teacher artifacts
+          cc_teacher/
         ingest/
           ledger_ref/                  # receipt + credit_card_statement only
           kari_shiwake/                # all implemented lines
@@ -97,11 +99,12 @@ Related specs:
    6. Lexicon category routing is not wired.
 3. `credit_card_statement` uses line-scoped inputs:
    1. `inputs/kari_shiwake/` (target; `0 => SKIP`, `1 => RUN`, `2+ => FAIL`)
-   2. `inputs/ledger_ref/` (append-only historical teacher input)
-   3. Contract A is required (one statement per target file).
-   4. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
-   5. Lexicon category routing is fallback-only (secondary to merchant-key routing).
-   6. Per-client overrides path is `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`.
+   2. `inputs/ledger_ref/` (append-only raw historical teacher input)
+   3. `artifacts/derived/cc_teacher/` is reserved for derived teacher outputs extracted from raw `ledger_ref` rows.
+   4. Contract A is required (one statement per target file).
+   5. Runtime may strict-stop with exit `2` after artifacts are written when `payable_sub_fill_required_failed == true`.
+   6. Lexicon category routing is fallback-only (secondary to merchant-key routing).
+   7. Per-client overrides path is `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`.
 
 ## bank_statement forbidden paths (explicit)
 
@@ -117,9 +120,10 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 4. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
 5. `defaults/credit_card_statement/category_defaults_tax_included.json`
 6. `rulesets/receipt/replacer_config_v1_15.json`
-7. `clients/TEMPLATE/config/yayoi_tax_config.json`
-8. `lexicon/receipt/pending/.gitkeep`
-9. `lexicon/receipt/pending/locks/.gitkeep`
+7. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`
+8. `clients/TEMPLATE/config/yayoi_tax_config.json`
+9. `lexicon/receipt/pending/.gitkeep`
+10. `lexicon/receipt/pending/locks/.gitkeep`
 
 ## Shared client config
 

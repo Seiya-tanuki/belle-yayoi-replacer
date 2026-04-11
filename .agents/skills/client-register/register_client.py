@@ -172,7 +172,19 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
             template_line_root / "inputs" / "training" / "reference_yayoi",
         ]
     if line_id == "credit_card_statement":
-        return [template_line_root]
+        return [
+            template_line_root / "config",
+            template_line_root / "outputs" / "runs",
+            template_line_root / "artifacts" / "cache",
+            template_line_root / "artifacts" / "derived",
+            template_line_root / "artifacts" / "derived" / "cc_teacher",
+            template_line_root / "artifacts" / "ingest",
+            template_line_root / "artifacts" / "ingest" / "ledger_ref",
+            template_line_root / "artifacts" / "ingest" / "kari_shiwake",
+            template_line_root / "artifacts" / "telemetry",
+            template_line_root / "inputs" / "kari_shiwake",
+            template_line_root / "inputs" / "ledger_ref",
+        ]
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
@@ -439,6 +451,7 @@ def _print_created_paths(selected_lines: tuple[str, ...]) -> None:
     if "credit_card_statement" in selected_lines:
         print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/")
         print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json")
+        print("- credit_card_statement: clients/<CLIENT_ID>/lines/credit_card_statement/artifacts/derived/cc_teacher/")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

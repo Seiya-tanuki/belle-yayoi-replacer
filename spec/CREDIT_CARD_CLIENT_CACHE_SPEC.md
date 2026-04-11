@@ -9,6 +9,7 @@ Current implementation status:
 2. Cache update source is line-scoped `inputs/ledger_ref/`.
 3. Target-account-conditioned tax learning is implemented.
 4. No backward compatibility or migration support is provided for older credit-card cache schema versions in this phase.
+5. Derived teacher extraction scaffolding exists, but cache updates are not wired to `artifacts/derived/cc_teacher/` yet in this phase.
 
 Related specs:
 1. `spec/CREDIT_CARD_LINE_INPUTS_SPEC.md`

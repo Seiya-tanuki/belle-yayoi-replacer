@@ -58,6 +58,17 @@ def get_artifacts_ingest_dir(repo_root: Path, client_id: str, line_id: Optional[
     return get_artifacts_root(repo_root, client_id, line_id=line_id) / "ingest"
 
 
+def get_artifacts_derived_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    return get_artifacts_root(repo_root, client_id, line_id=line_id) / "derived"
+
+
+def get_cc_teacher_derived_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
+    resolved_line_id = _resolve_line_id(line_id)
+    if resolved_line_id != "credit_card_statement":
+        raise ValueError("cc_teacher derived dir is supported only for line_id='credit_card_statement'")
+    return get_artifacts_derived_dir(repo_root, client_id, line_id=resolved_line_id) / "cc_teacher"
+
+
 def get_artifacts_telemetry_dir(repo_root: Path, client_id: str, line_id: Optional[str] = None) -> Path:
     return get_artifacts_root(repo_root, client_id, line_id=line_id) / "telemetry"
 
@@ -186,6 +197,15 @@ def ensure_client_system_dirs(repo_root: Path, client_id: str, line_id: Optional
             exist_ok=True,
         )
         get_training_reference_ingest_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+    if resolved_line_id == "credit_card_statement":
+        get_artifacts_derived_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
+            parents=True,
+            exist_ok=True,
+        )
+        get_cc_teacher_derived_dir(repo_root, client_id, line_id=resolved_line_id).mkdir(
             parents=True,
             exist_ok=True,
         )

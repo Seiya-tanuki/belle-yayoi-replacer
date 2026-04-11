@@ -25,6 +25,12 @@ Strict file-count behavior:
 1. `0+` files are accepted.
 2. This directory is append-only historical teacher input for learning.
 
+### `artifacts/derived/cc_teacher`
+
+1. This managed directory is reserved for derived teacher rows extracted from raw `ledger_ref`.
+2. The extraction ruleset is tracked at `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`.
+3. This phase adds the scaffold only; current runtime still learns directly from raw `inputs/ledger_ref`.
+
 ## Learning + Dedup
 
 1. `ledger_ref` (Yayoi finalized export) is the only teacher input.
@@ -54,6 +60,7 @@ Strict file-count behavior:
    2. `merchant_key_target_account_partial`
 4. Shared tax postprocess config path is `clients/<CLIENT_ID>/config/yayoi_tax_config.json`.
 5. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
+6. Upcoming derived-teacher phases use `teacher_extraction` fields in the same config file.
 
 ## Failure modes + How to fix
 
