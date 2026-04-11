@@ -46,11 +46,13 @@ Strict file-count behavior:
 2. The placeholder side may be `debit` or `credit`; tax replacement writes to that same side.
 3. Learned tax routes use `merchant_key + target_account` evidence.
 4. Static fallback routes can use non-empty `target_tax_division` from:
-   1. `defaults/credit_card_statement/category_defaults.json`
-   2. `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`
-   3. shared `global_fallback`
+   1. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+   2. `defaults/credit_card_statement/category_defaults_tax_included.json`
+   3. `clients/<CLIENT_ID>/lines/credit_card_statement/config/category_overrides.json`
+   4. shared `global_fallback`
 5. Blank fallback tax values mean "no fallback" and preserve the current cell.
 6. Shared tax postprocess runs after placeholder-side tax replacement and may fill target-side tax amount in the same run.
+7. The active tracked defaults variant is selected by `clients/<CLIENT_ID>/config/yayoi_tax_config.json` `bookkeeping_mode`.
 
 ## Operator config
 

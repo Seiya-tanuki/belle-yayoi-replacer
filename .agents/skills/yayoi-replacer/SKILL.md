@@ -103,7 +103,8 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 2. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
 3. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
 4. `credit_card_statement` tax routing thresholds are tuned in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json` under `tax_division_thresholds`.
-5. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
+5. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
+6. `credit_card_statement` では payable 側の出力勘定科目が teacher-derived canonical payable account に書き換わることがある。
 
 ### Examples (dialog)
 1. User: 「yayoi-replacerを実行して」
@@ -125,8 +126,8 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - bank training input contract or learning safety gates are violated (`0/0` is allowed, otherwise `1/1` only; one-side-new mismatch / manifests-known-but-not-applied / `pairs_unique_used == 0`)
 4. `credit_card_statement` behavior:
    - in `--line all`: 他ラインと同様に input 契約で `RUN` / `SKIP` / `FAIL` を判定（未実装扱いの特別SKIPはしない）
-   - PLAN は file-level card inference の確信度不足を事前確定できないため、実行時に strict-stop（exit `2`）が起こりうる
-   - strict-stop 条件: `payable_sub_fill_required_failed == true`（成果物は保持）
+   - PLAN は file-level card inference の確信度不足や canonical payable の安全利用可否を事前確定できないため、実行時に strict-stop（exit `2`）が起こりうる
+   - strict-stop 条件: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true`（成果物は保持）
 
 ## Confirmation gate
 1. If PLAN has any `FAIL`, execution is blocked and exits 1.
@@ -141,6 +142,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 5. During execution, strict-stop returns exit 2 after writing artifacts for:
    - `bank_statement` when `bank_sub_fill_required_failed == true`
    - `credit_card_statement` when `payable_sub_fill_required_failed == true`
+   - `credit_card_statement` when `canonical_payable_required_failed == true`
 
 ## Runtime behavior (line execution)
 1. The skill entrypoint is a dispatcher only.

@@ -113,6 +113,20 @@ def _minimal_credit_card_line_config_json(*, include_tax_sections: bool = True) 
     return json.dumps(payload, ensure_ascii=False)
 
 
+def _write_credit_card_template_config(
+    repo_root: Path,
+    *,
+    config_obj: dict | None = None,
+    include_tax_sections: bool = True,
+) -> None:
+    if config_obj is None:
+        config_obj = json.loads(_minimal_credit_card_line_config_json(include_tax_sections=include_tax_sections))
+    _write_text(
+        repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement" / "config" / "credit_card_line_config.json",
+        json.dumps(config_obj, ensure_ascii=False),
+    )
+
+
 def _write_minimal_lexicon_with_category(repo_root: Path, category_key: str = "known_a") -> None:
     _write_text(
         repo_root / "lexicon" / "lexicon.json",
@@ -655,10 +669,7 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_common_repo_layout(repo_root, "credit_card_statement")
-            _write_text(
-                repo_root / "clients" / "TEMPLATE" / "lines" / "credit_card_statement" / "config" / "credit_card_line_config.json",
-                _minimal_credit_card_line_config_json(include_tax_sections=False),
-            )
+            _write_credit_card_template_config(repo_root, include_tax_sections=False)
             _write_minimal_lexicon_with_category(repo_root)
             _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
 
@@ -668,10 +679,147 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
             self.assertNotEqual(0, rc, msg=output)
             report = _read_latest_report(repo_root)
             self.assertIn(
-                "| C47 clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required tax_division_thresholds sections | FAIL |",
+                "| C47 clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required credit-card v2 payable/canonical/tax config sections | FAIL |",
                 report,
             )
             self.assertIn("tax_division_thresholds=missing_or_invalid", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_missing_target_payable_placeholder_names_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_missing_payable_placeholders_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            config_obj = json.loads(_minimal_credit_card_line_config_json())
+            config_obj.pop("target_payable_placeholder_names", None)
+            _write_credit_card_template_config(repo_root, config_obj=config_obj)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "target_payable_placeholder_names is required and must be a list of non-blank strings",
+                report,
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_blank_only_target_payable_placeholder_names_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_blank_payable_placeholders_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            config_obj = json.loads(_minimal_credit_card_line_config_json())
+            config_obj["target_payable_placeholder_names"] = [" ", ""]
+            _write_credit_card_template_config(repo_root, config_obj=config_obj)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn("target_payable_placeholder_names must contain at least one non-blank value", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_missing_canonical_payable_thresholds_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_missing_canonical_thresholds_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            config_obj = json.loads(_minimal_credit_card_line_config_json())
+            teacher_extraction = dict(config_obj.get("teacher_extraction") or {})
+            teacher_extraction.pop("canonical_payable_thresholds", None)
+            config_obj["teacher_extraction"] = teacher_extraction
+            _write_credit_card_template_config(repo_root, config_obj=config_obj)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "teacher_extraction.canonical_payable_thresholds is required and must be an object",
+                report,
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_invalid_canonical_payable_min_count_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_invalid_canonical_min_count_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            config_obj = json.loads(_minimal_credit_card_line_config_json())
+            config_obj["teacher_extraction"]["canonical_payable_thresholds"]["min_count"] = 0
+            _write_credit_card_template_config(repo_root, config_obj=config_obj)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "teacher_extraction.canonical_payable_thresholds.min_count must be an integer >= 1",
+                report,
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_invalid_canonical_payable_min_p_majority_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_invalid_canonical_min_p_majority_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            config_obj = json.loads(_minimal_credit_card_line_config_json())
+            config_obj["teacher_extraction"]["canonical_payable_thresholds"]["min_p_majority"] = 0
+            _write_credit_card_template_config(repo_root, config_obj=config_obj)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "teacher_extraction.canonical_payable_thresholds.min_p_majority must be > 0 and <= 1",
+                report,
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_template_config_valid_v2_contract_passes(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_cc_valid_v2_contract_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "credit_card_statement")
+            _write_credit_card_template_config(repo_root)
+            _write_minimal_lexicon_with_category(repo_root)
+            _write_mode_aware_defaults(repo_root, "credit_card_statement", "{}\n")
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "credit_card_statement")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C47 clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required credit-card v2 payable/canonical/tax config sections | PASS |",
+                report,
+            )
+            self.assertIn("target_payable_placeholder_names=ok", report)
+            self.assertIn("teacher_extraction.canonical_payable_thresholds=ok", report)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

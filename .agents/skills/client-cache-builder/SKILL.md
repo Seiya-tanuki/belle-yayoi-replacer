@@ -1,11 +1,11 @@
 ---
 name: client-cache-builder
-description: Update append-only client_cache.json from ledger_ref inbox files. Explicit invocation only.
+description: Update append-only per-line client caches from line-specific teacher inputs. Explicit invocation only.
 ---
 
 # client-cache-builder
 
-Updates per-line `client_cache.json` from historical finalized journal CSV/TXT files.
+Updates per-line `client_cache.json` from historical finalized teacher inputs. Line-specific learning contracts differ.
 
 ## Inputs
 1. Preferred line layout:
@@ -19,8 +19,12 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 
 ## Outputs
 1. `.../artifacts/cache/client_cache.json`
-2. `.../artifacts/ingest/ledger_ref_ingested.json`
+2. line-specific ingest manifest(s)
 3. `.../artifacts/telemetry/client_cache_update_run_<TS>.json`
+
+Additional credit-card managed outputs:
+1. `.../artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv`
+2. `.../artifacts/derived/cc_teacher_manifest.json`
 
 ## Ingest behavior
 1. `inputs/ledger_ref/` is an inbox only.
@@ -33,11 +37,22 @@ Updates per-line `client_cache.json` from historical finalized journal CSV/TXT f
 6. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable (line-specific contracts apply).
 
 ## Notes
-1. Uses only summary (17th col) and debit account (5th col).
-2. Memo (22nd col) is never used.
-3. Tracked repository baseline contains no per-client `client_cache.json`; the builder creates the file from client state when absent and then updates it append-only.
-4. `artifacts/*` is system-managed.
-5. `--config` is receipt-specific. It is not used by `bank_statement` or `credit_card_statement`.
+1. `receipt`:
+   - raw teacher input is `inputs/ledger_ref/`
+   - learning uses summary (17th col) + debit account (5th col)
+   - memo (22nd col) is not used
+2. `bank_statement`:
+   - raw teacher inputs are `inputs/training/ocr_kari_shiwake/` and `inputs/training/reference_yayoi/`
+   - learning uses paired bank training data and training ingest manifests
+3. `credit_card_statement`:
+   - raw teacher input is `inputs/ledger_ref/`
+   - learning uses derived teacher rows only; raw `ledger_ref` rows are not learned directly
+   - system-managed derived assets live under `artifacts/derived/cc_teacher/`
+   - `artifacts/derived/cc_teacher_manifest.json` is the derived-teacher manifest used for raw-to-derived provenance and cache application state
+   - telemetry/reporting includes `raw_rows_observed_added`, `derived_rows_selected_added`, `rows_total_added`, `rows_used_added`, and cache `canonical_payable_status`
+4. Tracked repository baseline contains no per-client `client_cache.json`; the builder creates the file from client state when absent and then updates it append-only.
+5. `artifacts/*` is system-managed.
+6. `--config` is receipt-specific. It is not used by `bank_statement` or `credit_card_statement`.
 
 ## Execution
 ```bash

@@ -492,22 +492,56 @@ def _validate_receipt_runtime_tax_sections(config_path: Path) -> tuple[bool, str
     )
 
 
-def _validate_credit_card_template_tax_sections(config_path: Path) -> tuple[bool, str]:
+def _validate_credit_card_template_config_sections(config_path: Path) -> tuple[bool, str]:
     try:
         obj = _load_json_object(config_path, label="credit_card_line_config")
     except Exception as exc:
         return False, str(exc)
 
-    issues = _validate_threshold_routes(
+    issues: List[str] = []
+
+    raw_placeholder_names = obj.get("target_payable_placeholder_names")
+    if not isinstance(raw_placeholder_names, list):
+        issues.append("target_payable_placeholder_names is required and must be a list of non-blank strings")
+    else:
+        normalized_placeholder_names = [str(value or "").strip() for value in raw_placeholder_names]
+        if not any(normalized_placeholder_names):
+            issues.append("target_payable_placeholder_names must contain at least one non-blank value")
+
+    teacher_extraction = obj.get("teacher_extraction")
+    canonical_payable_thresholds = (
+        teacher_extraction.get("canonical_payable_thresholds")
+        if isinstance(teacher_extraction, dict)
+        else None
+    )
+    if not isinstance(canonical_payable_thresholds, dict):
+        issues.append("teacher_extraction.canonical_payable_thresholds is required and must be an object")
+    else:
+        min_count = canonical_payable_thresholds.get("min_count")
+        if not _is_int_like(min_count) or int(min_count) < 1:
+            issues.append("teacher_extraction.canonical_payable_thresholds.min_count must be an integer >= 1")
+        min_p_majority = canonical_payable_thresholds.get("min_p_majority")
+        if not _is_float_like(min_p_majority):
+            issues.append("teacher_extraction.canonical_payable_thresholds.min_p_majority must be > 0 and <= 1")
+        else:
+            parsed_min_p_majority = float(min_p_majority)
+            if parsed_min_p_majority <= 0.0 or parsed_min_p_majority > 1.0:
+                issues.append("teacher_extraction.canonical_payable_thresholds.min_p_majority must be > 0 and <= 1")
+
+    issues.extend(
+        _validate_threshold_routes(
         obj.get("tax_division_thresholds"),
         section_name="tax_division_thresholds",
         route_names=_CC_TAX_THRESHOLD_ROUTES,
+        )
     )
     if issues:
         return False, f"{config_path.name}: " + "; ".join(issues)
     return (
         True,
-        f"{config_path.name}: tax_division_thresholds/routes={len(_CC_TAX_THRESHOLD_ROUTES)}",
+        f"{config_path.name}: target_payable_placeholder_names=ok; "
+        "teacher_extraction.canonical_payable_thresholds=ok; "
+        f"tax_division_thresholds/routes={len(_CC_TAX_THRESHOLD_ROUTES)}",
     )
 
 
@@ -1758,16 +1792,17 @@ def main() -> int:
             "Restore the tracked TEMPLATE credit_card_line_config.json from source control.",
         )
         if card_template_config_path.is_file():
-            c47_passed, c47_evidence = _validate_credit_card_template_tax_sections(card_template_config_path)
+            c47_passed, c47_evidence = _validate_credit_card_template_config_sections(card_template_config_path)
         else:
             c47_passed = False
             c47_evidence = "missing path: clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json"
         add_hard(
             "C47",
-            "clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required tax_division_thresholds sections",
+            "clients/TEMPLATE/lines/credit_card_statement/config/credit_card_line_config.json contains required credit-card v2 payable/canonical/tax config sections",
             c47_passed,
             c47_evidence,
-            "Restore the TEMPLATE credit-card tax threshold sections under tax_division_thresholds.",
+            "Restore the TEMPLATE credit-card config contract: target_payable_placeholder_names, "
+            "teacher_extraction.canonical_payable_thresholds, and tax_division_thresholds.",
         )
 
         credit_card_override_targets = [
