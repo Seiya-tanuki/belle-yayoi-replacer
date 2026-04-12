@@ -145,11 +145,12 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
                 ingest_inputs=False,
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
+                line_id="receipt",
             )
             self.assertEqual(autogrow.processed_files, 1)
             self.assertFalse(any("missing_ingested_file" in w for w in autogrow.warnings))
 
-            queue_csv = repo_root / "lexicon" / "pending" / "label_queue.csv"
+            queue_csv = repo_root / "lexicon" / "receipt" / "pending" / "label_queue.csv"
             self.assertEqual(_read_queue_count(queue_csv, "AUTOGROWSHOP"), 1)
 
 

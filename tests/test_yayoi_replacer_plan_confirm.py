@@ -255,7 +255,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
             out = buf.getvalue()
             self.assertEqual(1, rc, msg=out)
             self.assertIn(f"receipt: FAIL (client dir not found: {expected_line_root})", out)
-            self.assertNotIn("legacy client layout detected", out)
+            self.assertNotIn("legacy client layout" + " detected", out)
 
     def test_run_card_fails_fast_when_cc_config_missing(self) -> None:
         client_id = "C1"

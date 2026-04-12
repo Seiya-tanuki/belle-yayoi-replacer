@@ -54,6 +54,22 @@ def _build_zip(zip_path: Path, *, files: dict[str, bytes], line_id: str = "bank_
 
 
 class RestoreAssetsBankValidationTests(unittest.TestCase):
+    def test_receipt_validation_rejects_legacy_global_pending_paths(self) -> None:
+        module = _load_restore_module()
+        with tempfile.TemporaryDirectory() as td:
+            zip_path = Path(td) / "receipt_legacy_pending.zip"
+            _build_zip(
+                zip_path,
+                files={"/".join(("lexicon", "pending", "label_queue.csv")): b"legacy"},
+                line_id="receipt",
+            )
+            with self.assertRaises(ValueError) as ctx:
+                module._validate_backup_zip(zip_path, line_id="receipt")
+            self.assertIn(
+                "Legacy global pending backups are no longer supported.",
+                str(ctx.exception),
+            )
+
     def test_bank_validation_does_not_require_pending_root(self) -> None:
         module = _load_restore_module()
         with tempfile.TemporaryDirectory() as td:

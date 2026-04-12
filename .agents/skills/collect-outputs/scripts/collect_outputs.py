@@ -203,17 +203,13 @@ def _discover_clients(repo_root: Path) -> List[str]:
     return clients
 
 
-def _discover_run_roots_for_client(repo_root: Path, client_id: str, line_id: str) -> Tuple[List[Tuple[str, Path]], bool, bool]:
+def _discover_run_roots_for_client(repo_root: Path, client_id: str, line_id: str) -> Tuple[List[Tuple[str, Path]], bool]:
     roots: List[Tuple[str, Path]] = []
     line_root = repo_root / "clients" / client_id / "lines" / line_id / "outputs" / "runs"
-    legacy_root = repo_root / "clients" / client_id / "outputs" / "runs"
     line_exists = line_root.exists()
-    legacy_exists = legacy_root.exists()
     if line_exists:
         roots.append(("line", line_root))
-    if line_id == "receipt" and legacy_exists:
-        roots.append(("legacy", legacy_root))
-    return roots, line_exists, legacy_exists
+    return roots, line_exists
 
 
 def _build_run_files(client_id: str, line_id: str, run_dir: Path, layout: str) -> Optional[RunFiles]:
@@ -254,10 +250,10 @@ def _discover_runs_for_client(
     line_id: str,
     target_date_jst: date,
     time_range: Optional[Tuple[int, int, str]],
-) -> Tuple[List[RunFiles], int, bool, bool]:
-    run_roots, line_exists, legacy_exists = _discover_run_roots_for_client(repo_root, client_id, line_id)
+) -> Tuple[List[RunFiles], int, bool]:
+    run_roots, line_exists = _discover_run_roots_for_client(repo_root, client_id, line_id)
     if not run_roots:
-        return [], 0, line_exists, legacy_exists
+        return [], 0, line_exists
 
     matched: List[RunFiles] = []
     invalid_run_id_count = 0
@@ -279,7 +275,7 @@ def _discover_runs_for_client(
                 if run_minutes < start_min or run_minutes > end_min:
                     continue
             matched.append(run_files)
-    return matched, invalid_run_id_count, line_exists, legacy_exists
+    return matched, invalid_run_id_count, line_exists
 
 
 def _collect_runs_for_line(
@@ -293,15 +289,13 @@ def _collect_runs_for_line(
     matched_runs: List[RunFiles] = []
     invalid_run_id_count = 0
     for client_id in selected_client_ids:
-        runs, invalid_count, line_exists, legacy_exists = _discover_runs_for_client(
+        runs, invalid_count, _line_exists = _discover_runs_for_client(
             repo_root,
             client_id,
             line_id=line_id,
             target_date_jst=target_jst_date,
             time_range=time_range,
         )
-        if line_id == "receipt" and (not line_exists) and legacy_exists:
-            print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
         matched_runs.extend(runs)
         invalid_run_id_count += invalid_count
 
@@ -321,7 +315,7 @@ def _resolve_run_ref(repo_root: Path, run_ref: str, *, allowed_line_ids: Sequenc
     client_id, run_id = _split_run_ref(run_ref)
     matches: List[RunFiles] = []
     for line_id in allowed_line_ids:
-        run_roots, _line_exists, _legacy_exists = _discover_run_roots_for_client(repo_root, client_id, line_id)
+        run_roots, _line_exists = _discover_run_roots_for_client(repo_root, client_id, line_id)
         for layout, runs_dir in run_roots:
             run_dir = runs_dir / run_id
             if not run_dir.is_dir():

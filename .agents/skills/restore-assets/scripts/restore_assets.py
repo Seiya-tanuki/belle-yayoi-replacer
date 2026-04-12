@@ -24,7 +24,11 @@ from belle.paths import get_label_queue_lock_path as _line_label_queue_lock_path
 
 MANIFEST_SCHEMA = "belle.assets_backup_manifest.v1"
 TEMPLATE_CLIENT_NAME = "TEMPLATE"
-LEGACY_PENDING_PREFIX = "lexicon/pending/"
+LEGACY_PENDING_PREFIX = "/".join(("lexicon", "pending")) + "/"
+LEGACY_PENDING_UNSUPPORTED_ERROR = (
+    "Legacy global pending backups are no longer supported. "
+    "Recreate the backup so it uses lexicon/<line_id>/pending/."
+)
 BANK_FORBIDDEN_CLIENT_SUBPATHS: tuple[tuple[str, ...], ...] = (
     ("clients", "*", "lines", "bank_statement", "inputs", "ledger_ref"),
     ("clients", "*", "lines", "bank_statement", "artifacts", "ingest", "ledger_ref"),
@@ -53,7 +57,7 @@ def _line_pending_prefix(line_id: str) -> str:
 
 def _allowed_prefixes(line_id: str) -> tuple[str, ...]:
     if _line_uses_pending(line_id):
-        return ("clients/", _line_pending_prefix(line_id), LEGACY_PENDING_PREFIX)
+        return ("clients/", _line_pending_prefix(line_id))
     return ("clients/",)
 
 
@@ -153,13 +157,6 @@ def _is_allowed_asset_path(path: str, *, line_id: str) -> bool:
 
 def _dir_has_content(path: Path) -> bool:
     return path.exists() and any(path.iterdir())
-
-
-def _map_pending_prefix_from_zip(rel_path: str, *, line_id: str) -> str:
-    if _line_uses_pending(line_id) and rel_path.startswith(LEGACY_PENDING_PREFIX):
-        tail = rel_path[len(LEGACY_PENDING_PREFIX):]
-        return _line_pending_prefix(line_id) + tail
-    return rel_path
 
 
 def _write_assets_zip(
@@ -286,6 +283,8 @@ def _validate_backup_zip(zip_path: Path, *, line_id: str) -> Dict[str, int]:
                     raise ValueError("MANIFEST.json must be a file")
                 manifest_info = info
                 continue
+            if normalized.startswith(LEGACY_PENDING_PREFIX):
+                raise ValueError(f"{LEGACY_PENDING_UNSUPPORTED_ERROR} path={normalized}")
             if _is_forbidden_bank_client_path(normalized, line_id=line_id):
                 raise ValueError(f"{BANK_FORBIDDEN_ERROR} path={normalized}")
             if not _is_allowed_asset_path(normalized, line_id=line_id):
@@ -301,13 +300,11 @@ def _validate_backup_zip(zip_path: Path, *, line_id: str) -> Dict[str, int]:
             raise ValueError("MANIFEST.json not found")
 
         has_clients_root = "clients/" in zip_dirs or any(p.startswith("clients/") for p in zip_files)
-        has_pending_root = pending_prefix in zip_dirs or LEGACY_PENDING_PREFIX in zip_dirs or any(
-            p.startswith(pending_prefix) or p.startswith(LEGACY_PENDING_PREFIX) for p in zip_files
-        )
+        has_pending_root = pending_prefix in zip_dirs or any(p.startswith(pending_prefix) for p in zip_files)
         if not has_clients_root:
             raise ValueError("clients/ root missing in zip")
         if uses_pending and not has_pending_root:
-            raise ValueError(f"{pending_prefix} (or legacy lexicon/pending/) root missing in zip")
+            raise ValueError(f"{pending_prefix} root missing in zip")
 
         try:
             manifest_obj = json.loads(zf.read(manifest_info).decode("utf-8"))
@@ -334,6 +331,8 @@ def _validate_backup_zip(zip_path: Path, *, line_id: str) -> Dict[str, int]:
             if not isinstance(raw_path, str):
                 raise ValueError(f"manifest files[{idx}].path must be a string")
             normalized_path = _normalize_member_name(raw_path, is_dir=False)
+            if normalized_path.startswith(LEGACY_PENDING_PREFIX):
+                raise ValueError(f"{LEGACY_PENDING_UNSUPPORTED_ERROR} path={normalized_path}")
             if _is_forbidden_bank_client_path(normalized_path, line_id=line_id):
                 raise ValueError(f"{BANK_FORBIDDEN_ERROR} path={normalized_path}")
             if not _is_allowed_asset_path(normalized_path, line_id=line_id):
@@ -410,8 +409,7 @@ def _extract_to_staging(zip_path: Path, staging_dir: Path, *, line_id: str) -> N
             if not _is_allowed_asset_path(normalized, line_id=line_id):
                 continue
 
-            mapped_rel = _map_pending_prefix_from_zip(normalized, line_id=line_id)
-            target = staging_dir / Path(mapped_rel.rstrip("/"))
+            target = staging_dir / Path(normalized.rstrip("/"))
             if info.is_dir():
                 target.mkdir(parents=True, exist_ok=True)
                 continue

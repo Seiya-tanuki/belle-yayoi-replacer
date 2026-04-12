@@ -664,6 +664,41 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_receipt_root_level_override_is_ignored_without_line_root(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_receipt_root_override_ignored_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "receipt")
+            _prepare_receipt_assets(repo_root, with_lexicon=True)
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_LEGACY" / "config" / "category_overrides.json",
+                json.dumps(
+                    {
+                        "schema": "belle.category_overrides.v2",
+                        "client_id": "C_RECEIPT_LEGACY",
+                        "generated_at": "2026-04-09T00:00:00Z",
+                        "note_ja": "legacy root shape",
+                        "overrides": {
+                            "known_a": {
+                                "target_account": "旅費交通費",
+                                "target_tax_division": "課対仕入内10%適格",
+                            }
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "receipt")
+
+            self.assertEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn("N/A: no receipt category_overrides targets detected", report)
+            self.assertNotIn("clients/C_RECEIPT_LEGACY/config/category_overrides.json", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_credit_card_template_config_missing_tax_sections_is_hard_failure(self) -> None:
         repo_root = self.test_tmp_root / f"diagnose_cc_tax_sections_fail_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)

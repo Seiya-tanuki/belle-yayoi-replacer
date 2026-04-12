@@ -58,7 +58,6 @@ Current v1 runtime scope:
 8. `$restore-assets`
 9. `$system-diagnose`
 10. `$collect-outputs`
-11. `$migrate-line-layout`
 
 ## Canonical line inputs (current)
 
@@ -79,20 +78,6 @@ Queue/state/log files are generated at runtime from empty state.
 
 All queue/state mutation is protected by:
 1. `lexicon/receipt/pending/locks/label_queue.lock`
-
-## Phase 2 migration utility
-
-Migrate legacy receipt layout into canonical line-scoped layout with fail-closed safety checks.
-
-```bash
-python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client ALL --dry-run true --line receipt
-```
-
-Apply migration (copy mode):
-
-```bash
-python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client ALL --mode copy --apply --dry-run false --line receipt
-```
 
 ## Specs
 

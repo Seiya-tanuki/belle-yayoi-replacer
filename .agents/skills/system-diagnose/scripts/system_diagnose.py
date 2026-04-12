@@ -560,10 +560,6 @@ def _discover_receipt_override_targets(repo_root: Path) -> List[tuple[str, Path,
         line_root = client_dir / "lines" / "receipt"
         if line_root.exists():
             found.append((client_id, line_root / "config" / "category_overrides.json", "line"))
-            continue
-        legacy_path = client_dir / "config" / "category_overrides.json"
-        if legacy_path.exists():
-            found.append((client_id, legacy_path, "legacy"))
     return found
 
 

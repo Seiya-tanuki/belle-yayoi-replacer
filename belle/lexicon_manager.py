@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 """
-Lexicon pending workflow (global, offline).
+Lexicon pending workflow (line-aware, offline).
 
 Current mode:
 - `ledger_ref` is the only active source for candidate extraction.
-- Candidate queue growth is append-only and guarded by a global lock.
-- Queue apply is guarded by the same global lock to avoid lost updates.
+- Candidate queue growth is append-only and guarded by a line-aware lock.
+- Queue apply is guarded by the same line-aware lock to avoid lost updates.
 """
 
 from collections import Counter
@@ -35,8 +35,6 @@ from .paths import (
     get_artifacts_telemetry_dir,
     get_client_root,
     get_label_queue_lock_path,
-    get_legacy_label_queue_lock_path,
-    get_legacy_lexicon_pending_dir,
     get_lexicon_pending_dir,
     get_ledger_ref_ingest_dir,
     get_ledger_ref_ingested_path,
@@ -614,12 +612,9 @@ def ensure_lexicon_candidates_updated_from_ledger_ref(
     ledger_ref_inbox_dir = client_dir / "inputs" / "ledger_ref"
     ledger_ref_store_dir = get_ledger_ref_ingest_dir(repo_root, client_id, line_id=client_line_id)
     manifest_path = get_ledger_ref_ingested_path(repo_root, client_id, line_id=client_line_id)
-    if line_id is None:
-        pending_dir = get_legacy_lexicon_pending_dir(repo_root)
-        lock_path = get_legacy_label_queue_lock_path(repo_root)
-    else:
-        pending_dir = get_lexicon_pending_dir(repo_root, line_id)
-        lock_path = get_label_queue_lock_path(repo_root, line_id)
+    pending_line_id = line_id or client_line_id or "receipt"
+    pending_dir = get_lexicon_pending_dir(repo_root, pending_line_id)
+    lock_path = get_label_queue_lock_path(repo_root, pending_line_id)
     queue_csv_path = pending_dir / "label_queue.csv"
     queue_state_path = pending_dir / "label_queue_state.json"
     telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_line_id)

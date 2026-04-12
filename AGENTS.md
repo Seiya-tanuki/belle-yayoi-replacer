@@ -22,7 +22,6 @@
    8. `$restore-assets`: restore field assets (`clients/` + `lexicon/<line_id>/pending/`) from a backup ZIP with force/safety gates.
    9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
    10. `$collect-outputs`: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、`exports/collect/` に単一ZIPを出力。
-   11. `$migrate-line-layout`: receipt 旧レイアウト資産を line-aware 配置へ安全に移行する。
 4. Current runtime behavior:
    1. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable via explicit skill invocation.
    2. `receipt` flow is `ledger_ref`-based (`inputs/ledger_ref` + `artifacts/ingest/ledger_ref*`).

@@ -180,7 +180,7 @@ class CollectOutputsTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_collect_outputs_receipt_mode_keeps_legacy_root_inclusion(self) -> None:
+    def test_collect_outputs_receipt_mode_ignores_legacy_root(self) -> None:
         module = _load_collect_module()
         test_tmp_root = Path(__file__).resolve().parents[1] / ".tmp"
         test_tmp_root.mkdir(parents=True, exist_ok=True)
@@ -233,10 +233,17 @@ class CollectOutputsTests(unittest.TestCase):
                     "csv/R1__20260215T010203Z_LINE__line_replaced_20260215T010203Z_LINE.csv",
                     names,
                 )
-                self.assertIn(
+                self.assertNotIn(
                     "csv/R1__20260215T010500Z_LEGACY__legacy_replaced_20260215T010500Z_LEGACY.csv",
                     names,
                 )
+
+                manifest_obj = json.loads(zf.read("MANIFEST.json").decode("utf-8"))
+                source_relpaths = [item["source_relpath"] for item in manifest_obj["items"]]
+                self.assertTrue(
+                    any("clients/R1/lines/receipt/outputs/runs/20260215T010203Z_LINE" in rel for rel in source_relpaths)
+                )
+                self.assertFalse(any("clients/R1/outputs/runs/20260215T010500Z_LEGACY" in rel for rel in source_relpaths))
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

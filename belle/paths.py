@@ -120,18 +120,6 @@ def get_kari_shiwake_ingested_path(repo_root: Path, client_id: str, line_id: Opt
     return get_artifacts_ingest_dir(repo_root, client_id, line_id=line_id) / "kari_shiwake_ingested.json"
 
 
-def get_legacy_lexicon_pending_dir(repo_root: Path) -> Path:
-    return repo_root / "lexicon" / "pending"
-
-
-def get_legacy_lexicon_pending_locks_dir(repo_root: Path) -> Path:
-    return get_legacy_lexicon_pending_dir(repo_root) / "locks"
-
-
-def get_legacy_label_queue_lock_path(repo_root: Path) -> Path:
-    return get_legacy_lexicon_pending_locks_dir(repo_root) / "label_queue.lock"
-
-
 def get_lexicon_pending_dir(repo_root: Path, line_id: str) -> Path:
     line = validate_line_id(line_id)
     return repo_root / "lexicon" / line / "pending"
