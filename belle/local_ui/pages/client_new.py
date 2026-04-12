@@ -38,15 +38,8 @@ def build() -> None:
     def update_bookkeeping_mode(value: str) -> None:
         model["bookkeeping_mode"] = value or ""
 
-    def _preview_row_key(row: client_bootstrap.ClientBootstrapPreviewRow) -> tuple[str, str]:
-        return (row.line_id, row.category_key)
-
-    def _preview_rows_by_line() -> dict[str, list[client_bootstrap.ClientBootstrapPreviewRow]]:
-        rows_by_line: dict[str, list[client_bootstrap.ClientBootstrapPreviewRow]] = {}
-        for section in teacher_state["value"].preview.sections:
-            for row in section.rows:
-                rows_by_line.setdefault(row.line_id, []).append(row)
-        return rows_by_line
+    def _preview_row_key(row: client_bootstrap.ClientBootstrapPreviewRow) -> tuple[tuple[str, ...], str]:
+        return (row.line_ids, row.category_key)
 
     def reset_preview_selection() -> None:
         selected_preview_rows["value"] = {
@@ -56,14 +49,16 @@ def build() -> None:
         }
 
     def selected_bootstrap_categories() -> dict[str, list[str]]:
-        rows_by_line = _preview_rows_by_line()
+        selected_by_line: dict[str, set[str]] = {}
+        for section in teacher_state["value"].preview.sections:
+            for row in section.rows:
+                if _preview_row_key(row) not in selected_preview_rows["value"]:
+                    continue
+                for line_id in row.line_ids:
+                    selected_by_line.setdefault(line_id, set()).add(row.category_key)
         return {
-            line_id: [
-                row.category_key
-                for row in rows
-                if _preview_row_key(row) in selected_preview_rows["value"]
-            ]
-            for line_id, rows in rows_by_line.items()
+            line_id: sorted(category_keys)
+            for line_id, category_keys in selected_by_line.items()
         }
 
     def set_preview_row_selected(row: client_bootstrap.ClientBootstrapPreviewRow, selected: bool) -> None:

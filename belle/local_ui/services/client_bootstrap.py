@@ -31,7 +31,7 @@ _NO_VISIBLE_CHANGES_MESSAGE = "このファイルでは自動設定は変わり�
 
 @dataclass(frozen=True)
 class ClientBootstrapPreviewRow:
-    line_id: str
+    line_ids: tuple[str, ...]
     category_key: str
     category_label: str
     replacement_account: str
@@ -196,6 +196,9 @@ def _build_preview(
     bookkeeping_mode: str,
     analysis: CategoryOverrideBootstrapAnalysis,
 ) -> ClientBootstrapPreview:
+    def _row_signature(row: ClientBootstrapPreviewRow) -> tuple[str, str, str]:
+        return (row.category_key, row.category_label, row.replacement_account)
+
     category_labels = _load_preview_category_labels(current_root)
     changes_by_line: dict[str, tuple[ClientBootstrapPreviewRow, ...]] = {}
     for line_id in PREVIEW_LINE_IDS:
@@ -212,7 +215,7 @@ def _build_preview(
         )
         changes_by_line[line_id] = tuple(
             ClientBootstrapPreviewRow(
-                line_id=line_id,
+                line_ids=(line_id,),
                 category_key=change.category_key,
                 category_label=category_labels.get(change.category_key, change.category_label or change.category_key),
                 replacement_account=change.to_target_account,
@@ -224,6 +227,19 @@ def _build_preview(
     credit_rows = changes_by_line["credit_card_statement"]
     if not receipt_rows and not credit_rows:
         return ClientBootstrapPreview(note=_NO_VISIBLE_CHANGES_MESSAGE)
+    if tuple(_row_signature(row) for row in receipt_rows) == tuple(_row_signature(row) for row in credit_rows):
+        shared_rows = tuple(
+            ClientBootstrapPreviewRow(
+                line_ids=PREVIEW_LINE_IDS,
+                category_key=row.category_key,
+                category_label=row.category_label,
+                replacement_account=row.replacement_account,
+            )
+            for row in receipt_rows
+        )
+        return ClientBootstrapPreview(
+            sections=(ClientBootstrapPreviewSection(title="", rows=shared_rows),),
+        )
 
     sections = tuple(
         ClientBootstrapPreviewSection(title=PREVIEW_LINE_LABELS[line_id], rows=rows)
