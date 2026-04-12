@@ -138,13 +138,14 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 
 1. `clients/<CLIENT_ID>/config/yayoi_tax_config.json` is the shared client config path for Yayoi tax postprocess.
 2. The shared tax postprocess is wired into `receipt`, `bank_statement`, and `credit_card_statement`.
-3. `clients/TEMPLATE/config/yayoi_tax_config.json` is currently tracked with `enabled: true`, and new clients inherit that default unless they change the file.
-4. The tracked template currently sets `bookkeeping_mode: tax_excluded`.
-5. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
-6. `receipt` / `credit_card_statement` tracked defaults are dual assets selected by `bookkeeping_mode`.
-7. `clients/<CLIENT_ID>/artifacts/client_registration/` is the shared audit location for successful new-client registration runs.
-8. `clients/<CLIENT_ID>/artifacts/client_registration/runs/<RUN_ID>/run_manifest.json` stores onboarding provenance only; it is not a runtime replacer artifact.
-9. `clients/<CLIENT_ID>/artifacts/client_registration/LATEST.txt` points to the latest successful registration audit run.
+3. `clients/TEMPLATE/config/yayoi_tax_config.json` is tracked as the staged template baseline and is validated as part of template integrity.
+4. New-client registration rewrites the staged client copy to match the operator-selected `bookkeeping_mode`.
+5. The tracked template currently sets `enabled: true` and `bookkeeping_mode: tax_excluded`, but this is not the final contract for newly registered clients.
+6. The shared target-side override contract for `receipt` and `credit_card_statement` is `target_account` / `target_tax_division`.
+7. `receipt` / `credit_card_statement` tracked defaults are dual assets selected by `bookkeeping_mode`.
+8. `clients/<CLIENT_ID>/artifacts/client_registration/` is the shared audit location for successful new-client registration runs.
+9. `clients/<CLIENT_ID>/artifacts/client_registration/runs/<RUN_ID>/run_manifest.json` stores onboarding provenance only; it is not a runtime replacer artifact.
+10. `clients/<CLIENT_ID>/artifacts/client_registration/LATEST.txt` points to the latest successful registration audit run.
 
 ## Runtime-managed assets (ignored)
 

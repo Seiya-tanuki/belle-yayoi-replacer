@@ -64,7 +64,7 @@ Strict file-count behavior:
    1. `merchant_key_target_account_exact`
    2. `merchant_key_target_account_partial`
 6. Shared tax postprocess config path is `clients/<CLIENT_ID>/config/yayoi_tax_config.json`.
-7. New clients inherit `clients/TEMPLATE/config/yayoi_tax_config.json`, and the tracked template currently sets `enabled: true`.
+7. `clients/TEMPLATE/config/yayoi_tax_config.json` is the staged template baseline; new-client registration rewrites the staged client copy to match the selected bookkeeping mode.
 8. Runtime canonical payable authority comes from cache `canonical_payable`; raw target placeholder names are not authoritative final payable accounts.
 
 ## Failure modes + How to fix

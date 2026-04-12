@@ -22,6 +22,7 @@
    8. `$restore-assets`: restore field assets (`clients/` + `lexicon/<line_id>/pending/`) from a backup ZIP with force/safety gates.
    9. `$system-diagnose`: run comprehensive environment/system readiness diagnostics and export a Markdown report under `exports/system_diagnose/`.
    10. `$collect-outputs`: クライアント横断で run 成果物（置換CSV・レビューCSV・manifest）を収集し、`exports/collect/` に単一ZIPを出力。
+   11. `$migrate-line-layout`: receipt 旧レイアウト資産を line-aware 配置へ安全に移行する。
 4. Current runtime behavior:
    1. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable via explicit skill invocation.
    2. `receipt` flow is `ledger_ref`-based (`inputs/ledger_ref` + `artifacts/ingest/ledger_ref*`).
@@ -76,7 +77,11 @@
    2. `credit_card_statement`: category fallback only (secondary to merchant-key routing).
    3. `bank_statement`: lexicon category routing is not wired.
 3. Pending queue (receipt-only, occasionally edited by users): `lexicon/receipt/pending/label_queue.csv`.
-4. Default account mappings: `defaults/<line_id>/category_defaults.json`.
+4. Default account mappings:
+   1. `defaults/receipt/category_defaults_tax_excluded.json`
+   2. `defaults/receipt/category_defaults_tax_included.json`
+   3. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
+   4. `defaults/credit_card_statement/category_defaults_tax_included.json`
 5. category_overrides (best-effort): `clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json` for `receipt` and `credit_card_statement`.
 6. Client delta cache: `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`.
    1. `client_cache` is append-only incremental state (no destructive rebuild by default).
