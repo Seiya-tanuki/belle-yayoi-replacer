@@ -59,18 +59,14 @@ def _has_bank_training_inputs_or_manifests(client_dir: Path) -> bool:
     return False
 
 
-def _resolve_client_layout(repo_root: Path, client_id: str, line_id: str) -> tuple[str | None, Path]:
+def _resolve_client_layout(repo_root: Path, client_id: str, line_id: str) -> tuple[str, Path]:
     line_dir = get_client_root(repo_root, client_id, line_id=line_id)
     if line_dir.exists():
         return line_id, line_dir
-    if line_id == "receipt":
-        legacy_dir = get_client_root(repo_root, client_id)
-        if legacy_dir.exists():
-            return None, legacy_dir
     raise SystemExit(f"client dir not found: {line_dir}")
 
 
-def find_client_id_auto(repo_root: Path, line_id: str) -> tuple[str, str | None]:
+def find_client_id_auto(repo_root: Path, line_id: str) -> tuple[str, str]:
     clients_dir = repo_root / "clients"
     cands = []
     for tdir in clients_dir.iterdir():
@@ -130,9 +126,6 @@ def main() -> None:
         client_layout_line_id, _ = _resolve_client_layout(repo_root, client_id, line_id)
     else:
         client_id, client_layout_line_id = find_client_id_auto(repo_root, line_id)
-
-    if client_layout_line_id is None:
-        print(f"[WARN] legacy client layout detected (no lines/{line_id}/). Using legacy paths for this run.")
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
     telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_layout_line_id)

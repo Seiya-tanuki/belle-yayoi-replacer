@@ -320,6 +320,23 @@ class InputDiscoveryHardeningTests(unittest.TestCase):
             self.assertEqual("AUTO_OK", client_id)
             self.assertEqual("bank_statement", client_layout_line_id)
 
+    def test_client_cache_builder_receipt_auto_detect_requires_line_layout(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        module = _load_script_module(
+            repo_root,
+            ".agents/skills/client-cache-builder/scripts/build_client_cache.py",
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            legacy_root = temp_repo_root / "clients" / "LEGACY_ONLY"
+            _write_text(legacy_root / "inputs" / "ledger_ref" / "LEDGER.CSV", "ok")
+
+            with self.assertRaises(SystemExit) as ctx:
+                module.find_client_id_auto(temp_repo_root, "receipt")
+
+            self.assertIn("no ledger_ref inbox files or ingest manifest entries found", str(ctx.exception))
+
     def test_lexicon_extract_auto_detect_ignores_unsupported_files_and_accepts_uppercase(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         module = _load_script_module(
@@ -340,6 +357,23 @@ class InputDiscoveryHardeningTests(unittest.TestCase):
             self.assertEqual("AUTO_OK", client_id)
             self.assertEqual("receipt", client_layout_line_id)
             self.assertEqual(line_root, client_dir)
+
+    def test_lexicon_extract_receipt_auto_detect_requires_line_layout(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        module = _load_script_module(
+            repo_root,
+            ".agents/skills/lexicon-extract/scripts/run_lexicon_extract.py",
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            legacy_root = temp_repo_root / "clients" / "LEGACY_ONLY"
+            _write_text(legacy_root / "inputs" / "ledger_ref" / "LEDGER.CSV", "ok")
+
+            with self.assertRaises(SystemExit) as ctx:
+                module.find_client_id_auto(temp_repo_root, "receipt")
+
+            self.assertIn("no ledger_ref inbox files or ingest manifest entries found", str(ctx.exception))
 
     def test_bank_training_detection_ignores_unsupported_files_and_respects_extension_contracts(self) -> None:
         with tempfile.TemporaryDirectory() as td:

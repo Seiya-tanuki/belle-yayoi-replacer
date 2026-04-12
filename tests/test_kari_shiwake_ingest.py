@@ -49,7 +49,7 @@ def _load_replacer_script_module(repo_root: Path):
 
 
 def _prepare_temp_repo_structure(repo_root: Path, client_id: str) -> Path:
-    client_dir = repo_root / "clients" / client_id
+    client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
     (client_dir / "config").mkdir(parents=True, exist_ok=True)
     (client_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (client_dir / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)

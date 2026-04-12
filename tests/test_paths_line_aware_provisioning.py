@@ -40,10 +40,10 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
             self.assertTrue((line_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
             self.assertTrue((line_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
 
-    def test_legacy_receipt_provisioning_still_creates_ledger_ref_ingest_dir(self) -> None:
+    def test_shared_root_provisioning_still_creates_root_scoped_dirs(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
-            client_id = "C_LEGACY_DIRS"
+            client_id = "C_SHARED_ROOT_DIRS"
             ensure_client_system_dirs(repo_root, client_id, line_id=None)
 
             client_root = repo_root / "clients" / client_id

@@ -29,14 +29,10 @@ def resolve_client_layout(
     repo_root: Path,
     client_id: str,
     line_id: str,
-) -> tuple[str | None, Path]:
+) -> tuple[str, Path]:
     line_dir = get_client_root(repo_root, client_id, line_id=line_id)
     if line_dir.exists():
         return line_id, line_dir
-    if line_id == "receipt":
-        legacy_dir = get_client_root(repo_root, client_id)
-        if legacy_dir.exists():
-            return None, legacy_dir
     raise FileNotFoundError(f"client dir not found: {line_dir}")
 
 

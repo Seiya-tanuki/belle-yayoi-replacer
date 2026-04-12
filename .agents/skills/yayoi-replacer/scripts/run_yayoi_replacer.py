@@ -178,7 +178,7 @@ def main() -> int:
         try:
             if line_id == "receipt":
                 raw_layout = details.get("client_layout_line_id")
-                if raw_layout not in {None, "receipt"}:
+                if raw_layout != "receipt":
                     raise RuntimeError(f"invalid receipt layout marker: {raw_layout}")
                 client_dir_raw = str(details.get("client_dir") or "")
                 if not client_dir_raw:

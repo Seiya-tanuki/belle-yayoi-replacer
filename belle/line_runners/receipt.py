@@ -55,7 +55,7 @@ def plan_receipt(repo_root: Path, client_id: str, *, config_path: Path) -> LineP
 
     details.update(
         {
-            "layout": "legacy" if client_layout_line_id is None else "line",
+            "layout": "line",
             "client_layout_line_id": client_layout_line_id,
             "client_dir": str(client_dir),
         }
@@ -93,7 +93,7 @@ def _ingest_single_kari_input(
     *,
     repo_root: Path,
     client_id: str,
-    client_layout_line_id: str | None,
+    client_layout_line_id: str,
     client_dir: Path,
 ) -> Any:
     in_dir = client_dir / "inputs" / "kari_shiwake"
@@ -122,12 +122,12 @@ def run_receipt(
     repo_root: Path,
     client_id: str,
     *,
-    client_layout_line_id: str | None,
+    client_layout_line_id: str,
     client_dir: Path,
     config_path: Path,
 ) -> dict[str, object]:
-    if client_layout_line_id is None:
-        print("[WARN] legacy client layout detected (no lines/receipt/). Using legacy paths for this run.")
+    if client_layout_line_id != LINE_ID_RECEIPT:
+        raise RuntimeError(f"invalid receipt layout marker: {client_layout_line_id}")
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
     yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)

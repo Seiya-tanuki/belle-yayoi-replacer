@@ -50,6 +50,12 @@ def _prepare_receipt_config(repo_root: Path) -> None:
     (ruleset_dir / "replacer_config_v1_15.json").write_text("{\"version\":\"1.15\"}\n", encoding="utf-8")
 
 
+def _prepare_legacy_receipt_dirs(repo_root: Path, client_id: str) -> Path:
+    receipt_root = repo_root / "clients" / client_id
+    (receipt_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
+    return receipt_root
+
+
 def _prepare_credit_card_config(repo_root: Path, client_id: str) -> None:
     cfg_path = (
         repo_root
@@ -222,6 +228,34 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
             self.assertIn("credit_card_statement: FAIL", out)
             self.assertIn(f"missing_cc_config: expected={expected_cfg}", out)
             self.assertIn("[ERROR] PLAN contains FAIL.", out)
+
+    def test_yayoi_replacer_receipt_plan_fails_for_legacy_root_layout(self) -> None:
+        real_repo_root = Path(__file__).resolve().parents[1]
+        client_id = "C1"
+        with tempfile.TemporaryDirectory() as td:
+            temp_repo_root = Path(td)
+            receipt_root = _prepare_legacy_receipt_dirs(temp_repo_root, client_id)
+            _prepare_receipt_config(temp_repo_root)
+            _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "target.csv", summary="LEGACY TARGET")
+            module = _load_replacer_script_module(real_repo_root)
+            module.__file__ = str(
+                temp_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+            )
+
+            expected_line_root = temp_repo_root / "clients" / client_id / "lines" / "receipt"
+            buf = io.StringIO()
+            with mock.patch.object(
+                sys,
+                "argv",
+                ["run_yayoi_replacer.py", "--client", client_id, "--line", "receipt", "--dry-run"],
+            ):
+                with contextlib.redirect_stdout(buf):
+                    rc = module.main()
+
+            out = buf.getvalue()
+            self.assertEqual(1, rc, msg=out)
+            self.assertIn(f"receipt: FAIL (client dir not found: {expected_line_root})", out)
+            self.assertNotIn("legacy client layout detected", out)
 
     def test_run_card_fails_fast_when_cc_config_missing(self) -> None:
         client_id = "C1"
