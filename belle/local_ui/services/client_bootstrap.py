@@ -31,6 +31,8 @@ _NO_VISIBLE_CHANGES_MESSAGE = "このファイルでは自動設定は変わり�
 
 @dataclass(frozen=True)
 class ClientBootstrapPreviewRow:
+    line_id: str
+    category_key: str
     category_label: str
     replacement_account: str
 
@@ -210,6 +212,8 @@ def _build_preview(
         )
         changes_by_line[line_id] = tuple(
             ClientBootstrapPreviewRow(
+                line_id=line_id,
+                category_key=change.category_key,
                 category_label=category_labels.get(change.category_key, change.category_label or change.category_key),
                 replacement_account=change.to_target_account,
             )
@@ -220,10 +224,6 @@ def _build_preview(
     credit_rows = changes_by_line["credit_card_statement"]
     if not receipt_rows and not credit_rows:
         return ClientBootstrapPreview(note=_NO_VISIBLE_CHANGES_MESSAGE)
-    if receipt_rows == credit_rows:
-        return ClientBootstrapPreview(
-            sections=(ClientBootstrapPreviewSection(title="", rows=receipt_rows),),
-        )
 
     sections = tuple(
         ClientBootstrapPreviewSection(title=PREVIEW_LINE_LABELS[line_id], rows=rows)

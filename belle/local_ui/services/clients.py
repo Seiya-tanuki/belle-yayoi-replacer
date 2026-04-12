@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import importlib.util
 import io
+import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -56,12 +57,45 @@ def preview_client_id(raw_name: str, root: Path | None = None) -> str:
     return result.canonical if result.ok else ""
 
 
+def _normalize_selected_bootstrap_categories(
+    selected_bootstrap_categories: dict[str, list[str]] | None,
+) -> dict[str, list[str]]:
+    normalized: dict[str, list[str]] = {}
+    if selected_bootstrap_categories is None:
+        return normalized
+
+    for line_id, category_keys in selected_bootstrap_categories.items():
+        normalized_line_id = str(line_id or "").strip()
+        if not normalized_line_id:
+            continue
+        unique_keys = sorted(
+            {
+                str(category_key or "").strip()
+                for category_key in category_keys
+                if str(category_key or "").strip()
+            }
+        )
+        normalized[normalized_line_id] = unique_keys
+    return normalized
+
+
+def _write_selected_bootstrap_json(
+    teacher_path: Path,
+    selected_bootstrap_categories: dict[str, list[str]] | None,
+) -> Path:
+    selected_json_path = teacher_path.parent / "selected_categories.json"
+    payload = _normalize_selected_bootstrap_categories(selected_bootstrap_categories)
+    selected_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return selected_json_path
+
+
 def create_client(
     raw_name: str,
     bookkeeping_mode: str,
     root: Path | None = None,
     *,
     teacher_path: Path | None = None,
+    selected_bootstrap_categories: dict[str, list[str]] | None = None,
 ) -> ClientCreateResult:
     current_root = root or repo_root()
     module = _load_register_module()
@@ -86,6 +120,9 @@ def create_client(
     argv = ["--client-id", raw_name, "--bookkeeping-mode", bookkeeping_mode, "--yes"]
     if teacher_path is not None:
         argv.extend(["--category-override-teacher-path", str(teacher_path)])
+        if selected_bootstrap_categories is not None:
+            selected_json_path = _write_selected_bootstrap_json(teacher_path, selected_bootstrap_categories)
+            argv.extend(["--category-override-selected-json", str(selected_json_path)])
     try:
         with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
             rc = module.main(argv=argv, repo_root=current_root)

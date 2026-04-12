@@ -321,6 +321,68 @@ class LocalUiClientServicesTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_create_client_with_selected_bootstrap_categories_limits_applied_changes(self) -> None:
+        repo_root = self.test_tmp_root / f"local_ui_clients_selected_teacher_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            teacher_path = repo_root / ".tmp" / "local_ui" / "client_register_bootstrap" / "session_1" / "teacher.csv"
+            _write_yayoi_rows(
+                teacher_path,
+                [
+                    _teacher_row("dummy lunch", "交際費"),
+                    _teacher_row("dummy taxi", "交際費"),
+                ],
+            )
+            from belle.local_ui.services.clients import create_client
+
+            result = create_client(
+                "ABC_SELECTED_TEACHER",
+                "tax_excluded",
+                repo_root,
+                teacher_path=teacher_path,
+                selected_bootstrap_categories={
+                    "receipt": ["misc"],
+                    "credit_card_statement": [],
+                },
+            )
+            self.assertTrue(result.ok, msg=result.stdout)
+
+            receipt_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_SELECTED_TEACHER"
+                    / "lines"
+                    / "receipt"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+            cc_overrides = json.loads(
+                (
+                    repo_root
+                    / "clients"
+                    / "ABC_SELECTED_TEACHER"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "category_overrides.json"
+                ).read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(
+                {"target_account": "交際費", "target_tax_division": ""},
+                (receipt_overrides.get("overrides") or {}).get("misc"),
+            )
+            self.assertEqual(
+                {"target_account": "雑費", "target_tax_division": ""},
+                (cc_overrides.get("overrides") or {}).get("misc"),
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_create_app_registers_client_routes(self) -> None:
         import pkgutil
 

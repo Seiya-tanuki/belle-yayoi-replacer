@@ -28,6 +28,7 @@ def build() -> None:
     state = get_state()
     model = {"raw_name": "", "preview": "", "bookkeeping_mode": "", "stdout": "", "error": ""}
     teacher_state = {"value": client_bootstrap.empty_teacher_file_state()}
+    selected_preview_rows = {"value": set()}
 
     def update_preview(value: str) -> None:
         model["raw_name"] = value or ""
@@ -36,6 +37,44 @@ def build() -> None:
 
     def update_bookkeeping_mode(value: str) -> None:
         model["bookkeeping_mode"] = value or ""
+
+    def _preview_row_key(row: client_bootstrap.ClientBootstrapPreviewRow) -> tuple[str, str]:
+        return (row.line_id, row.category_key)
+
+    def _preview_rows_by_line() -> dict[str, list[client_bootstrap.ClientBootstrapPreviewRow]]:
+        rows_by_line: dict[str, list[client_bootstrap.ClientBootstrapPreviewRow]] = {}
+        for section in teacher_state["value"].preview.sections:
+            for row in section.rows:
+                rows_by_line.setdefault(row.line_id, []).append(row)
+        return rows_by_line
+
+    def reset_preview_selection() -> None:
+        selected_preview_rows["value"] = {
+            _preview_row_key(row)
+            for section in teacher_state["value"].preview.sections
+            for row in section.rows
+        }
+
+    def selected_bootstrap_categories() -> dict[str, list[str]]:
+        rows_by_line = _preview_rows_by_line()
+        return {
+            line_id: [
+                row.category_key
+                for row in rows
+                if _preview_row_key(row) in selected_preview_rows["value"]
+            ]
+            for line_id, rows in rows_by_line.items()
+        }
+
+    def set_preview_row_selected(row: client_bootstrap.ClientBootstrapPreviewRow, selected: bool) -> None:
+        next_selected = set(selected_preview_rows["value"])
+        row_key = _preview_row_key(row)
+        if selected:
+            next_selected.add(row_key)
+        else:
+            next_selected.discard(row_key)
+        selected_preview_rows["value"] = next_selected
+        render_teacher_preview()
 
     def render_teacher_preview() -> None:
         preview = teacher_state["value"].preview
@@ -49,9 +88,17 @@ def build() -> None:
                     if section.title:
                         ui.label(section.title).classes("text-sm font-semibold text-slate-700")
                     for row in section.rows:
-                        with ui.row().classes("w-full items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2"):
-                            ui.label(row.category_label).classes("text-sm text-slate-700")
-                            ui.label(row.replacement_account).classes("text-sm font-semibold text-slate-900")
+                        row_selected = _preview_row_key(row) in selected_preview_rows["value"]
+                        with ui.row().classes(
+                            "w-full items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2"
+                        ):
+                            ui.checkbox(
+                                value=row_selected,
+                                on_change=lambda e, row=row: set_preview_row_selected(row, bool(e.value)),
+                            ).props("dense")
+                            with ui.row().classes("min-w-0 flex-1 items-center justify-between gap-3"):
+                                ui.label(row.category_label).classes("text-sm text-slate-700")
+                                ui.label(row.replacement_account).classes("text-sm font-semibold text-slate-900")
 
     def refresh_teacher_panel() -> None:
         current_state = teacher_state["value"]
@@ -95,6 +142,7 @@ def build() -> None:
             teacher_state["value"],
             bookkeeping_mode=model["bookkeeping_mode"],
         )
+        reset_preview_selection()
         refresh_teacher_panel()
 
     def handle_teacher_upload(event) -> None:
@@ -113,10 +161,12 @@ def build() -> None:
             teacher_error_label.visible = True
             ui.notify(str(exc), type="warning")
             return
+        reset_preview_selection()
         refresh_teacher_panel()
 
     def clear_teacher_file() -> None:
         teacher_state["value"] = client_bootstrap.clear_teacher_file(teacher_state["value"])
+        selected_preview_rows["value"] = set()
         teacher_upload_widget.reset()
         refresh_teacher_panel()
 
@@ -145,6 +195,9 @@ def build() -> None:
             model["raw_name"],
             model["bookkeeping_mode"],
             teacher_path=teacher_state["value"].staged_path,
+            selected_bootstrap_categories=(
+                selected_bootstrap_categories() if teacher_state["value"].staged_path is not None else None
+            ),
         )
         model["stdout"] = result.stdout
         if result.ok:

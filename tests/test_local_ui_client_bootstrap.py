@@ -426,9 +426,14 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
             payload = asdict(state.preview)
             self.assertEqual({"sections", "note"}, set(payload.keys()))
             self.assertEqual("", payload["note"])
-            self.assertEqual(1, len(payload["sections"]))
+            self.assertEqual(2, len(payload["sections"]))
             self.assertEqual({"title", "rows"}, set(payload["sections"][0].keys()))
-            self.assertEqual({"category_label", "replacement_account"}, set(payload["sections"][0]["rows"][0].keys()))
+            self.assertEqual(
+                {"line_id", "category_key", "category_label", "replacement_account"},
+                set(payload["sections"][0]["rows"][0].keys()),
+            )
+            self.assertEqual("receipt", payload["sections"][0]["rows"][0]["line_id"])
+            self.assertEqual("food", payload["sections"][0]["rows"][0]["category_key"])
             self.assertEqual("飲食", payload["sections"][0]["rows"][0]["category_label"])
             self.assertEqual("交際費", payload["sections"][0]["rows"][0]["replacement_account"])
         finally:
@@ -483,6 +488,8 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
             )
 
             self.assertEqual("飲食カテゴリ", state.preview.sections[0].rows[0].category_label)
+            self.assertEqual("receipt", state.preview.sections[0].rows[0].line_id)
+            self.assertEqual("food", state.preview.sections[0].rows[0].category_key)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -499,7 +506,7 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
             recomputed = refresh_teacher_file(state, bookkeeping_mode="tax_included", root=repo_root)
 
             self.assertNotEqual(state.preview, recomputed.preview)
-            self.assertEqual(1, len(state.preview.sections))
+            self.assertEqual(2, len(state.preview.sections))
             self.assertEqual(_NO_VISIBLE_CHANGES_MESSAGE, recomputed.preview.note)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
@@ -521,7 +528,7 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
 
             self.assertFalse(state.submit_blocked)
             self.assertEqual("", state.error_message)
-            self.assertEqual(1, len(state.preview.sections))
+            self.assertEqual(2, len(state.preview.sections))
             self.assertEqual("交際費", state.preview.sections[0].rows[0].replacement_account)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)

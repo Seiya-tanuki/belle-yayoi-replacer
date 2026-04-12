@@ -252,6 +252,7 @@ def _run_register(
     bookkeeping_mode: str = "tax_excluded",
     line: str | None = None,
     teacher_relpath: str | None = None,
+    selected_json_relpath: str | None = None,
 ) -> tuple[int, str]:
     fake_script_path = repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
     fake_script_path.parent.mkdir(parents=True, exist_ok=True)
@@ -262,6 +263,8 @@ def _run_register(
         argv.extend(["--line", line])
     if teacher_relpath is not None:
         argv.extend(["--category-override-teacher-path", teacher_relpath])
+    if selected_json_relpath is not None:
+        argv.extend(["--category-override-selected-json", selected_json_relpath])
 
     buffer = io.StringIO()
     original_sys_path = list(sys.path)
@@ -432,6 +435,86 @@ class ClientRegistrationBootstrapTests(unittest.TestCase):
                         "from_target_account": "諸会費",
                         "to_target_account": "消耗品費",
                     },
+                ],
+                (per_line.get("credit_card_statement") or {}).get("changes"),
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_teacher_bootstrap_applies_only_selected_categories_by_line(self) -> None:
+        repo_root = self.test_tmp_root / f"client_registration_bootstrap_selective_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            teacher_path = repo_root / "teacher" / "bootstrap_teacher.txt"
+            _write_yayoi_rows(
+                teacher_path,
+                [
+                    _teacher_row("LUNCH TOKYO", "交際費"),
+                    _teacher_row("MEAL OSAKA", "交際費"),
+                    _teacher_row("SAAS MONTHLY", "消耗品費"),
+                    _teacher_row("SOFT LICENSE", "消耗品費"),
+                ],
+            )
+            _write_json(
+                repo_root / "teacher" / "selected.json",
+                {
+                    "receipt": ["food"],
+                    "credit_card_statement": ["software"],
+                },
+            )
+
+            rc, output = _run_register(
+                self.register_module,
+                repo_root,
+                client_id="C_BOOTSTRAP_SELECTIVE",
+                teacher_relpath="teacher/bootstrap_teacher.txt",
+                selected_json_relpath="teacher/selected.json",
+            )
+
+            self.assertEqual(0, rc, msg=output)
+            self.assertEqual(
+                {"target_account": "交際費", "target_tax_division": "課対仕入内10%適格"},
+                _override_row(repo_root, "C_BOOTSTRAP_SELECTIVE", "receipt", "food"),
+            )
+            self.assertEqual(
+                {"target_account": "通信費", "target_tax_division": "課対仕入内10%適格"},
+                _override_row(repo_root, "C_BOOTSTRAP_SELECTIVE", "receipt", "software"),
+            )
+            self.assertEqual(
+                {"target_account": "通信費", "target_tax_division": "課対仕入込10%"},
+                _override_row(repo_root, "C_BOOTSTRAP_SELECTIVE", "credit_card_statement", "food"),
+            )
+            self.assertEqual(
+                {"target_account": "消耗品費", "target_tax_division": "課対仕入込10%"},
+                _override_row(repo_root, "C_BOOTSTRAP_SELECTIVE", "credit_card_statement", "software"),
+            )
+
+            manifest = _load_client_registration_manifest(repo_root, "C_BOOTSTRAP_SELECTIVE")
+            bootstrap = manifest.get("category_override_bootstrap") or {}
+            per_line = bootstrap.get("per_line") or {}
+            self.assertEqual(1, int(((per_line.get("receipt") or {}).get("applied_count")) or 0))
+            self.assertEqual(1, int(((per_line.get("credit_card_statement") or {}).get("applied_count")) or 0))
+            self.assertEqual(
+                [
+                    {
+                        "category_key": "food",
+                        "category_label": "飲食",
+                        "from_target_account": "旅費交通費",
+                        "to_target_account": "交際費",
+                    }
+                ],
+                (per_line.get("receipt") or {}).get("changes"),
+            )
+            self.assertEqual(
+                [
+                    {
+                        "category_key": "software",
+                        "category_label": "ソフトウェア",
+                        "from_target_account": "諸会費",
+                        "to_target_account": "消耗品費",
+                    }
                 ],
                 (per_line.get("credit_card_statement") or {}).get("changes"),
             )

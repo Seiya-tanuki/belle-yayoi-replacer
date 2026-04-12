@@ -229,6 +229,48 @@ def _resolve_teacher_path(repo_root: Path, teacher_path_arg: str | None) -> Path
     return candidate.resolve()
 
 
+def _resolve_selected_categories_path(repo_root: Path, selected_json_arg: str | None) -> Path | None:
+    if selected_json_arg is None:
+        return None
+    candidate = Path(selected_json_arg)
+    if not candidate.is_absolute():
+        candidate = repo_root / candidate
+    return candidate.resolve()
+
+
+def _load_selected_bootstrap_categories(
+    selected_categories_path: Path | None,
+) -> dict[str, set[str]] | None:
+    if selected_categories_path is None:
+        return None
+
+    try:
+        raw = json.loads(selected_categories_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"failed to parse selected bootstrap categories: {selected_categories_path}: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError(f"selected bootstrap categories must be a JSON object: {selected_categories_path}")
+
+    normalized: dict[str, set[str]] = {}
+    for line_id, category_keys in raw.items():
+        normalized_line_id = str(line_id or "").strip()
+        if normalized_line_id not in CATEGORY_OVERRIDES_LINES:
+            raise ValueError(
+                f"selected bootstrap categories include unsupported line_id={normalized_line_id!r}: {selected_categories_path}"
+            )
+        if not isinstance(category_keys, list):
+            raise ValueError(
+                f"selected bootstrap categories row must be an array for line_id={normalized_line_id!r}: "
+                f"{selected_categories_path}"
+            )
+        normalized[normalized_line_id] = {
+            str(category_key or "").strip()
+            for category_key in category_keys
+            if str(category_key or "").strip()
+        }
+    return normalized
+
+
 def _default_category_override_bootstrap_manifest(*, requested: bool) -> dict[str, object]:
     from belle.category_override_bootstrap import category_override_bootstrap_rules_manifest
 
@@ -252,6 +294,7 @@ def _apply_category_override_teacher_bootstrap(
     staging_dir: Path,
     selected_lines: tuple[str, ...],
     teacher_path: Path | None,
+    selected_category_keys_by_line: dict[str, set[str]] | None = None,
 ) -> dict[str, object]:
     if teacher_path is None:
         return _default_category_override_bootstrap_manifest(requested=False)
@@ -284,6 +327,11 @@ def _apply_category_override_teacher_bootstrap(
                 overrides_path=overrides_path,
                 analysis=analysis,
                 line_id=line_id,
+                selected_category_keys=(
+                    None
+                    if selected_category_keys_by_line is None
+                    else selected_category_keys_by_line.get(line_id, set())
+                ),
             )
         except Exception as exc:
             raise RegistrationError(
@@ -477,6 +525,7 @@ def _initialize_staged_client(
     selected_lines: tuple[str, ...],
     bookkeeping_mode: str,
     teacher_path: Path | None,
+    selected_category_keys_by_line: dict[str, set[str]] | None = None,
 ) -> StagedClientRegistration:
     shutil.copytree(template_dir, staging_dir)
     (staging_dir / "config").mkdir(parents=True, exist_ok=True)
@@ -542,6 +591,7 @@ def _initialize_staged_client(
         staging_dir=staging_dir,
         selected_lines=selected_lines,
         teacher_path=teacher_path,
+        selected_category_keys_by_line=selected_category_keys_by_line,
     )
     return StagedClientRegistration(
         bookkeeping_mode=bookkeeping_mode,
@@ -633,6 +683,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--category-override-teacher-path",
         help="Optional Yayoi CSV/TXT teacher file used only during new-client category_overrides bootstrap.",
     )
+    parser.add_argument(
+        "--category-override-selected-json",
+        help="Optional JSON file that limits teacher bootstrap application to selected categories by line.",
+    )
     return parser.parse_args(argv)
 
 
@@ -718,6 +772,16 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
     from belle.lines import is_line_implemented
 
     teacher_path = _resolve_teacher_path(repo_root, args.category_override_teacher_path)
+    selected_categories_path = _resolve_selected_categories_path(repo_root, args.category_override_selected_json)
+    try:
+        selected_category_keys_by_line = _load_selected_bootstrap_categories(selected_categories_path)
+    except ValueError as exc:
+        print(f"[ERROR] {exc}")
+        return 1
+
+    if selected_categories_path is not None and teacher_path is None:
+        print("[ERROR] --category-override-selected-json requires --category-override-teacher-path.")
+        return 1
     if teacher_path is not None and selected_lines == ("bank_statement",):
         print("[ERROR] --category-override-teacher-path is unsupported when --line bank_statement is selected.")
         return 1
@@ -768,6 +832,7 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
             selected_lines=selected_lines,
             bookkeeping_mode=bookkeeping_mode,
             teacher_path=teacher_path,
+            selected_category_keys_by_line=selected_category_keys_by_line,
         )
         _publish_staged_client(staging_dir, destination, repo_root)
         _write_client_registration_audit_manifest(

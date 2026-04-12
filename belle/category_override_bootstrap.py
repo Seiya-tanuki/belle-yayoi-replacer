@@ -167,12 +167,14 @@ def apply_category_override_bootstrap(
     *,
     overrides_path: Path,
     analysis: CategoryOverrideBootstrapAnalysis,
+    selected_category_keys: set[str] | None = None,
 ) -> list[CategoryOverrideBootstrapChange]:
     payload = json.loads(overrides_path.read_text(encoding="utf-8"))
     changes = apply_category_override_bootstrap_payload(
         payload=payload,
         analysis=analysis,
         payload_label=str(overrides_path),
+        selected_category_keys=selected_category_keys,
     )
     if changes:
         overrides_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -185,6 +187,7 @@ def apply_category_override_bootstrap_payload(
     payload: dict[str, object],
     analysis: CategoryOverrideBootstrapAnalysis,
     payload_label: str = "<payload>",
+    selected_category_keys: set[str] | None = None,
 ) -> list[CategoryOverrideBootstrapChange]:
     if not isinstance(payload, dict):
         raise ValueError(f"category_overrides payload must be an object: {payload_label}")
@@ -195,6 +198,8 @@ def apply_category_override_bootstrap_payload(
 
     changes: list[CategoryOverrideBootstrapChange] = []
     for category_key in sorted(analysis.candidates_by_category.keys()):
+        if selected_category_keys is not None and category_key not in selected_category_keys:
+            continue
         row = overrides.get(category_key)
         if not isinstance(row, dict):
             raise ValueError(f"category_overrides row is missing or invalid for {category_key!r}: {payload_label}")

@@ -107,12 +107,14 @@ def apply_registration_category_override_bootstrap_payload(
     payload: dict[str, object],
     analysis: CategoryOverrideBootstrapAnalysis,
     line_id: str,
+    selected_category_keys: set[str] | None = None,
 ) -> tuple[CategoryOverrideBootstrapChange, ...]:
     _validate_registration_line_id(line_id)
     changes = apply_category_override_bootstrap_payload(
         payload=payload,
         analysis=analysis,
         payload_label=f"category_overrides[{line_id}]",
+        selected_category_keys=selected_category_keys,
     )
     return tuple(changes)
 
@@ -122,6 +124,7 @@ def apply_registration_category_override_bootstrap_file(
     overrides_path: Path,
     analysis: CategoryOverrideBootstrapAnalysis,
     line_id: str,
+    selected_category_keys: set[str] | None = None,
 ) -> tuple[CategoryOverrideBootstrapChange, ...]:
     _validate_registration_line_id(line_id)
     payload = json.loads(overrides_path.read_text(encoding="utf-8"))
@@ -129,6 +132,7 @@ def apply_registration_category_override_bootstrap_file(
         payload=payload,
         analysis=analysis,
         line_id=line_id,
+        selected_category_keys=selected_category_keys,
     )
     if changes:
         overrides_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
