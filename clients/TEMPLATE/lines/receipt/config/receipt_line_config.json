@@ -1,0 +1,65 @@
+{
+  "schema": "belle.replacer_config.v1",
+  "version": "1.16",
+  "created_at": "2026-02-13T14:32:16.875705+00:00",
+  "csv_contract": {
+    "column_count": 25,
+    "debit_account_col_1b": 5,
+    "summary_col_1b": 17,
+    "memo_col_1b": 22,
+    "dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##",
+    "default_encoding": "cp932",
+    "line_ending_required": "CRLF"
+  },
+  "thresholds": {
+    "t_number_min_count": 3,
+    "vendor_key_min_count": 3,
+    "category_min_count": 3,
+    "vendor_key_p_majority_min": 0.7,
+    "category_p_majority_min": 0.7,
+    "t_number_p_majority_min": 0.7,
+    "t_number_x_category_min_count": 2,
+    "t_number_x_category_p_majority_min": 0.75
+  },
+  "confidence": {
+    "t_number_strength": 0.95,
+    "vendor_key_strength": 0.85,
+    "category_strength": 0.65,
+    "default_strength": 0.55,
+    "global_fallback_strength": 0.35,
+    "learned_weight_multiplier": 0.85,
+    "t_number_x_category_strength": 0.97
+  },
+  "tax_division_thresholds": {
+    "t_number_x_category_target_account": {
+      "min_count": 2,
+      "min_p_majority": 0.75
+    },
+    "t_number_target_account": {
+      "min_count": 3,
+      "min_p_majority": 0.7
+    },
+    "vendor_key_target_account": {
+      "min_count": 3,
+      "min_p_majority": 0.7
+    },
+    "category_target_account": {
+      "min_count": 3,
+      "min_p_majority": 0.7
+    },
+    "global_target_account": {
+      "min_count": 3,
+      "min_p_majority": 0.7
+    }
+  },
+  "tax_division_confidence": {
+    "t_number_x_category_target_account_strength": 0.97,
+    "t_number_target_account_strength": 0.95,
+    "vendor_key_target_account_strength": 0.85,
+    "category_target_account_strength": 0.65,
+    "global_target_account_strength": 0.55,
+    "category_default_strength": 0.55,
+    "global_fallback_strength": 0.35,
+    "learned_weight_multiplier": 0.85
+  }
+}

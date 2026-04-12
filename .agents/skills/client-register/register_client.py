@@ -18,6 +18,7 @@ RESERVED_DEVICE_NAMES = {"CON", "PRN", "AUX", "NUL"}
 REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
 CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
 SHARED_YAYOI_TAX_CONFIG_REL_PATH = Path("config") / "yayoi_tax_config.json"
+RECEIPT_LINE_CONFIG_REL_PATH = Path("config") / "receipt_line_config.json"
 CLIENT_REGISTRATION_RUN_MANIFEST_SCHEMA = "belle.client_registration_init.run_manifest.v1"
 CLIENT_REGISTRATION_RUN_MANIFEST_VERSION = "1.0"
 BOOKKEEPING_MODE_CHOICES = {
@@ -194,6 +195,14 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
             template_line_root / "inputs" / "kari_shiwake",
             template_line_root / "inputs" / "ledger_ref",
         ]
+    raise ValueError(f"unsupported line for registration: {line_id}")
+
+
+def _required_template_files(template_line_root: Path, line_id: str) -> list[Path]:
+    if line_id == "receipt":
+        return [template_line_root / RECEIPT_LINE_CONFIG_REL_PATH]
+    if line_id in {"bank_statement", "credit_card_statement"}:
+        return []
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
@@ -464,9 +473,10 @@ def _write_staged_shared_tax_config(shared_tax_config_path: Path, *, bookkeeping
     return selected_mode
 
 
-def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> tuple[list[Path], list[Path]]:
+def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> tuple[list[Path], list[Path], list[Path]]:
     missing_line_roots: list[Path] = []
     missing_required_dirs: list[Path] = []
+    missing_required_files: list[Path] = []
     for line_id in line_ids:
         line_root = template_dir / "lines" / line_id
         if not line_root.exists() or not line_root.is_dir():
@@ -474,7 +484,9 @@ def _verify_template_contract(template_dir: Path, line_ids: tuple[str, ...]) -> 
             continue
         required_dirs = _required_template_dirs(line_root, line_id)
         missing_required_dirs.extend([p for p in required_dirs if not p.exists() or not p.is_dir()])
-    return missing_line_roots, missing_required_dirs
+        required_files = _required_template_files(line_root, line_id)
+        missing_required_files.extend([p for p in required_files if not p.exists() or not p.is_file()])
+    return missing_line_roots, missing_required_dirs, missing_required_files
 
 
 def _selected_lines(line_arg: str) -> tuple[str, ...]:
@@ -798,7 +810,10 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
         print("[ERROR] `clients/TEMPLATE/` is missing.")
         return 2
 
-    missing_line_roots, missing_required_dirs = _verify_template_contract(template_dir, selected_lines)
+    missing_line_roots, missing_required_dirs, missing_required_files = _verify_template_contract(
+        template_dir,
+        selected_lines,
+    )
     if missing_line_roots:
         print("[ERROR] Required line roots are missing under `clients/TEMPLATE/lines/`.")
         for p in missing_line_roots:
@@ -807,6 +822,11 @@ def main(argv: list[str] | None = None, repo_root: str | Path | None = None) -> 
     if missing_required_dirs:
         print("[ERROR] Required template directories are missing.")
         for p in missing_required_dirs:
+            print(f"  - {_display_path(p, repo_root)}")
+        return 2
+    if missing_required_files:
+        print("[ERROR] Required template files are missing.")
+        for p in missing_required_files:
             print(f"  - {_display_path(p, repo_root)}")
         return 2
 

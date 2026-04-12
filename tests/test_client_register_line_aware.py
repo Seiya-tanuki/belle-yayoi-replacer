@@ -17,6 +17,10 @@ def _write_json(path: Path, obj: dict) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def _load_register_module(real_repo_root: Path):
     script_path = real_repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
     spec = importlib.util.spec_from_file_location(f"register_client_{uuid4().hex}", script_path)
@@ -258,6 +262,15 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_template_receipt_line_config_matches_active_ruleset(self) -> None:
+        template_config_path = (
+            self.real_repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"
+        )
+        active_ruleset_path = self.real_repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+
+        self.assertTrue(template_config_path.exists())
+        self.assertEqual(_load_json(active_ruleset_path), _load_json(template_config_path))
+
     def test_receipt_register_still_initializes_category_overrides(self) -> None:
         repo_root = self.test_tmp_root / f"client_register_receipt_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
@@ -282,9 +295,47 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
                 / "config"
                 / "category_overrides.json"
             )
+            receipt_config_path = (
+                repo_root
+                / "clients"
+                / "C_RECEIPT_LINE_AWARE"
+                / "lines"
+                / "receipt"
+                / "config"
+                / "receipt_line_config.json"
+            )
             self.assertTrue(overrides_path.exists())
+            self.assertTrue(receipt_config_path.exists())
             overrides_obj = json.loads(overrides_path.read_text(encoding="utf-8"))
             self.assertIn("misc", (overrides_obj.get("overrides") or {}))
+            self.assertEqual(
+                _load_json(repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"),
+                _load_json(receipt_config_path),
+            )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_register_fails_clearly_if_template_receipt_config_missing(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_receipt_missing_config_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            (
+                repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"
+            ).unlink()
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_RECEIPT_CFG_REQUIRED",
+            )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Required template files are missing.", output)
+            self.assertIn("clients\\TEMPLATE\\lines\\receipt\\config\\receipt_line_config.json", output)
+            self.assertFalse((repo_root / "clients" / "C_RECEIPT_CFG_REQUIRED").exists())
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
