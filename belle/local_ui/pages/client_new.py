@@ -17,6 +17,10 @@ BOOKKEEPING_MODE_CHOICES = {
     ),
 }
 
+BOOKKEEPING_MODE_REQUIRED_MESSAGE = (
+    "先に消費税の経理方式を選択してください。選択後に学習データをアップロードできます。"
+)
+
 
 def build() -> None:
     from nicegui import ui
@@ -51,10 +55,17 @@ def build() -> None:
 
     def refresh_teacher_panel() -> None:
         current_state = teacher_state["value"]
+        requires_bookkeeping_mode = not model["bookkeeping_mode"]
         teacher_file_label.set_text(current_state.original_basename or "まだ選んでいません")
         teacher_clear_button.visible = bool(current_state.staged_path)
         teacher_error_label.set_text(current_state.error_message)
         teacher_error_label.visible = bool(current_state.error_message)
+        teacher_locked_label.set_text(BOOKKEEPING_MODE_REQUIRED_MESSAGE if requires_bookkeeping_mode else "")
+        teacher_locked_label.visible = requires_bookkeeping_mode
+        if requires_bookkeeping_mode:
+            teacher_upload_widget.disable()
+        else:
+            teacher_upload_widget.enable()
         render_teacher_preview()
         if current_state.submit_blocked:
             submit_button.disable()
@@ -109,6 +120,11 @@ def build() -> None:
         teacher_upload_widget.reset()
         refresh_teacher_panel()
 
+    def go_back() -> None:
+        if teacher_state["value"].staged_path is not None:
+            clear_teacher_file()
+        ui.navigate.to("/")
+
     def submit() -> None:
         model["error"] = ""
         model["stdout"] = ""
@@ -147,6 +163,9 @@ def build() -> None:
         "新しいクライアントを作ります",
         "入力した名前は、保存用に自動で整えられます。\n消費税の経理方式は必ず事前に弥生会計のデータを確認し、正しい方を選択してください",
     ):
+        with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
+            ui.label("保存されるクライアント名").classes("text-sm text-slate-500")
+            preview_label = ui.label("-").classes("text-lg font-semibold")
         ui.label("登録したいクライアント名").classes("text-sm font-semibold text-slate-700")
         ui.input(
             placeholder="ここにクライアント名を入力してください",
@@ -156,10 +175,12 @@ def build() -> None:
         cards_row = ui.row().classes("w-full items-stretch gap-3 flex-col sm:flex-row")
         refresh_bookkeeping_cards()
         with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-3 shadow-sm"):
-            ui.label("過去の仕訳ファイル（任意）").classes("text-lg font-semibold")
+            ui.label("カテゴリと勘定科目の自動設定").classes("text-lg font-semibold")
             ui.label(
-                "自動設定の参考にする CSV または TXT を 1 つだけ入れてください。入れなくても作成できます。"
+                "弥生から出力した学習データをアップロードするだけでカテゴリと置換科目を自動で設定できます。"
             ).classes("text-sm text-slate-600")
+            teacher_locked_label = ui.label("").classes("text-sm text-amber-700")
+            teacher_locked_label.visible = False
             teacher_upload_widget = ui.upload(
                 label="ここにファイルをドラッグ&ドロップしてください",
                 multiple=False,
@@ -173,19 +194,16 @@ def build() -> None:
             teacher_error_label = ui.label("").classes("text-sm text-red-600")
             teacher_error_label.visible = False
             with ui.column().classes("w-full gap-3"):
-                ui.label("自動で入る内容").classes("text-sm font-semibold text-slate-700")
+                ui.label("自動で設定されるカテゴリと置換先の勘定科目の一覧").classes("text-sm font-semibold text-slate-700")
                 preview_box = ui.column().classes("w-full gap-3")
             teacher_clear_button = ui.button("このファイルを外す", on_click=clear_teacher_file).props(
                 "outline color=negative"
             ).classes("w-full sm:w-auto")
             teacher_clear_button.visible = False
-        with ui.card().classes("w-full rounded-2xl border border-slate-200 p-4 gap-2 shadow-sm"):
-            ui.label("保存される名前").classes("text-sm text-slate-500")
-            preview_label = ui.label("-").classes("text-lg font-semibold")
         error_label = ui.label("").classes("text-sm text-red-600")
         error_label.visible = False
         with ui.row().classes("w-full items-center justify-between gap-3"):
-            secondary_button("戻る", lambda: ui.navigate.to("/"))
+            secondary_button("戻る", go_back)
             with ui.row().classes("justify-end"):
                 submit_button = ui.button("この名前で作成する", on_click=submit).props("unelevated").classes(
                     "w-full sm:w-auto bg-sky-600 text-white"

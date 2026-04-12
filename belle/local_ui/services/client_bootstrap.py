@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -162,12 +163,38 @@ def cleanup_after_success(current_state: StagedTeacherFileState, root: Path | No
     return clear_teacher_file(current_state, root=root)
 
 
+def _load_preview_category_labels(current_root: Path) -> dict[str, str]:
+    try:
+        raw = json.loads((current_root / "lexicon" / "lexicon.json").read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    categories = raw.get("categories")
+    if not isinstance(categories, list):
+        return {}
+
+    labels: dict[str, str] = {}
+    for category in categories:
+        if not isinstance(category, dict):
+            continue
+        category_key = str(category.get("key") or "").strip()
+        if not category_key:
+            continue
+        labels[category_key] = (
+            str(category.get("label_ja") or "").strip()
+            or str(category.get("label") or "").strip()
+            or category_key
+        )
+    return labels
+
+
 def _build_preview(
     *,
     current_root: Path,
     bookkeeping_mode: str,
     analysis: CategoryOverrideBootstrapAnalysis,
 ) -> ClientBootstrapPreview:
+    category_labels = _load_preview_category_labels(current_root)
     changes_by_line: dict[str, tuple[ClientBootstrapPreviewRow, ...]] = {}
     for line_id in PREVIEW_LINE_IDS:
         payload = generate_registration_category_overrides_payload(
@@ -183,7 +210,7 @@ def _build_preview(
         )
         changes_by_line[line_id] = tuple(
             ClientBootstrapPreviewRow(
-                category_label=change.category_label,
+                category_label=category_labels.get(change.category_key, change.category_label or change.category_key),
                 replacement_account=change.to_target_account,
             )
             for change in changes

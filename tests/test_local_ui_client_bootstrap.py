@@ -316,6 +316,26 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
+    def test_back_navigation_cleanup_contract_clears_current_session_directory(self) -> None:
+        repo_root = self._make_repo_root("local_ui_bootstrap_back_cleanup")
+        try:
+            state = stage_teacher_file(
+                empty_teacher_file_state(),
+                filename="teacher.csv",
+                content=self._teacher_bytes_for_food("交際費"),
+                bookkeeping_mode="tax_excluded",
+                root=repo_root,
+            )
+            current_session_dir = session_dir_for(state.session_token, repo_root)
+
+            cleared = clear_teacher_file(state, repo_root)
+
+            self.assertFalse(current_session_dir.exists())
+            self.assertEqual("", cleared.session_token)
+            self.assertIsNone(cleared.staged_path)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
     def test_successful_create_cleans_current_session_directory(self) -> None:
         repo_root = self._make_repo_root("local_ui_bootstrap_success_cleanup")
         try:
@@ -411,6 +431,58 @@ class LocalUiClientBootstrapTests(unittest.TestCase):
             self.assertEqual({"category_label", "replacement_account"}, set(payload["sections"][0]["rows"][0].keys()))
             self.assertEqual("飲食", payload["sections"][0]["rows"][0]["category_label"])
             self.assertEqual("交際費", payload["sections"][0]["rows"][0]["replacement_account"])
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_preview_prefers_label_ja_for_display_when_available(self) -> None:
+        repo_root = self._make_repo_root("local_ui_bootstrap_label_ja")
+        try:
+            _write_json(
+                repo_root / "lexicon" / "lexicon.json",
+                {
+                    "schema": "belle.lexicon.v1",
+                    "version": "test",
+                    "categories": [
+                        {
+                            "id": 1,
+                            "key": "food",
+                            "label": "FOOD_LABEL",
+                            "label_ja": "飲食カテゴリ",
+                            "kind": "expense",
+                            "precision_hint": 0.9,
+                            "deprecated": False,
+                            "negative_terms": {"n0": [], "n1": []},
+                        },
+                        {
+                            "id": 2,
+                            "key": "travel",
+                            "label": "TRAVEL_LABEL",
+                            "label_ja": "交通カテゴリ",
+                            "kind": "expense",
+                            "precision_hint": 0.8,
+                            "deprecated": False,
+                            "negative_terms": {"n0": [], "n1": []},
+                        },
+                    ],
+                    "term_rows": [
+                        ["n0", "LUNCH", 1, 1.0, "S"],
+                        ["n0", "MEAL", 1, 1.0, "S"],
+                        ["n0", "ALPHA", 2, 1.0, "S"],
+                        ["n0", "BRAVO", 2, 1.0, "S"],
+                    ],
+                    "learned": {"policy": {"core_weight": 1.0}},
+                },
+            )
+
+            state = stage_teacher_file(
+                empty_teacher_file_state(),
+                filename="teacher.csv",
+                content=self._teacher_bytes_for_food("交際費"),
+                bookkeeping_mode="tax_excluded",
+                root=repo_root,
+            )
+
+            self.assertEqual("飲食カテゴリ", state.preview.sections[0].rows[0].category_label)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
