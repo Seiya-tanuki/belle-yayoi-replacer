@@ -7,6 +7,10 @@ have no historical journals. The current repository tracks line-specific default
 1. `receipt`
 2. `credit_card_statement`
 
+Tracked defaults are the authoritative shared posting/tax fallback assets for supported lines.
+Per-client `category_overrides.json` overlays these tracked defaults at runtime. `lexicon` remains
+canonical for category dictionary responsibilities only.
+
 The live shared row contract is `target_account` / `target_tax_division`.
 Tracked asset filenames are:
 1. `defaults/receipt/category_defaults_tax_excluded.json`
@@ -50,6 +54,7 @@ Top-level keys:
 - Defaults should use commonly available Japanese account names to reduce import risk.
 - Defaults are not client-specific; client_cache overrides them when evidence is strong enough.
 - Tracked defaults are aligned to the shared `lexicon/lexicon.json` category keyset for each supported line.
+- Lexicon alignment in this spec means category keyset alignment for supported lines, not per-category value equality between `lexicon.default_rule` and tracked defaults.
 - If the client has an allowlist of valid accounts (optional future), defaults should be filtered against it.
 - This spec does not define live runtime replacement order. For `receipt`, including the original-tax gate before `target_tax_division` fallback, see `spec/REPLACER_SPEC.md`.
 

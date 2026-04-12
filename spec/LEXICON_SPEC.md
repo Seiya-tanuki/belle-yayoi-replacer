@@ -4,9 +4,11 @@
 `lexicon/lexicon.json` is the **single canonical dictionary** used to map free-text
 (Yayoi summary text) to a **category**. The current taxonomy is the reconstructed
 69-category operational/posting taxonomy. Category labels are routing buckets for deterministic
-replacement, not a strict ontology. Categories are later mapped to debit accounts via:
-1) per-client+line `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json` (learned from historical journals), and
-2) global `defaults/<line_id>/category_defaults.json` (fallback).
+replacement, not a strict ontology.
+
+Lexicon responsibility is limited to category-matching / dictionary concerns. Live posting and tax
+fallback policy is authoritative in tracked defaults and per-client
+`category_overrides.json`, not in `lexicon`.
 
 This lexicon must be usable **offline** (no network).
 
@@ -44,7 +46,7 @@ Current asset fields:
 - `precision_hint`: float (0..1)
 - `deprecated`: bool
 - `negative_terms`: dict with keys `n0` and `n1` (array of needles) used as negative filters
-- `default_rule`: supporting default mapping metadata carried in the canonical asset
+- `default_rule`: supporting non-runtime metadata carried in the canonical asset
 - `source_ref`: supporting provenance / reconstruction metadata
 
 **Important:** categories do NOT embed their own keyword lists.
@@ -53,17 +55,22 @@ Keywords live in `term_rows`.
 Runtime-essential matching/routing fields are `id`, `key`, `label`, `negative_terms`, and
 `precision_hint`. `label_ja`, `kind`, `deprecated`, `default_rule`, and `source_ref` are
 supporting metadata used for display, defaults generation, audit, or authoring support.
+Runtime matching does not read `default_rule`.
 
 ### `default_rule` supporting metadata
-`default_rule` mirrors the shared target-side fallback contract used by
-`defaults/<line_id>/category_defaults.json`:
+`default_rule` is supporting metadata only. It does not define the live shared posting/tax
+fallback contract, and it is not authoritative for bookkeeping-mode-specific
+`target_tax_division` values. Those live in tracked defaults and
+`clients/<CLIENT_ID>/lines/<line_id>/config/category_overrides.json`.
+
+Current metadata shape:
 - `target_account`: non-empty string
-- `target_tax_division`: string, may be empty
 - `confidence`: float
 - `priority`: `"HIGH"|"MED"|"LOW"`
 - `reason_code`: string
 
-Phase A updates this metadata shape only. Lexicon matching behavior, category IDs/keys, and term rows remain unchanged.
+This metadata may support authoring, audit, or defaults-generation workflows. Lexicon matching
+behavior, category IDs/keys, and term rows remain unchanged by edits to `default_rule`.
 
 ### term_rows (explicit keyword table)
 Each row is:
