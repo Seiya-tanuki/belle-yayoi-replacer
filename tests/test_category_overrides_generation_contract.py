@@ -178,8 +178,13 @@ class CategoryOverridesGenerationContractTests(unittest.TestCase):
                 self.assertEqual(expected, actual)
 
                 for key, debit_account in REPRESENTATIVE_DEBIT_ACCOUNTS.items():
+                    expected_row = expected.get(key)
+                    self.assertIsNotNone(expected_row, msg=f"missing expected row for key={key}")
                     self.assertEqual(
-                        {"target_account": debit_account, "target_tax_division": ""},
+                        {
+                            "target_account": debit_account,
+                            "target_tax_division": str((expected_row or {}).get("target_tax_division")),
+                        },
                         actual.get(key),
                         msg=f"line_id={line_id} key={key}",
                     )
