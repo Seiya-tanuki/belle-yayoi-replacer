@@ -14,6 +14,7 @@ from types import SimpleNamespace
 from unittest import mock
 from uuid import uuid4
 
+from belle.application.errors import LineRunnerFailure
 from belle.line_runners import bank_statement as bank_runner
 from belle.line_runners import receipt as receipt_runner
 from belle.yayoi_columns import (
@@ -804,12 +805,16 @@ class KariShiwakeIngestTests(unittest.TestCase):
                 "replace_bank_yayoi_csv",
                 side_effect=AssertionError("replace_bank_yayoi_csv must not be called"),
             ):
-                with self.assertRaisesRegex(SystemExit, "zero usable pairs"):
+                with self.assertRaises(LineRunnerFailure) as ctx:
                     bank_runner.run_bank(
                         repo_root,
                         client_id,
                         client_dir=client_line_dir,
                     )
+
+            self.assertIn("zero usable pairs", str(ctx.exception))
+            self.assertEqual("bank_cache_update_failed", ctx.exception.failure_key)
+            self.assertEqual("RUN_FAIL_BANK_CACHE_UPDATE", ctx.exception.ui_reason_code)
 
             self.assertTrue(target_path.exists())
             self.assertEqual(payload, target_path.read_bytes())

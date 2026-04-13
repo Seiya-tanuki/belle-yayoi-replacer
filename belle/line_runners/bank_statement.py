@@ -286,6 +286,14 @@ def run_bank(
 
     try:
         cache_update = ensure_bank_client_cache_updated(repo_root, client_id)
+    except SystemExit as exc:
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message=f"bank client_cache 更新に失敗しました: {exc}",
+            failure_key="bank_cache_update_failed",
+            ui_reason_code=RUN_FAIL_BANK_CACHE_UPDATE,
+            detail={"source_exception_type": "SystemExit"},
+        )
     except Exception as exc:
         raise_line_runner_failure(
             line_id=LINE_ID_BANK,

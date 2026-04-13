@@ -242,6 +242,102 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("message text is no longer the classifier", results[0].stdout)
         self.assertEqual(1, results[0].returncode)
 
+    def test_run_selected_lines_continues_after_bank_failure_and_runs_next_line(self) -> None:
+        from belle.local_ui.services import replacer as replacer_service
+
+        bank_plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="bank_statement",
+            plans=(
+                LinePlan(
+                    line_id="bank_statement",
+                    status="RUN",
+                    reason="ready",
+                    target_files=("bank.csv",),
+                    ui_reason_code="PRECHECK_READY",
+                    ui_reason_detail={"phase": "plan", "status": "RUN", "reason": "ready"},
+                    details={
+                        "client_layout_line_id": "bank_statement",
+                        "client_dir": "C:/repo/clients/C1/lines/bank_statement",
+                    },
+                ),
+            ),
+        )
+        card_plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="credit_card_statement",
+            plans=(
+                LinePlan(
+                    line_id="credit_card_statement",
+                    status="RUN",
+                    reason="ready",
+                    target_files=("card.csv",),
+                    ui_reason_code="PRECHECK_READY",
+                    ui_reason_detail={"phase": "plan", "status": "RUN", "reason": "ready"},
+                    details={
+                        "client_layout_line_id": "credit_card_statement",
+                        "client_dir": "C:/repo/clients/C1/lines/credit_card_statement",
+                    },
+                ),
+            ),
+        )
+        card_run_result = ReplacerRunResult(
+            client_id="C1",
+            requested_line="credit_card_statement",
+            plan_result=card_plan_result,
+            line_results=(
+                RunLineResult.success(
+                    line_id="credit_card_statement",
+                    ui_reason_code="RUN_OK",
+                    ui_reason_detail={"phase": "run", "status": "success"},
+                    run_id="RID_CARD",
+                    run_dir="C:/repo/run/card",
+                    run_manifest_path="C:/repo/run/card/run_manifest.json",
+                    changed_ratio=0.5,
+                    output_file="C:/repo/run/card/out.csv",
+                ),
+            ),
+        )
+
+        with mock.patch.object(
+            replacer_service,
+            "plan_replacer",
+            side_effect=[bank_plan_result, card_plan_result],
+        ) as mocked_plan:
+            with mock.patch.object(
+                replacer_service,
+                "run_replacer",
+                side_effect=[
+                    replacer_service.ReplacerRunFailedError(
+                        line_id="bank_statement",
+                        message="bank fail-closed",
+                        failure_key="bank_cache_update_failed",
+                        ui_reason_code="RUN_FAIL_BANK_CACHE_UPDATE",
+                        ui_reason_detail={
+                            "phase": "run",
+                            "status": "failure",
+                            "failure_key": "bank_cache_update_failed",
+                        },
+                    ),
+                    card_run_result,
+                ],
+            ) as mocked_run:
+                results = replacer_service.run_selected_lines(
+                    "C1",
+                    ["bank_statement", "credit_card_statement"],
+                    root=Path("C:/repo"),
+                )
+
+        self.assertEqual(2, mocked_plan.call_count)
+        self.assertEqual(2, mocked_run.call_count)
+        self.assertEqual(2, len(results))
+        self.assertEqual("bank_statement", results[0].line_id)
+        self.assertEqual("failure", results[0].status)
+        self.assertEqual("RUN_FAIL_BANK_CACHE_UPDATE", results[0].ui_reason_code)
+        self.assertEqual("credit_card_statement", results[1].line_id)
+        self.assertEqual("success", results[1].status)
+        self.assertEqual("RID_CARD", results[1].run_id)
+
     def test_run_selected_lines_raises_session_fatal_on_unexpected_shared_layer_exception(self) -> None:
         from belle.local_ui.services import replacer as replacer_service
 

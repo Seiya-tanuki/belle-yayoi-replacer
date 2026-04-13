@@ -232,6 +232,49 @@ class ReplacerApplicationTests(unittest.TestCase):
         self.assertEqual("target_ingest_failed", ctx.exception.failure_key)
         self.assertEqual(RUN_FAIL_TARGET_INGEST, ctx.exception.ui_reason_code)
 
+    def test_run_replacer_maps_system_exit_from_line_runner_to_structured_failure(self) -> None:
+        repo_root = Path("C:/repo")
+        plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="receipt",
+            plans=(
+                LinePlan(
+                    line_id="receipt",
+                    status="RUN",
+                    reason="ready",
+                    reason_key="ready",
+                    target_files=("target.csv",),
+                    ui_reason_code="PRECHECK_READY",
+                    ui_reason_detail={"phase": "plan", "status": "RUN", "reason": "ready"},
+                    details={
+                        "client_layout_line_id": "receipt",
+                        "client_dir": str(repo_root / "clients" / "C1" / "lines" / "receipt"),
+                    },
+                ),
+            ),
+        )
+
+        with mock.patch.object(
+            replacer_app,
+            "run_receipt",
+            side_effect=SystemExit("fail-closed system exit"),
+        ):
+            with self.assertRaises(replacer_app.ReplacerRunFailedError) as ctx:
+                replacer_app.run_replacer(repo_root, "C1", plan_result=plan_result)
+
+        self.assertEqual("receipt", ctx.exception.line_id)
+        self.assertEqual("system_exit", ctx.exception.failure_key)
+        self.assertEqual(replacer_app.RUN_FAIL_UNKNOWN, ctx.exception.ui_reason_code)
+        self.assertEqual(
+            {
+                "phase": "run",
+                "status": "failure",
+                "failure_key": "system_exit",
+                "error": "fail-closed system exit",
+            },
+            ctx.exception.ui_reason_detail,
+        )
+
     def test_cli_main_maps_structured_needs_review_to_exit_code_2(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         module = _load_replacer_script_module(repo_root)

@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 from uuid import uuid4
 
+from belle.application.errors import LineRunnerFailure
 from belle.line_runners.bank_statement import run_bank
 from belle.yayoi_columns import (
     COL_CREDIT_ACCOUNT,
@@ -765,6 +766,24 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
                 result.ui_reason_code,
             )
             self.assertIn("bank_sub_fill_required_failed", result.reasons)
+
+    def test_bank_line_direct_runner_maps_system_exit_from_cache_update_to_line_runner_failure(self) -> None:
+        client_id = "C_BANK_DIRECT_SYSTEM_EXIT"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(repo_root, client_id)
+
+            with mock.patch(
+                "belle.line_runners.bank_statement.ensure_bank_client_cache_updated",
+                side_effect=SystemExit("bank fail-closed system exit"),
+            ):
+                with self.assertRaises(LineRunnerFailure) as ctx:
+                    run_bank(repo_root, client_id, client_dir=line_root)
+
+            self.assertIn("bank client_cache 更新に失敗しました", str(ctx.exception))
+            self.assertEqual("bank_cache_update_failed", ctx.exception.failure_key)
+            self.assertEqual("RUN_FAIL_BANK_CACHE_UPDATE", ctx.exception.ui_reason_code)
+            self.assertEqual("SystemExit", ctx.exception.ui_reason_detail.get("source_exception_type"))
 
     def test_bank_line_client_cache_builder_does_not_create_ledger_ref_ingest_dir(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]

@@ -69,6 +69,37 @@ def _enforce_cc_config_required(repo_root: Path, client_id: str, plan: LinePlan)
     )
 
 
+def _raise_run_failed_error(
+    *,
+    line_id: str,
+    exc: BaseException,
+    partial_results: list[RunLineResult],
+) -> None:
+    failure_key = "unknown"
+    ui_reason_code = RUN_FAIL_UNKNOWN
+    ui_reason_detail = {"phase": "run", "status": "failure", "failure_key": failure_key, "error": str(exc)}
+    if isinstance(exc, LineRunnerFailure):
+        failure_key = exc.failure_key
+        ui_reason_code = exc.ui_reason_code
+        ui_reason_detail = dict(exc.ui_reason_detail)
+    elif isinstance(exc, SystemExit):
+        failure_key = "system_exit"
+        ui_reason_detail = {
+            "phase": "run",
+            "status": "failure",
+            "failure_key": failure_key,
+            "error": str(exc),
+        }
+    raise ReplacerRunFailedError(
+        line_id=line_id,
+        message=str(exc),
+        failure_key=failure_key,
+        ui_reason_code=ui_reason_code,
+        ui_reason_detail=ui_reason_detail,
+        partial_results=tuple(partial_results),
+    ) from exc
+
+
 def plan_replacer(
     repo_root: Path,
     client_id: str,
@@ -127,22 +158,18 @@ def run_replacer(
                 )
             else:
                 line_result = run_card(repo_root, client_id)
-        except Exception as exc:
-            failure_key = "unknown"
-            ui_reason_code = RUN_FAIL_UNKNOWN
-            ui_reason_detail = {"phase": "run", "status": "failure", "failure_key": failure_key, "error": str(exc)}
-            if isinstance(exc, LineRunnerFailure):
-                failure_key = exc.failure_key
-                ui_reason_code = exc.ui_reason_code
-                ui_reason_detail = dict(exc.ui_reason_detail)
-            raise ReplacerRunFailedError(
+        except SystemExit as exc:
+            _raise_run_failed_error(
                 line_id=plan.line_id,
-                message=str(exc),
-                failure_key=failure_key,
-                ui_reason_code=ui_reason_code,
-                ui_reason_detail=ui_reason_detail,
-                partial_results=tuple(results),
-            ) from exc
+                exc=exc,
+                partial_results=results,
+            )
+        except Exception as exc:
+            _raise_run_failed_error(
+                line_id=plan.line_id,
+                exc=exc,
+                partial_results=results,
+            )
 
         results.append(line_result)
         if line_result.needs_review:
