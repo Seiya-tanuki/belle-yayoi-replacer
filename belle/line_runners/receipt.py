@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from belle.application.models import RunLineResult
 from belle.build_client_cache import ensure_client_cache_updated
 from belle.defaults import (
     generate_full_category_overrides,
@@ -36,17 +37,17 @@ from belle.tax_postprocess import (
 )
 from belle.ui_reason_codes import RUN_OK
 
-from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
 
 LINE_ID_RECEIPT = "receipt"
 
 
-def plan_receipt(repo_root: Path, client_id: str) -> LinePlan:
+def plan_receipt(repo_root: Path, client_id: str):
     details: dict[str, object] = {}
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_RECEIPT)
     except FileNotFoundError as exc:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_RECEIPT,
             status="FAIL",
             reason=str(exc),
@@ -66,7 +67,7 @@ def plan_receipt(repo_root: Path, client_id: str) -> LinePlan:
 
     status, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_RECEIPT,
             status=status,
             reason=reason,
@@ -75,7 +76,7 @@ def plan_receipt(repo_root: Path, client_id: str) -> LinePlan:
         )
 
     if not config_path.exists():
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_RECEIPT,
             status="FAIL",
             reason=f"config not found: {config_path}",
@@ -83,7 +84,7 @@ def plan_receipt(repo_root: Path, client_id: str) -> LinePlan:
             details=details,
         )
 
-    return LinePlan(
+    return build_line_plan(
         line_id=LINE_ID_RECEIPT,
         status="RUN",
         reason="ready",
@@ -127,7 +128,7 @@ def run_receipt(
     *,
     client_layout_line_id: str,
     client_dir: Path,
-) -> dict[str, object]:
+) -> RunLineResult:
     if client_layout_line_id != LINE_ID_RECEIPT:
         raise RuntimeError(f"invalid receipt layout marker: {client_layout_line_id}")
 
@@ -289,19 +290,17 @@ def run_receipt(
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     update_latest_run_id(latest_path, run_id)
 
-    print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs={len(run_manifest['outputs'])}")
-    print(f"[OK] run_dir={run_dir}")
-    print(f"[OK] run_manifest={run_manifest_path}")
-    print(f" - changed_ratio={mf['changed_ratio']:.3f} output={mf['output_file']}")
-    if warnings:
-        print("[WARN] " + " | ".join(warnings))
-
-    return {
-        "line_id": LINE_ID_RECEIPT,
-        "run_id": run_id,
-        "run_dir": str(run_dir),
-        "run_manifest_path": str(run_manifest_path),
-        "changed_ratio": float(mf.get("changed_ratio") or 0.0),
-        "output_file": str(mf.get("output_file") or ""),
-        "warnings": warnings,
-    }
+    return RunLineResult.success(
+        line_id=LINE_ID_RECEIPT,
+        ui_reason_code=RUN_OK,
+        ui_reason_detail={"phase": "run", "status": "success"},
+        run_id=run_id,
+        run_dir=str(run_dir),
+        run_manifest_path=str(run_manifest_path),
+        changed_ratio=float(mf.get("changed_ratio") or 0.0),
+        output_file=str(mf.get("output_file") or ""),
+        warnings=tuple(warnings),
+        input_count=1,
+        output_count=len(run_manifest["outputs"]),
+        details={"outputs": list(run_manifest["outputs"])},
+    )

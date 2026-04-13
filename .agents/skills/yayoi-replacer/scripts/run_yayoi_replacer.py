@@ -9,74 +9,78 @@ sys.path.insert(0, str(_REPO_ROOT))
 import argparse
 from pathlib import Path
 
-from belle.line_runners import (
-    LinePlan,
-    plan_bank,
-    plan_card,
-    plan_receipt,
-    run_bank,
-    run_card,
-    run_receipt,
+from belle.application import (
+    ReplacerPlanResult,
+    ReplacerRunFailedError,
+    ReplacerRunResult,
+    RunLineResult,
+    plan_replacer,
+    run_replacer,
 )
 from belle.ui_reason_codes import (
-    RUN_OK,
     build_ui_reason_event,
-    precheck_reason_code_for,
     run_failure_reason_code_for,
 )
 
 LINE_ID_CARD = "credit_card_statement"
-LINE_ORDER = ["receipt", "bank_statement", LINE_ID_CARD]
 
 
-def _format_target_files(target_files: list[str]) -> str:
+def _format_target_files(target_files: tuple[str, ...]) -> str:
     if not target_files:
         return "-"
     return ", ".join(target_files)
 
 
-def _print_plan(client_id: str, requested_line: str, plans: list[LinePlan]) -> None:
-    print(f"[PLAN] client={client_id} line={requested_line}")
-    for plan in plans:
+def _print_plan(plan_result: ReplacerPlanResult) -> None:
+    print(f"[PLAN] client={plan_result.client_id} line={plan_result.requested_line}")
+    for plan in plan_result.plans:
         print(
             f"- {plan.line_id}: {plan.status} ({plan.reason}) "
             f"target=[{_format_target_files(plan.target_files)}]"
         )
         print(
             build_ui_reason_event(
-                precheck_reason_code_for(plan.line_id, plan.status, plan.reason),
+                plan.ui_reason_code,
                 line_id=plan.line_id,
-                detail={"phase": "plan", "status": plan.status, "reason": plan.reason},
+                detail=plan.ui_reason_detail,
             )
         )
 
 
-def _find_plan(plans: list[LinePlan], line_id: str) -> LinePlan | None:
-    for plan in plans:
-        if plan.line_id == line_id:
-            return plan
+def _find_result(run_result: ReplacerRunResult, line_id: str) -> RunLineResult | None:
+    for result in run_result.line_results:
+        if result.line_id == line_id:
+            return result
     return None
 
 
-def _expected_cc_config_path(repo_root: Path, client_id: str) -> Path:
-    return repo_root / "clients" / client_id / "lines" / LINE_ID_CARD / "config" / "credit_card_line_config.json"
-
-
-def _enforce_cc_config_required(repo_root: Path, client_id: str, plan: LinePlan) -> LinePlan:
-    if plan.line_id != LINE_ID_CARD or plan.status == "FAIL":
-        return plan
-    expected_path = _expected_cc_config_path(repo_root, client_id)
-    if expected_path.exists():
-        return plan
-    details = dict(plan.details or {})
-    details["expected_cc_config_path"] = str(expected_path)
-    return LinePlan(
-        line_id=plan.line_id,
-        status="FAIL",
-        reason=f"missing_cc_config: expected={expected_path}",
-        target_files=list(plan.target_files),
-        details=details,
+def _print_run_result(client_id: str, result: RunLineResult) -> None:
+    print(
+        f"[OK] client={client_id} run_id={result.run_id} "
+        f"inputs={result.input_count} outputs={result.output_count}"
     )
+    print(f"[OK] run_dir={result.run_dir}")
+    print(f"[OK] run_manifest={result.run_manifest_path}")
+    if result.line_id == "bank_statement":
+        bank_cache_update = result.details.get("bank_cache_update")
+        if isinstance(bank_cache_update, dict):
+            print(
+                "[OK] bank_cache"
+                f" pairs_used={int(bank_cache_update.get('pairs_unique_used_total') or 0)}"
+                f" cache={bank_cache_update.get('cache_path') or ''}"
+            )
+    print(f" - changed_ratio={result.changed_ratio:.3f} output={result.output_file}")
+    if result.warnings:
+        print("[WARN] " + " | ".join(str(v) for v in result.warnings))
+    print(
+        build_ui_reason_event(
+            result.ui_reason_code,
+            line_id=result.line_id,
+            detail=result.ui_reason_detail,
+        )
+    )
+    if result.needs_review and result.reason:
+        print(result.reason)
 
 
 def _confirm_or_exit(*, force_yes: bool) -> int:
@@ -104,9 +108,7 @@ def main() -> int:
         choices=["receipt", "bank_statement", LINE_ID_CARD, "all"],
         help="Document processing line_id",
     )
-    ap.add_argument(
-        "--dry-run", action="store_true", help="Print PLAN and exit"
-    )
+    ap.add_argument("--dry-run", action="store_true", help="Print PLAN and exit")
     ap.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
     args = ap.parse_args()
 
@@ -117,22 +119,14 @@ def main() -> int:
         print("例: $yayoi-replacer --client <CLIENT_ID>")
         return 2
 
-    selected_lines = LINE_ORDER if args.line == "all" else [args.line]
+    plan_result = plan_replacer(
+        repo_root,
+        client_id,
+        requested_line=args.line,
+    )
+    _print_plan(plan_result)
 
-    plans: list[LinePlan] = []
-    for line_id in selected_lines:
-        if line_id == "receipt":
-            plans.append(plan_receipt(repo_root, client_id))
-            continue
-        if line_id == "bank_statement":
-            plans.append(plan_bank(repo_root, client_id))
-            continue
-        card_plan = plan_card(repo_root, client_id)
-        plans.append(_enforce_cc_config_required(repo_root, client_id, card_plan))
-
-    _print_plan(client_id, args.line, plans)
-
-    fail_plans = [p for p in plans if p.status == "FAIL"]
+    fail_plans = [plan for plan in plan_result.plans if plan.status == "FAIL"]
     if fail_plans:
         for plan in fail_plans:
             print(
@@ -148,8 +142,7 @@ def main() -> int:
     if args.dry_run:
         return 0
 
-    run_plans = [p for p in plans if p.status == "RUN"]
-    if not run_plans:
+    if not plan_result.runnable_plans:
         print("[OK] nothing to do")
         return 0
 
@@ -157,64 +150,47 @@ def main() -> int:
     if confirm_rc != 0:
         return confirm_rc
 
-    outcomes: dict[str, dict[str, object]] = {}
-    for line_id in LINE_ORDER:
-        plan = _find_plan(run_plans, line_id)
-        if plan is None:
-            continue
+    try:
+        run_result = run_replacer(
+            repo_root,
+            client_id,
+            plan_result=plan_result,
+        )
+    except ReplacerRunFailedError as exc:
+        partial_result = ReplacerRunResult(
+            client_id=client_id,
+            requested_line=plan_result.requested_line,
+            plan_result=plan_result,
+            line_results=exc.partial_results,
+            stopped_early=True,
+        )
+        for line_result in partial_result.line_results:
+            _print_run_result(client_id, line_result)
+        print(f"[ERROR] {exc.line_id} run failed: {exc}")
+        print(
+            build_ui_reason_event(
+                run_failure_reason_code_for(exc.line_id, str(exc)),
+                line_id=exc.line_id,
+                detail={"phase": "run", "status": "failure", "error": str(exc)},
+            )
+        )
+        return 1
 
-        details = plan.details or {}
-        try:
-            if line_id == "receipt":
-                raw_layout = details.get("client_layout_line_id")
-                if raw_layout != "receipt":
-                    raise RuntimeError(f"invalid receipt layout marker: {raw_layout}")
-                client_dir_raw = str(details.get("client_dir") or "")
-                if not client_dir_raw:
-                    raise RuntimeError("missing client_dir in receipt plan")
-                outcomes[line_id] = run_receipt(
-                    repo_root,
-                    client_id,
-                    client_layout_line_id=raw_layout,
-                    client_dir=Path(client_dir_raw),
-                )
-            elif line_id == "bank_statement":
-                client_dir_raw = str(details.get("client_dir") or "")
-                if not client_dir_raw:
-                    raise RuntimeError("missing client_dir in bank_statement plan")
-                outcomes[line_id] = run_bank(
-                    repo_root,
-                    client_id,
-                    client_dir=Path(client_dir_raw),
-                )
-            else:
-                outcomes[line_id] = run_card(repo_root, client_id)
-            print(
-                build_ui_reason_event(
-                    RUN_OK,
-                    line_id=line_id,
-                    detail={"phase": "run", "status": "success"},
-                )
-            )
-        except Exception as exc:
-            print(f"[ERROR] {line_id} run failed: {exc}")
-            print(
-                build_ui_reason_event(
-                    run_failure_reason_code_for(line_id, str(exc)),
-                    line_id=line_id,
-                    detail={"phase": "run", "status": "failure", "error": str(exc)},
-                )
-            )
-            return 1
+    for result in run_result.line_results:
+        _print_run_result(client_id, result)
+
+    if run_result.has_needs_review:
+        return 2
 
     print(f"[OK] done client={client_id}")
-    for plan in plans:
+    for plan in plan_result.plans:
         if plan.status == "RUN":
-            out = outcomes.get(plan.line_id) or {}
-            changed_ratio = float(out.get("changed_ratio") or 0.0)
+            result = _find_result(run_result, plan.line_id)
+            if result is None:
+                continue
             print(
-                f"- {plan.line_id}: DONE run_id={out.get('run_id', '')} "
-                f"changed_ratio={changed_ratio:.3f}"
+                f"- {plan.line_id}: DONE run_id={result.run_id} "
+                f"changed_ratio={result.changed_ratio:.3f}"
             )
         elif plan.status == "SKIP":
             print(f"- {plan.line_id}: SKIPPED {plan.reason}")

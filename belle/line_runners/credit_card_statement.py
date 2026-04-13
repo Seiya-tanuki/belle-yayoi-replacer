@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from belle.application.models import LinePlan, RunLineResult
 from belle.build_cc_cache import ensure_cc_client_cache_updated, load_credit_card_line_config
 from belle.cc_replacer import replace_credit_card_yayoi_csv
 from belle.defaults import (
@@ -36,10 +37,10 @@ from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
-    build_ui_reason_event,
+    precheck_reason_code_for,
 )
 
-from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
 
 LINE_ID_CARD = "credit_card_statement"
 
@@ -57,7 +58,7 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_CARD)
     except FileNotFoundError as exc:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason=str(exc),
@@ -66,7 +67,7 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
         )
 
     if client_layout_line_id is None:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason="credit_card_statement does not support legacy client layout",
@@ -83,7 +84,7 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
 
     status, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_CARD,
             status=status,
             reason=reason,
@@ -93,7 +94,7 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
 
     cc_config_path = _credit_card_line_config_path(client_dir)
     if not cc_config_path.exists():
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason=_missing_cc_config_reason(client_dir),
@@ -101,7 +102,7 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
             details=details,
         )
 
-    return LinePlan(
+    return build_line_plan(
         line_id=LINE_ID_CARD,
         status="RUN",
         reason="ready",
@@ -140,7 +141,7 @@ def _write_run_manifest(run_manifest_path: Path, run_manifest: dict[str, Any]) -
     write_text_atomic(run_manifest_path, run_manifest_text, encoding="utf-8")
 
 
-def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
+def run_card(repo_root: Path, client_id: str) -> RunLineResult:
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_CARD)
     except FileNotFoundError as exc:
@@ -150,13 +151,13 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
 
     status, reason, target_files = compute_target_file_status(client_dir)
     if status == "SKIP":
-        print(f"[OK] {LINE_ID_CARD}: SKIP ({reason})")
-        return {
-            "line_id": LINE_ID_CARD,
-            "exit_status": "SKIP",
-            "reasons": [reason],
-            "target_files": target_files,
-        }
+        return RunLineResult.skipped(
+            line_id=LINE_ID_CARD,
+            reason=reason,
+            ui_reason_code=precheck_reason_code_for(LINE_ID_CARD, status, reason),
+            ui_reason_detail={"phase": "run", "status": "skipped", "reason": reason},
+            target_files=tuple(target_files),
+        )
     if status == "FAIL":
         raise RuntimeError(reason)
 
@@ -303,47 +304,52 @@ def run_card(repo_root: Path, client_id: str) -> dict[str, object]:
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     update_latest_run_id(latest_path, run_id)
 
-    print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs=1")
-    print(f"[OK] run_dir={run_dir}")
-    print(f"[OK] run_manifest={run_manifest_path}")
-    print(
-        f" - changed_ratio={float(replacer_manifest.get('changed_ratio') or 0.0):.3f}"
-        f" output={replacer_manifest.get('output_file', '')}"
-    )
-    if warnings:
-        print("[WARN] " + " | ".join(warnings))
-
     if strict_stop:
         strict_stop_reason_code = (
             RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED
             if canonical_payable_strict_stop
             else RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED
         )
-        print(
-            build_ui_reason_event(
-                strict_stop_reason_code,
-                line_id=LINE_ID_CARD,
-                detail={"strict_stop_applied": True, "reasons": reasons},
-            )
-        )
         if canonical_payable_strict_stop:
-            print(
+            strict_stop_message = (
                 "[ERROR] strict-stop: Contract A failed "
                 "(canonical_payable_required_failed=True)."
             )
         else:
-            print(
+            strict_stop_message = (
                 "[ERROR] strict-stop: Contract A failed "
                 "(payable_sub_fill_required_failed=True)."
             )
-        raise SystemExit(2)
+        return RunLineResult.needs_review_result(
+            line_id=LINE_ID_CARD,
+            reason=strict_stop_message,
+            ui_reason_code=strict_stop_reason_code,
+            ui_reason_detail={"strict_stop_applied": True, "reasons": list(reasons)},
+            run_id=run_id,
+            run_dir=str(run_dir),
+            run_manifest_path=str(run_manifest_path),
+            changed_ratio=float(replacer_manifest.get("changed_ratio") or 0.0),
+            output_file=str(replacer_manifest.get("output_file") or ""),
+            warnings=tuple(warnings),
+            reasons=tuple(reasons),
+            target_files=tuple(target_files),
+            input_count=1,
+            output_count=1,
+            details={"outputs": [replacer_manifest]},
+        )
 
-    return {
-        "line_id": LINE_ID_CARD,
-        "run_id": run_id,
-        "run_dir": str(run_dir),
-        "run_manifest_path": str(run_manifest_path),
-        "changed_ratio": float(replacer_manifest.get("changed_ratio") or 0.0),
-        "output_file": str(replacer_manifest.get("output_file") or ""),
-        "warnings": warnings,
-    }
+    return RunLineResult.success(
+        line_id=LINE_ID_CARD,
+        ui_reason_code=RUN_OK,
+        ui_reason_detail={"phase": "run", "status": "success"},
+        run_id=run_id,
+        run_dir=str(run_dir),
+        run_manifest_path=str(run_manifest_path),
+        changed_ratio=float(replacer_manifest.get("changed_ratio") or 0.0),
+        output_file=str(replacer_manifest.get("output_file") or ""),
+        warnings=tuple(warnings),
+        target_files=tuple(target_files),
+        input_count=1,
+        output_count=1,
+        details={"outputs": [replacer_manifest]},
+    )

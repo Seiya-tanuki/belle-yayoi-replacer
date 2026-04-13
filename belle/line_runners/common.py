@@ -1,20 +1,30 @@
 # -*- coding: utf-8 -*-
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from pathlib import Path
 
+from belle.application.models import LinePlan
 from belle.ingest import list_discoverable_files
 from belle.paths import get_client_root
+from belle.ui_reason_codes import precheck_reason_code_for
 
-
-@dataclass
-class LinePlan:
-    line_id: str
-    status: str  # "RUN" | "SKIP" | "FAIL"
-    reason: str
-    target_files: list[str]
-    details: dict[str, object] = field(default_factory=dict)
+def build_line_plan(
+    *,
+    line_id: str,
+    status: str,
+    reason: str,
+    target_files: list[str],
+    details: dict[str, object] | None = None,
+) -> LinePlan:
+    return LinePlan(
+        line_id=line_id,
+        status=status,
+        reason=reason,
+        target_files=tuple(target_files),
+        ui_reason_code=precheck_reason_code_for(line_id, status, reason),
+        ui_reason_detail={"phase": "plan", "status": status, "reason": reason},
+        details=dict(details or {}),
+    )
 
 
 def list_input_files(

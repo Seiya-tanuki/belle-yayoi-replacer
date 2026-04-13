@@ -249,7 +249,7 @@ class CCCanonicalPayableV2AcceptanceTests(unittest.TestCase):
             self.assertEqual("already_canonical", review_rows[0]["payable_account_rewrite_reason"])
             self.assertEqual(PAYABLE_PLACEHOLDER, review_rows[0]["payable_account_after_canonical"])
 
-    def test_review_required_canonical_payable_preserves_strict_stop_exit_2(self) -> None:
+    def test_review_required_canonical_payable_returns_needs_review_result(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C_CC_V2_REVIEW_REQUIRED"
@@ -273,9 +273,15 @@ class CCCanonicalPayableV2AcceptanceTests(unittest.TestCase):
                 ],
             )
 
-            with self.assertRaises(SystemExit) as ctx:
-                run_card(repo_root, client_id)
-            self.assertEqual(2, int(ctx.exception.code))
+            result = run_card(repo_root, client_id)
+            self.assertEqual("needs_review", result.outcome)
+            self.assertTrue(result.needs_review)
+            self.assertTrue(result.strict_stop_applied)
+            self.assertEqual("FAIL", result.exit_status)
+            self.assertEqual(
+                "RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED",
+                result.ui_reason_code,
+            )
 
             latest_run_id = (line_root / "outputs" / "LATEST.txt").read_text(encoding="utf-8").strip()
             run_dir = line_root / "outputs" / "runs" / latest_run_id

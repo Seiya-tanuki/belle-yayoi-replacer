@@ -324,23 +324,22 @@ class CCLineSkillWiringSmokeTests(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with self.assertRaises(SystemExit) as ctx:
-                with contextlib.redirect_stdout(buf):
-                    with contextlib.redirect_stderr(buf):
-                        with mock.patch.object(
-                            sys,
-                            "argv",
-                            [
-                                "run_yayoi_replacer.py",
-                                "--client",
-                                client_id,
-                                "--line",
-                                "credit_card_statement",
-                                "--yes",
-                            ],
-                        ):
-                            module.main()
-            self.assertEqual(2, int(ctx.exception.code), msg=buf.getvalue())
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "run_yayoi_replacer.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "credit_card_statement",
+                            "--yes",
+                        ],
+                    ):
+                        rc = module.main()
+            self.assertEqual(2, rc, msg=buf.getvalue())
 
             latest_path = line_root / "outputs" / "LATEST.txt"
             self.assertTrue(latest_path.exists(), msg=buf.getvalue())
@@ -416,23 +415,22 @@ class CCLineSkillWiringSmokeTests(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with self.assertRaises(SystemExit) as ctx:
-                with contextlib.redirect_stdout(buf):
-                    with contextlib.redirect_stderr(buf):
-                        with mock.patch.object(
-                            sys,
-                            "argv",
-                            [
-                                "run_yayoi_replacer.py",
-                                "--client",
-                                client_id,
-                                "--line",
-                                "credit_card_statement",
-                                "--yes",
-                            ],
-                        ):
-                            module.main()
-            self.assertEqual(2, int(ctx.exception.code), msg=buf.getvalue())
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "run_yayoi_replacer.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "credit_card_statement",
+                            "--yes",
+                        ],
+                    ):
+                        rc = module.main()
+            self.assertEqual(2, rc, msg=buf.getvalue())
 
             latest_path = line_root / "outputs" / "LATEST.txt"
             self.assertTrue(latest_path.exists(), msg=buf.getvalue())

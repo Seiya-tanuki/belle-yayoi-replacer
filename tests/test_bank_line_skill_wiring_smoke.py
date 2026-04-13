@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 from uuid import uuid4
 
+from belle.line_runners.bank_statement import run_bank
 from belle.yayoi_columns import (
     COL_CREDIT_ACCOUNT,
     COL_CREDIT_AMOUNT,
@@ -662,23 +663,22 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             )
 
             buf = io.StringIO()
-            with self.assertRaises(SystemExit) as ctx:
-                with contextlib.redirect_stdout(buf):
-                    with contextlib.redirect_stderr(buf):
-                        with mock.patch.object(
-                            sys,
-                            "argv",
-                            [
-                                "run_yayoi_replacer.py",
-                                "--client",
-                                client_id,
-                                "--line",
-                                "bank_statement",
-                                "--yes",
-                            ],
-                        ):
-                            module.main()
-            self.assertEqual(2, int(ctx.exception.code), msg=buf.getvalue())
+            with contextlib.redirect_stdout(buf):
+                with contextlib.redirect_stderr(buf):
+                    with mock.patch.object(
+                        sys,
+                        "argv",
+                        [
+                            "run_yayoi_replacer.py",
+                            "--client",
+                            client_id,
+                            "--line",
+                            "bank_statement",
+                            "--yes",
+                        ],
+                    ):
+                        rc = module.main()
+            self.assertEqual(2, rc, msg=buf.getvalue())
 
             latest_path = line_root / "outputs" / "LATEST.txt"
             self.assertTrue(latest_path.exists(), msg=buf.getvalue())
@@ -712,6 +712,59 @@ class BankLineSkillWiringSmokeTests(unittest.TestCase):
             rows = _read_yayoi_rows(replaced_csv_files[0])
             self.assertTrue(rows, msg=buf.getvalue())
             self.assertTrue(all(row[COL_CREDIT_SUBACCOUNT] == "" for row in rows), msg=buf.getvalue())
+
+    def test_bank_line_direct_runner_returns_needs_review_result_for_file_level_failure(self) -> None:
+        client_id = "C_BANK_DIRECT_FAIL"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            line_root = _prepare_bank_client_layout(repo_root, client_id)
+            cfg_path = line_root / "config" / "bank_line_config.json"
+            cfg_obj = json.loads(cfg_path.read_text(encoding="utf-8"))
+            cfg_obj["bank_account_subaccount"] = ""
+            thresholds = cfg_obj.get("thresholds")
+            if isinstance(thresholds, dict):
+                thresholds.pop("file_level_bank_sub_inference", None)
+            cfg_path.write_text(json.dumps(cfg_obj, ensure_ascii=False, indent=2), encoding="utf-8")
+            _write_file_level_training_pair(
+                line_root,
+                bank_subaccount="BANK_SUB_FILE_FAIL",
+                amounts=[5100, 5200, 5300],
+            )
+            _write_yayoi_rows(
+                line_root / "inputs" / "kari_shiwake" / "target.csv",
+                [
+                    _build_row(
+                        date_text="2026/02/21",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                    _build_row(
+                        date_text="2026/02/22",
+                        summary=OCR_SUMMARY,
+                        debit_account=PLACEHOLDER_ACCOUNT,
+                        credit_account=BANK_ACCOUNT,
+                        amount=9999,
+                        memo="SIGN=debit",
+                        credit_subaccount="",
+                    ),
+                ],
+            )
+
+            result = run_bank(repo_root, client_id, client_dir=line_root)
+
+            self.assertEqual("needs_review", result.outcome)
+            self.assertTrue(result.needs_review)
+            self.assertTrue(result.strict_stop_applied)
+            self.assertEqual("FAIL", result.exit_status)
+            self.assertEqual(
+                "RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED",
+                result.ui_reason_code,
+            )
+            self.assertIn("bank_sub_fill_required_failed", result.reasons)
 
     def test_bank_line_client_cache_builder_does_not_create_ledger_ref_ingest_dir(self) -> None:
         real_repo_root = Path(__file__).resolve().parents[1]

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from belle.application.models import LinePlan, RunLineResult
 from belle.paths import (
     build_input_artifact_prefix,
     ensure_client_system_dirs,
@@ -36,10 +37,9 @@ from belle.ingest import ingest_single_file
 from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
-    build_ui_reason_event,
 )
 
-from .common import LinePlan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
 
 LINE_ID_BANK = "bank_statement"
 
@@ -102,7 +102,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_BANK)
     except FileNotFoundError as exc:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=str(exc),
@@ -111,7 +111,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
         )
 
     if client_layout_line_id is None:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason="bank_statement does not support legacy client layout",
@@ -130,7 +130,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
 
     status, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_BANK,
             status=status,
             reason=reason,
@@ -139,7 +139,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
         )
 
     if not config_path.exists():
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=f"bank_line_config.json not found: {config_path}",
@@ -151,7 +151,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
     details.update(training_details)
     details["training_pair_summary"] = training_reason
     if training_state == "fail":
-        return LinePlan(
+        return build_line_plan(
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=training_reason,
@@ -159,7 +159,7 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
             details=details,
         )
 
-    return LinePlan(
+    return build_line_plan(
         line_id=LINE_ID_BANK,
         status="RUN",
         reason="ready",
@@ -216,7 +216,7 @@ def run_bank(
     client_id: str,
     *,
     client_dir: Path,
-) -> dict[str, object]:
+) -> RunLineResult:
     if ensure_bank_client_cache_updated is None or replace_bank_yayoi_csv is None:
         raise RuntimeError("bank_statement runtime modules are unavailable")
 
@@ -329,42 +329,42 @@ def run_bank(
     write_text_atomic(run_manifest_path, run_manifest_text, encoding="utf-8")
     update_latest_run_id(latest_path, run_id)
 
-    print(f"[OK] client={client_id} run_id={run_id} inputs=1 outputs=1")
-    print(f"[OK] run_dir={run_dir}")
-    print(f"[OK] run_manifest={run_manifest_path}")
-    print(
-        "[OK] bank_cache"
-        f" pairs_used={run_manifest['bank_cache_update']['pairs_unique_used_total']}"
-        f" cache={cache_path}"
-    )
-    print(
-        f" - changed_ratio={bank_output_manifest.get('changed_ratio', 0.0):.3f}"
-        f" output={bank_output_manifest.get('output_file', '')}"
-    )
     warnings = run_manifest["bank_cache_update"]["warnings"]
-    if warnings:
-        print("[WARN] " + " | ".join(str(v) for v in warnings))
     if strict_stop:
-        print(
-            build_ui_reason_event(
-                RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
-                line_id=LINE_ID_BANK,
-                detail={"strict_stop_applied": True, "reasons": reasons},
-            )
+        return RunLineResult.needs_review_result(
+            line_id=LINE_ID_BANK,
+            reason="[ERROR] strict-stop: Contract A failed (bank_sub_fill_required_failed=True).",
+            ui_reason_code=RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
+            ui_reason_detail={"strict_stop_applied": True, "reasons": list(reasons)},
+            run_id=run_id,
+            run_dir=str(run_dir),
+            run_manifest_path=str(run_manifest_path),
+            changed_ratio=float(bank_output_manifest.get("changed_ratio") or 0.0),
+            output_file=str(bank_output_manifest.get("output_file") or ""),
+            warnings=tuple(str(v) for v in warnings),
+            reasons=tuple(reasons),
+            input_count=1,
+            output_count=1,
+            details={
+                "bank_cache_update": run_manifest["bank_cache_update"],
+                "outputs": [bank_output_manifest],
+            },
         )
-        print(
-            "[ERROR] strict-stop: Contract A failed "
-            "(bank_sub_fill_required_failed=True)."
-        )
-        raise SystemExit(2)
 
-    return {
-        "line_id": LINE_ID_BANK,
-        "run_id": run_id,
-        "run_dir": str(run_dir),
-        "run_manifest_path": str(run_manifest_path),
-        "changed_ratio": float(bank_output_manifest.get("changed_ratio") or 0.0),
-        "output_file": str(bank_output_manifest.get("output_file") or ""),
-        "warnings": warnings,
-        "bank_cache_update": run_manifest["bank_cache_update"],
-    }
+    return RunLineResult.success(
+        line_id=LINE_ID_BANK,
+        ui_reason_code=RUN_OK,
+        ui_reason_detail={"phase": "run", "status": "success"},
+        run_id=run_id,
+        run_dir=str(run_dir),
+        run_manifest_path=str(run_manifest_path),
+        changed_ratio=float(bank_output_manifest.get("changed_ratio") or 0.0),
+        output_file=str(bank_output_manifest.get("output_file") or ""),
+        warnings=tuple(str(v) for v in warnings),
+        input_count=1,
+        output_count=1,
+        details={
+            "bank_cache_update": run_manifest["bank_cache_update"],
+            "outputs": [bank_output_manifest],
+        },
+    )
