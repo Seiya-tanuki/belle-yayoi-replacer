@@ -220,8 +220,8 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_bank_statement_register_generates_default_config_if_template_file_missing(self) -> None:
-        repo_root = self.test_tmp_root / f"client_register_bank_fallback_{uuid4().hex}"
+    def test_bank_statement_register_fails_clearly_if_template_config_missing(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_bank_missing_config_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
             _prepare_template(self.real_repo_root, repo_root)
@@ -232,33 +232,13 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             rc, output = _run_register(
                 module,
                 repo_root,
-                client_id="C_BANK_CFG_FALLBACK",
+                client_id="C_BANK_CFG_REQUIRED",
             )
-            self.assertEqual(0, rc, msg=output)
 
-            config_path = (
-                repo_root
-                / "clients"
-                / "C_BANK_CFG_FALLBACK"
-                / "lines"
-                / "bank_statement"
-                / "config"
-                / "bank_line_config.json"
-            )
-            self.assertTrue(config_path.exists())
-            config_obj = json.loads(config_path.read_text(encoding="utf-8"))
-            self.assertEqual("belle.bank_line_config.v0", config_obj.get("schema"))
-            self.assertEqual("0.1", config_obj.get("version"))
-            self.assertEqual("仮払金", config_obj.get("placeholder_account_name"))
-            self.assertEqual("普通預金", config_obj.get("bank_account_name"))
-            thresholds = config_obj.get("thresholds") if isinstance(config_obj.get("thresholds"), dict) else {}
-            file_level = (
-                thresholds.get("file_level_bank_sub_inference")
-                if isinstance(thresholds.get("file_level_bank_sub_inference"), dict)
-                else {}
-            )
-            self.assertEqual(3, int(file_level.get("min_votes") or 0))
-            self.assertEqual(0.9, float(file_level.get("min_p_majority") or 0.0))
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Required template files are missing.", output)
+            self.assertIn("clients\\TEMPLATE\\lines\\bank_statement\\config\\bank_line_config.json", output)
+            self.assertFalse((repo_root / "clients" / "C_BANK_CFG_REQUIRED").exists())
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -342,6 +322,80 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
             self.assertIn("Required template files are missing.", output)
             self.assertIn("clients\\TEMPLATE\\lines\\receipt\\config\\receipt_line_config.json", output)
             self.assertFalse((repo_root / "clients" / "C_RECEIPT_CFG_REQUIRED").exists())
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_credit_card_register_fails_clearly_if_template_config_missing(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_credit_card_missing_config_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            (
+                repo_root
+                / "clients"
+                / "TEMPLATE"
+                / "lines"
+                / "credit_card_statement"
+                / "config"
+                / "credit_card_line_config.json"
+            ).unlink()
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_CC_CFG_REQUIRED",
+            )
+
+            self.assertEqual(2, rc, msg=output)
+            self.assertIn("Required template files are missing.", output)
+            self.assertIn(
+                "clients\\TEMPLATE\\lines\\credit_card_statement\\config\\credit_card_line_config.json",
+                output,
+            )
+            self.assertFalse((repo_root / "clients" / "C_CC_CFG_REQUIRED").exists())
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_successful_registration_guarantees_all_three_line_configs(self) -> None:
+        repo_root = self.test_tmp_root / f"client_register_all_line_configs_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            module = _load_register_module(self.real_repo_root)
+
+            rc, output = _run_register(
+                module,
+                repo_root,
+                client_id="C_ALL_LINE_CONFIGS",
+            )
+            self.assertEqual(0, rc, msg=output)
+
+            client_root = repo_root / "clients" / "C_ALL_LINE_CONFIGS" / "lines"
+            self.assertEqual(
+                _load_json(repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"),
+                _load_json(client_root / "receipt" / "config" / "receipt_line_config.json"),
+            )
+            self.assertEqual(
+                _load_json(
+                    repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement" / "config" / "bank_line_config.json"
+                ),
+                _load_json(client_root / "bank_statement" / "config" / "bank_line_config.json"),
+            )
+            self.assertEqual(
+                _load_json(
+                    repo_root
+                    / "clients"
+                    / "TEMPLATE"
+                    / "lines"
+                    / "credit_card_statement"
+                    / "config"
+                    / "credit_card_line_config.json"
+                ),
+                _load_json(client_root / "credit_card_statement" / "config" / "credit_card_line_config.json"),
+            )
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -808,32 +862,16 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_bank_registration_rolls_back_when_bank_config_init_fails(self) -> None:
-        repo_root = self.test_tmp_root / f"client_register_bank_rollback_{uuid4().hex}"
-        repo_root.mkdir(parents=True, exist_ok=False)
-        try:
-            _prepare_template(self.real_repo_root, repo_root)
-            _prepare_shared_assets(repo_root)
-            module = _load_register_module(self.real_repo_root)
+    def test_registration_module_has_no_bank_fallback_generation_residue(self) -> None:
+        module = _load_register_module(self.real_repo_root)
+        source_text = (
+            self.real_repo_root / ".agents" / "skills" / "client-register" / "register_client.py"
+        ).read_text(encoding="utf-8")
 
-            with mock.patch.object(
-                module,
-                "_ensure_bank_line_config",
-                side_effect=RuntimeError("bank init failed"),
-            ):
-                rc, output = _run_register(
-                    module,
-                    repo_root,
-                    client_id="C_BANK_ROLLBACK",
-                    line="bank_statement",
-                )
-
-            self.assertEqual(2, rc, msg=output)
-            self.assertIn("Failed to initialize bank_line_config.json.", output)
-            self.assertFalse((repo_root / "clients" / "C_BANK_ROLLBACK").exists())
-            self.assertEqual(["TEMPLATE"], _client_dir_names(repo_root))
-        finally:
-            shutil.rmtree(repo_root, ignore_errors=True)
+        self.assertFalse(hasattr(module, "_ensure_bank_line_config"))
+        self.assertFalse(hasattr(module, "BANK_LINE_CONFIG_MINIMAL"))
+        self.assertNotIn("_ensure_bank_line_config", source_text)
+        self.assertNotIn("BANK_LINE_CONFIG_MINIMAL", source_text)
 
     def test_registration_fails_when_shared_tax_config_is_missing_after_staging(self) -> None:
         repo_root = self.test_tmp_root / f"client_register_missing_shared_tax_{uuid4().hex}"

@@ -19,36 +19,13 @@ REGISTER_LINES = ("receipt", "bank_statement", "credit_card_statement")
 CATEGORY_OVERRIDES_LINES = ("receipt", "credit_card_statement")
 SHARED_YAYOI_TAX_CONFIG_REL_PATH = Path("config") / "yayoi_tax_config.json"
 RECEIPT_LINE_CONFIG_REL_PATH = Path("config") / "receipt_line_config.json"
+BANK_LINE_CONFIG_REL_PATH = Path("config") / "bank_line_config.json"
+CREDIT_CARD_LINE_CONFIG_REL_PATH = Path("config") / "credit_card_line_config.json"
 CLIENT_REGISTRATION_RUN_MANIFEST_SCHEMA = "belle.client_registration_init.run_manifest.v1"
 CLIENT_REGISTRATION_RUN_MANIFEST_VERSION = "1.0"
 BOOKKEEPING_MODE_CHOICES = {
     "1": ("税抜き", "tax_excluded"),
     "2": ("税込み", "tax_included"),
-}
-
-BANK_LINE_CONFIG_MINIMAL = {
-    "schema": "belle.bank_line_config.v0",
-    "version": "0.1",
-    "placeholder_account_name": "\u4eee\u6255\u91d1",
-    "bank_account_name": "\u666e\u901a\u9810\u91d1",
-    "bank_account_subaccount": "",
-    "pairing": {
-        "join_key": ["date", "sign", "amount"],
-        "require_unique_on_both_sides": True,
-    },
-    "thresholds": {
-        "kana_sign_amount": {"min_count": 2, "min_p_majority": 0.85},
-        "kana_sign": {"min_count": 3, "min_p_majority": 0.80},
-        "file_level_bank_sub_inference": {"min_votes": 3, "min_p_majority": 0.9},
-    },
-    "notes": {
-        "status": "template_only_not_used_yet",
-        "source_specs": [
-            "spec/BANK_LINE_INPUTS_SPEC.md",
-            "spec/BANK_CLIENT_CACHE_SPEC.md",
-            "spec/BANK_REPLACER_SPEC.md",
-        ],
-    },
 }
 
 
@@ -201,8 +178,10 @@ def _required_template_dirs(template_line_root: Path, line_id: str) -> list[Path
 def _required_template_files(template_line_root: Path, line_id: str) -> list[Path]:
     if line_id == "receipt":
         return [template_line_root / RECEIPT_LINE_CONFIG_REL_PATH]
-    if line_id in {"bank_statement", "credit_card_statement"}:
-        return []
+    if line_id == "bank_statement":
+        return [template_line_root / BANK_LINE_CONFIG_REL_PATH]
+    if line_id == "credit_card_statement":
+        return [template_line_root / CREDIT_CARD_LINE_CONFIG_REL_PATH]
     raise ValueError(f"unsupported line for registration: {line_id}")
 
 
@@ -375,24 +354,6 @@ def _apply_category_override_teacher_bootstrap(
         "rules_used": category_override_bootstrap_rules_manifest(),
         "per_line": per_line,
     }
-
-
-def _ensure_bank_line_config(template_line_root: Path, destination_line_root: Path) -> None:
-    destination_config_path = destination_line_root / "config" / "bank_line_config.json"
-    if destination_config_path.exists():
-        return
-
-    destination_config_path.parent.mkdir(parents=True, exist_ok=True)
-    template_config_path = template_line_root / "config" / "bank_line_config.json"
-    if template_config_path.exists():
-        shutil.copy2(template_config_path, destination_config_path)
-        return
-
-    destination_config_path.write_text(
-        json.dumps(BANK_LINE_CONFIG_MINIMAL, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
 
 def _load_staged_shared_tax_config(shared_tax_config_path: Path) -> dict[str, object]:
     from belle.lines import validate_bookkeeping_mode
@@ -579,17 +540,6 @@ def _initialize_staged_client(
         except Exception as exc:
             raise RegistrationError(
                 f"Failed to initialize category_overrides.json for line={line_id}.",
-                str(exc),
-            ) from exc
-
-    if "bank_statement" in selected_lines:
-        bank_template_line_root = template_dir / "lines" / "bank_statement"
-        bank_destination_line_root = staging_dir / "lines" / "bank_statement"
-        try:
-            _ensure_bank_line_config(bank_template_line_root, bank_destination_line_root)
-        except Exception as exc:
-            raise RegistrationError(
-                "Failed to initialize bank_line_config.json.",
                 str(exc),
             ) from exc
 
