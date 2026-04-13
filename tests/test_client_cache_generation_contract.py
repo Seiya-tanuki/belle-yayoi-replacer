@@ -154,6 +154,23 @@ def _current_category_keys(repo_root: Path) -> set[str]:
     }
 
 
+def _write_receipt_line_config(line_root: Path) -> None:
+    config_path = line_root / "config" / "receipt_line_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.replacer_config.v1",
+                "version": "1.16",
+                "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 class ClientCacheGenerationContractTests(unittest.TestCase):
     def test_receipt_client_cache_generation_from_empty_state_uses_current_taxonomy(self) -> None:
         source_repo_root = Path(__file__).resolve().parents[1]
@@ -174,6 +191,7 @@ class ClientCacheGenerationContractTests(unittest.TestCase):
 
                 self.assertFalse(cache_path.exists())
                 self.assertFalse(legacy_cache_path.exists())
+                _write_receipt_line_config(line_root)
 
                 _write_rows(
                     line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",

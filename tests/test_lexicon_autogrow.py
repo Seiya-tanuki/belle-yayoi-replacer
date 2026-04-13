@@ -50,6 +50,22 @@ def _write_minimal_lexicon(lexicon_path: Path) -> None:
     lexicon_path.write_text(json.dumps(obj, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _write_receipt_line_config(config_path: Path) -> None:
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.replacer_config.v1",
+                "version": "1.16",
+                "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_yayoi_row(path: Path, *, summary: str, debit: str = "旅費交通費") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     cols = [""] * 25
@@ -286,6 +302,7 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
 
         try:
             (client_dir / "config").mkdir(parents=True, exist_ok=True)
+            _write_receipt_line_config(client_dir / "config" / "receipt_line_config.json")
             _write_yayoi_row(client_dir / "inputs" / "ledger_ref" / "batch1.csv", summary="LOCK TEST SHOP / row")
             _write_yayoi_row(client_dir / "inputs" / "kari_shiwake" / "target.csv", summary="dummy")
 

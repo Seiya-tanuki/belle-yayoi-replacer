@@ -186,6 +186,11 @@ def _prepare_common_repo_layout(repo_root: Path, line_id: str) -> None:
         exist_ok=True,
     )
     _write_valid_shared_tax_config(repo_root, "TEMPLATE")
+    if line_id == "receipt":
+        _write_text(
+            repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+            _minimal_receipt_replacer_config_json(),
+        )
     if line_id == "bank_statement":
         bank_template_root = repo_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
         for rel in [
@@ -229,6 +234,10 @@ def _prepare_receipt_assets(repo_root: Path, *, with_lexicon: bool) -> None:
     _write_mode_aware_defaults(repo_root, "receipt", "{}\n")
     _write_text(
         repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+        _minimal_receipt_replacer_config_json(),
+    )
+    _write_text(
+        repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json",
         _minimal_receipt_replacer_config_json(),
     )
     if with_lexicon:
@@ -563,7 +572,7 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_receipt_ruleset_missing_tax_sections_is_hard_failure(self) -> None:
+    def test_receipt_line_config_missing_runtime_sections_is_hard_failure(self) -> None:
         repo_root = self.test_tmp_root / f"diagnose_receipt_tax_sections_fail_{uuid4().hex}"
         repo_root.mkdir(parents=True, exist_ok=False)
         try:
@@ -571,7 +580,7 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
             _write_mode_aware_defaults(repo_root, "receipt", "{}\n")
             _write_minimal_lexicon_with_category(repo_root)
             _write_text(
-                repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+                repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json",
                 _minimal_receipt_replacer_config_json(include_tax_sections=False),
             )
 
@@ -581,10 +590,31 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
             self.assertNotEqual(0, rc, msg=output)
             report = _read_latest_report(repo_root)
             self.assertIn(
-                "| C44 active receipt replacer config contains required tax_division_thresholds and tax_division_confidence sections | FAIL |",
+                "| C44 receipt line config contains required csv_contract/tax runtime sections for TEMPLATE and present receipt clients | FAIL |",
                 report,
             )
             self.assertIn("tax_division_thresholds=missing_or_invalid", report)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_receipt_client_line_config_missing_is_hard_failure(self) -> None:
+        repo_root = self.test_tmp_root / f"diagnose_receipt_client_config_missing_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_common_repo_layout(repo_root, "receipt")
+            _prepare_receipt_assets(repo_root, with_lexicon=True)
+            (repo_root / "clients" / "C_RECEIPT_MISSING" / "lines" / "receipt").mkdir(parents=True, exist_ok=True)
+
+            module = _load_system_diagnose_module(self.real_repo_root)
+            rc, output = _run_main(module, repo_root, "receipt")
+
+            self.assertNotEqual(0, rc, msg=output)
+            report = _read_latest_report(repo_root)
+            self.assertIn(
+                "| C49 receipt client config/receipt_line_config.json exists for each line-aware receipt client | FAIL |",
+                report,
+            )
+            self.assertIn("missing receipt_line_config.json for client(s): C_RECEIPT_MISSING", report)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
@@ -594,6 +624,10 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         try:
             _prepare_common_repo_layout(repo_root, "receipt")
             _prepare_receipt_assets(repo_root, with_lexicon=True)
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_BAD" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+                _minimal_receipt_replacer_config_json(),
+            )
             _write_text(
                 repo_root / "clients" / "C_RECEIPT_BAD" / "lines" / "receipt" / "config" / "category_overrides.json",
                 json.dumps(
@@ -634,7 +668,14 @@ class SystemDiagnoseLineAwareTests(unittest.TestCase):
         try:
             _prepare_common_repo_layout(repo_root, "receipt")
             _prepare_receipt_assets(repo_root, with_lexicon=True)
-            (repo_root / "clients" / "C_RECEIPT_MISSING" / "lines" / "receipt").mkdir(parents=True, exist_ok=True)
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_MISSING" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+                _minimal_receipt_replacer_config_json(),
+            )
+            _write_text(
+                repo_root / "clients" / "C_RECEIPT_VALID" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+                _minimal_receipt_replacer_config_json(),
+            )
             _write_text(
                 repo_root / "clients" / "C_RECEIPT_VALID" / "lines" / "receipt" / "config" / "category_overrides.json",
                 json.dumps(

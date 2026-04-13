@@ -137,6 +137,20 @@ class SystemDiagnoseBankForbiddenResidueWarnTests(unittest.TestCase):
                     ]
                 ),
             )
+            _write_text(
+                temp_root / "belle" / "receipt_config.py",
+                "\n".join(
+                    [
+                        "from __future__ import annotations",
+                        "",
+                        "from pathlib import Path",
+                        "",
+                        "def receipt_line_config_path(client_dir: Path) -> Path:",
+                        "    return client_dir / 'config' / 'receipt_line_config.json'",
+                        "",
+                    ]
+                ),
+            )
             for module_name in [
                 "build_bank_cache.py",
                 "bank_replacer.py",

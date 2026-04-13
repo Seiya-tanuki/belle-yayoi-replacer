@@ -81,18 +81,6 @@ def _read_git_head(repo_root: Path) -> str:
         return "unknown"
 
 
-def _detect_repo_version(repo_root: Path, line_id: str) -> str | None:
-    config_path = repo_root / "rulesets" / line_id / "replacer_config_v1_15.json"
-    if not config_path.exists():
-        return None
-    try:
-        obj = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    version = str(obj.get("version") or "").strip()
-    return version or None
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--line", default="receipt", help="Document processing line_id")
@@ -141,9 +129,6 @@ def main() -> int:
 
     now = _now_utc()
     tool_versions: Dict[str, str] = {"python": platform.python_version()}
-    repo_version = _detect_repo_version(repo_root, line_id)
-    if repo_version:
-        tool_versions["repo"] = repo_version
 
     manifest_obj = {
         "exported_at_utc": _now_utc_iso(now),

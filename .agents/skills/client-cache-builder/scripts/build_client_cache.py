@@ -12,6 +12,7 @@ from pathlib import Path
 
 from belle.ingest import list_discoverable_files
 from belle.lexicon import load_lexicon
+from belle.receipt_config import load_receipt_line_config
 from belle.lines import is_line_implemented, line_mode_independent_asset_paths, validate_line_id
 from belle.build_client_cache import ensure_client_cache_updated
 from belle.paths import (
@@ -104,11 +105,6 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", default=None)
     ap.add_argument("--line", default="receipt", help="Document processing line_id")
-    ap.add_argument(
-        "--config",
-        default="rulesets/receipt/replacer_config_v1_15.json",
-        help="Replacer config JSON (thresholds reused)",
-    )
     args = ap.parse_args()
 
     repo_root = Path(__file__).resolve().parents[4]
@@ -123,9 +119,10 @@ def main() -> None:
 
     if args.client:
         client_id = args.client
-        client_layout_line_id, _ = _resolve_client_layout(repo_root, client_id, line_id)
+        client_layout_line_id, client_dir = _resolve_client_layout(repo_root, client_id, line_id)
     else:
         client_id, client_layout_line_id = find_client_id_auto(repo_root, line_id)
+        client_dir = get_client_root(repo_root, client_id, line_id=client_layout_line_id)
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
     telemetry_dir = get_artifacts_telemetry_dir(repo_root, client_id, line_id=client_layout_line_id)
@@ -227,8 +224,7 @@ def main() -> None:
 
     asset_paths = line_mode_independent_asset_paths(repo_root, line_id)
     lex = load_lexicon(asset_paths["lexicon_path"])
-    config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config = load_receipt_line_config(client_dir)
 
     tm, summary = ensure_client_cache_updated(
         repo_root=repo_root,

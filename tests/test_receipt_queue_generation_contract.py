@@ -100,6 +100,23 @@ def _write_receipt_ledger_ref(path: Path, *, summary: str, debit_account: str = 
         writer.writerow(row)
 
 
+def _write_receipt_line_config(line_root: Path) -> None:
+    config_path = line_root / "config" / "receipt_line_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema": "belle.replacer_config.v1",
+                "version": "1.16",
+                "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _read_queue_rows(queue_csv: Path) -> list[dict[str, str]]:
     with queue_csv.open("r", encoding="utf-8-sig", newline="") as fh:
         return list(csv.DictReader(fh))
@@ -147,6 +164,7 @@ class ReceiptQueueGenerationContractTests(unittest.TestCase):
                     / "ledger_ref"
                     / "batch1.csv"
                 )
+                _write_receipt_line_config(ledger_ref_path.parents[2])
                 _write_receipt_ledger_ref(
                     ledger_ref_path,
                     summary="PHASE4CLEANSTATEIZAKAYA / fixture",

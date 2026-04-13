@@ -15,6 +15,7 @@ from belle.lexicon import load_lexicon
 from belle.lines import line_mode_independent_asset_paths, validate_line_id
 from belle.lexicon_manager import ensure_lexicon_candidates_updated_from_ledger_ref
 from belle.paths import get_client_root
+from belle.receipt_config import load_receipt_line_config
 
 
 def _list_ref_files_with_txt(dir_path: Path):
@@ -68,11 +69,6 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--client", default=None)
     ap.add_argument("--line", default="receipt", help="Document processing line_id")
-    ap.add_argument(
-        "--config",
-        default="rulesets/receipt/replacer_config_v1_15.json",
-        help="Used for dummy summary contract",
-    )
     ap.add_argument("--show-paths", action="store_true", help="Print paths and continue")
     args = ap.parse_args()
 
@@ -92,8 +88,7 @@ def main() -> int:
     else:
         client_id, client_layout_line_id, client_dir = find_client_id_auto(repo_root, line_id)
 
-    config_path = (repo_root / args.config) if not Path(args.config).is_absolute() else Path(args.config)
-    config = json.loads(config_path.read_text(encoding="utf-8"))
+    config = load_receipt_line_config(client_dir)
     asset_paths = line_mode_independent_asset_paths(repo_root, line_id)
     pending_dir = asset_paths["pending_dir"]
 

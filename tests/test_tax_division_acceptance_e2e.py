@@ -193,7 +193,7 @@ def _cc_row(
     return row
 
 
-def _write_receipt_assets(repo_root: Path) -> Path:
+def _write_receipt_assets(repo_root: Path, client_id: str) -> Path:
     _write_text(
         repo_root / "lexicon" / "lexicon.json",
         json.dumps(
@@ -243,47 +243,56 @@ def _write_receipt_assets(repo_root: Path) -> Path:
             },
         },
     )
-    ruleset_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
-    _write_text(
-        ruleset_path,
-        json.dumps(
-            {
-                "schema": "belle.replacer_config.v1",
-                "version": "1.16",
-                "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
-                "thresholds": {
-                    "t_number_min_count": 1,
-                    "t_number_p_majority_min": 0.5,
-                    "vendor_key_min_count": 1,
-                    "vendor_key_p_majority_min": 0.5,
-                    "category_min_count": 1,
-                    "category_p_majority_min": 0.5,
-                    "t_number_x_category_min_count": 1,
-                    "t_number_x_category_p_majority_min": 0.5,
-                },
-                "tax_division_thresholds": {
-                    "t_number_x_category_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                    "t_number_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                    "vendor_key_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                    "category_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                    "global_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                },
-                "tax_division_confidence": {
-                    "t_number_x_category_target_account_strength": 0.97,
-                    "t_number_target_account_strength": 0.95,
-                    "vendor_key_target_account_strength": 0.85,
-                    "category_target_account_strength": 0.65,
-                    "global_target_account_strength": 0.55,
-                    "category_default_strength": 0.55,
-                    "global_fallback_strength": 0.35,
-                    "learned_weight_multiplier": 0.85,
-                },
+    receipt_config_payload = json.dumps(
+        {
+            "schema": "belle.replacer_config.v1",
+            "version": "1.16",
+            "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+            "thresholds": {
+                "t_number_min_count": 1,
+                "t_number_p_majority_min": 0.5,
+                "vendor_key_min_count": 1,
+                "vendor_key_p_majority_min": 0.5,
+                "category_min_count": 1,
+                "category_p_majority_min": 0.5,
+                "t_number_x_category_min_count": 1,
+                "t_number_x_category_p_majority_min": 0.5,
             },
+            "tax_division_thresholds": {
+                "t_number_x_category_target_account": {"min_count": 1, "min_p_majority": 0.5},
+                "t_number_target_account": {"min_count": 1, "min_p_majority": 0.5},
+                "vendor_key_target_account": {"min_count": 1, "min_p_majority": 0.5},
+                "category_target_account": {"min_count": 1, "min_p_majority": 0.5},
+                "global_target_account": {"min_count": 1, "min_p_majority": 0.5},
+            },
+            "tax_division_confidence": {
+                "t_number_x_category_target_account_strength": 0.97,
+                "t_number_target_account_strength": 0.95,
+                "vendor_key_target_account_strength": 0.85,
+                "category_target_account_strength": 0.65,
+                "global_target_account_strength": 0.55,
+                "category_default_strength": 0.55,
+                "global_fallback_strength": 0.35,
+                "learned_weight_multiplier": 0.85,
+            },
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    _write_text(
+        repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json",
+        receipt_config_payload,
+    )
+    config_path = repo_root / "clients" / client_id / "lines" / "receipt" / "config" / "receipt_line_config.json"
+    _write_text(
+        config_path,
+        json.dumps(
+            json.loads(receipt_config_payload),
             ensure_ascii=False,
             indent=2,
         ),
     )
-    return ruleset_path
+    return config_path
 
 
 def _write_credit_card_assets(repo_root: Path, client_id: str) -> None:
@@ -392,7 +401,7 @@ class TaxDivisionAcceptanceE2ETests(unittest.TestCase):
             self.assertEqual(True, bool(template_tax_cfg.get("enabled")))
 
             line_root = repo_root / "clients" / client_id / "lines" / "receipt"
-            ruleset_path = _write_receipt_assets(repo_root)
+            _write_receipt_assets(repo_root, client_id)
             _write_yayoi_rows(
                 line_root / "inputs" / "ledger_ref" / "ledger_ref.csv",
                 [
@@ -419,7 +428,6 @@ class TaxDivisionAcceptanceE2ETests(unittest.TestCase):
                 client_id,
                 client_layout_line_id="receipt",
                 client_dir=line_root,
-                config_path=ruleset_path,
             )
 
             run_dir = Path(str(result["run_dir"]))

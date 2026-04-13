@@ -22,12 +22,11 @@ def _prepare_receipt_repo(repo_root: Path, client_id: str) -> None:
     (client_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (client_dir / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
     (client_dir / "config").mkdir(parents=True, exist_ok=True)
-    (client_dir / "config" / "category_overrides.json").write_text("{}", encoding="utf-8")
-    (repo_root / "rulesets" / "receipt").mkdir(parents=True, exist_ok=True)
-    (repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json").write_text(
-        "{\"version\":\"1.15\"}\n",
+    (client_dir / "config" / "receipt_line_config.json").write_text(
+        "{\"version\":\"1.15\",\"csv_contract\":{\"dummy_summary_exact\":\"##DUMMY_OCR_UNREADABLE##\"}}\n",
         encoding="utf-8",
     )
+    (client_dir / "config" / "category_overrides.json").write_text("{}", encoding="utf-8")
 
 
 class LocalUiReplacerServiceTests(unittest.TestCase):

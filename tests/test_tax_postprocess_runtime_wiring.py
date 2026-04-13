@@ -232,9 +232,8 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
             (client_line_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
             (client_line_dir / "config").mkdir(parents=True, exist_ok=True)
             (client_line_dir / "config" / "category_overrides.json").write_text("{}", encoding="utf-8")
-            ruleset_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
-            ruleset_path.parent.mkdir(parents=True, exist_ok=True)
-            ruleset_path.write_text(
+            config_path = client_line_dir / "config" / "receipt_line_config.json"
+            config_path.write_text(
                 json.dumps(
                     {
                         "version": "1.15",
@@ -294,7 +293,6 @@ class TaxPostprocessRuntimeWiringTests(unittest.TestCase):
                                         client_id,
                                         client_layout_line_id="receipt",
                                         client_dir=client_line_dir,
-                                        config_path=ruleset_path,
                                     )
 
             run_dir = Path(result["run_dir"])

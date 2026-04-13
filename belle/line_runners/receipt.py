@@ -27,6 +27,7 @@ from belle.paths import (
     get_latest_path,
     make_run_dir,
 )
+from belle.receipt_config import load_receipt_line_config, receipt_line_config_path
 from belle.replacer import replace_yayoi_csv
 from belle.runner_io import update_latest_run_id, write_text_atomic
 from belle.tax_postprocess import (
@@ -40,8 +41,8 @@ from .common import LinePlan, compute_target_file_status, list_input_files, reso
 LINE_ID_RECEIPT = "receipt"
 
 
-def plan_receipt(repo_root: Path, client_id: str, *, config_path: Path) -> LinePlan:
-    details: dict[str, object] = {"config_path": str(config_path)}
+def plan_receipt(repo_root: Path, client_id: str) -> LinePlan:
+    details: dict[str, object] = {}
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_RECEIPT)
     except FileNotFoundError as exc:
@@ -60,6 +61,8 @@ def plan_receipt(repo_root: Path, client_id: str, *, config_path: Path) -> LineP
             "client_dir": str(client_dir),
         }
     )
+    config_path = receipt_line_config_path(client_dir)
+    details["config_path"] = str(config_path)
 
     status, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
@@ -124,12 +127,13 @@ def run_receipt(
     *,
     client_layout_line_id: str,
     client_dir: Path,
-    config_path: Path,
 ) -> dict[str, object]:
     if client_layout_line_id != LINE_ID_RECEIPT:
         raise RuntimeError(f"invalid receipt layout marker: {client_layout_line_id}")
 
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
+    config_path = receipt_line_config_path(client_dir)
+    config = load_receipt_line_config(client_dir)
     yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
     yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 
@@ -160,7 +164,6 @@ def run_receipt(
     )
 
     defaults = merge_effective_defaults(global_defaults, overrides_by_category)
-    config = json.loads(config_path.read_text(encoding="utf-8"))
 
     try:
         tm, tm_summary = ensure_client_cache_updated(

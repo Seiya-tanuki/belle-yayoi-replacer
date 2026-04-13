@@ -39,15 +39,19 @@ def _prepare_line_dirs(repo_root: Path, client_id: str) -> tuple[Path, Path, Pat
     bank_root = repo_root / "clients" / client_id / "lines" / "bank_statement"
     card_root = repo_root / "clients" / client_id / "lines" / "credit_card_statement"
     (receipt_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
+    _prepare_receipt_config(receipt_root)
     (bank_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (card_root / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     return receipt_root, bank_root, card_root
 
 
-def _prepare_receipt_config(repo_root: Path) -> None:
-    ruleset_dir = repo_root / "rulesets" / "receipt"
-    ruleset_dir.mkdir(parents=True, exist_ok=True)
-    (ruleset_dir / "replacer_config_v1_15.json").write_text("{\"version\":\"1.15\"}\n", encoding="utf-8")
+def _prepare_receipt_config(line_root: Path) -> None:
+    config_path = line_root / "config" / "receipt_line_config.json"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(
+        "{\"version\":\"1.15\",\"csv_contract\":{\"dummy_summary_exact\":\"##DUMMY_OCR_UNREADABLE##\"}}\n",
+        encoding="utf-8",
+    )
 
 
 def _prepare_legacy_receipt_dirs(repo_root: Path, client_id: str) -> Path:
@@ -105,7 +109,7 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
             receipt_root, _, _ = _prepare_line_dirs(temp_repo_root, client_id)
-            _prepare_receipt_config(temp_repo_root)
+            _prepare_receipt_config(receipt_root)
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "target.csv", summary="NON TTY TEST")
 
             script_src = real_repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
@@ -235,7 +239,6 @@ class YayoiReplacerPlanConfirmTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             temp_repo_root = Path(td)
             receipt_root = _prepare_legacy_receipt_dirs(temp_repo_root, client_id)
-            _prepare_receipt_config(temp_repo_root)
             _write_yayoi_row(receipt_root / "inputs" / "kari_shiwake" / "target.csv", summary="LEGACY TARGET")
             module = _load_replacer_script_module(real_repo_root)
             module.__file__ = str(

@@ -158,6 +158,10 @@ def _build_default_all_fixture(
         exist_ok=True,
     )
     _write_valid_shared_tax_config(temp_root, "TEMPLATE")
+    _write_text(
+        temp_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+        _minimal_receipt_replacer_config_json(),
+    )
 
     bank_template_root = temp_root / "clients" / "TEMPLATE" / "lines" / "bank_statement"
     for rel in [
@@ -228,6 +232,20 @@ def _build_default_all_fixture(
                 "            Path('defaults') / line / 'category_defaults_tax_included.json',",
                 "        ]",
                 "    return [Path('defaults') / line / 'category_defaults.json']",
+                "",
+            ]
+        ),
+    )
+    _write_text(
+        temp_root / "belle" / "receipt_config.py",
+        "\n".join(
+            [
+                "from __future__ import annotations",
+                "",
+                "from pathlib import Path",
+                "",
+                "def receipt_line_config_path(client_dir: Path) -> Path:",
+                "    return client_dir / 'config' / 'receipt_line_config.json'",
                 "",
             ]
         ),

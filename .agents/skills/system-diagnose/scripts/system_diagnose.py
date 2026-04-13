@@ -21,6 +21,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from belle.lines import is_line_implemented, tracked_category_defaults_relpaths, validate_line_id
+from belle.receipt_config import receipt_line_config_path
 
 _SUPPORTED_LINE_IDS = ("receipt", "bank_statement", "credit_card_statement")
 _SUPPORTED_LINE_IDS_WITH_ALL = _SUPPORTED_LINE_IDS + ("all",)
@@ -191,27 +192,6 @@ def _parse_porcelain_paths(stdout: str) -> List[str]:
         if path:
             paths.append(path)
     return paths
-
-
-def _detect_replacer_config(repo_root: Path, line_id: str) -> tuple[Path | None, str]:
-    line_rulesets = repo_root / "rulesets" / line_id
-    exact = line_rulesets / "replacer_config_v1_15.json"
-    if exact.exists():
-        return exact, f"found active default: rulesets/{line_id}/replacer_config_v1_15.json"
-
-    readme = line_rulesets / "README.md"
-    if readme.exists():
-        text = readme.read_text(encoding="utf-8", errors="replace")
-        for match in re.findall(r"`(replacer_config_[^`]+\.json)`", text):
-            candidate = line_rulesets / match
-            if candidate.exists():
-                return candidate, f"detected via rulesets/{line_id}/README.md: {match}"
-
-    candidates = sorted(line_rulesets.glob("replacer_config_v*.json"))
-    if candidates:
-        latest = candidates[-1]
-        return latest, f"fallback to latest versioned config: {latest.name}"
-    return None, "no replacer_config_v*.json found"
 
 
 def _probe_write_delete(target_dir: Path) -> tuple[bool, str]:
@@ -465,16 +445,25 @@ def _validate_float_key_section(
     return issues
 
 
-def _validate_receipt_runtime_tax_sections(config_path: Path) -> tuple[bool, str]:
+def _validate_receipt_line_config_contract(config_path: Path) -> tuple[bool, str]:
     try:
-        obj = _load_json_object(config_path, label="receipt replacer config")
+        obj = _load_json_object(config_path, label="receipt_line_config")
     except Exception as exc:
         return False, str(exc)
 
-    issues = _validate_threshold_routes(
-        obj.get("tax_division_thresholds"),
-        section_name="tax_division_thresholds",
-        route_names=_RECEIPT_TAX_THRESHOLD_ROUTES,
+    issues: List[str] = []
+    csv_contract = obj.get("csv_contract")
+    if not isinstance(csv_contract, dict):
+        issues.append("csv_contract=missing_or_invalid")
+    elif not str(csv_contract.get("dummy_summary_exact") or "").strip():
+        issues.append("csv_contract.dummy_summary_exact=missing_or_invalid")
+
+    issues.extend(
+        _validate_threshold_routes(
+            obj.get("tax_division_thresholds"),
+            section_name="tax_division_thresholds",
+            route_names=_RECEIPT_TAX_THRESHOLD_ROUTES,
+        )
     )
     issues.extend(
         _validate_float_key_section(
@@ -487,7 +476,8 @@ def _validate_receipt_runtime_tax_sections(config_path: Path) -> tuple[bool, str
         return False, f"{config_path.name}: " + "; ".join(issues)
     return (
         True,
-        f"{config_path.name}: tax_division_thresholds/routes={len(_RECEIPT_TAX_THRESHOLD_ROUTES)}, "
+        f"{config_path.name}: csv_contract.dummy_summary_exact=ok; "
+        f"tax_division_thresholds/routes={len(_RECEIPT_TAX_THRESHOLD_ROUTES)}, "
         f"tax_division_confidence/keys={len(_RECEIPT_TAX_CONFIDENCE_KEYS)}",
     )
 
@@ -1461,25 +1451,80 @@ def main() -> int:
     )
 
     if line_id == "receipt":
-        detected_cfg, cfg_evidence = _detect_replacer_config(repo_root, line_id)
+        template_receipt_line_root = repo_root / "clients" / "TEMPLATE" / "lines" / "receipt"
+        template_receipt_config_path = receipt_line_config_path(template_receipt_line_root)
         add_hard(
             "C3",
-            f"rulesets/{line_id}/replacer_config_v1_15.json or current configured replacer config exists",
-            detected_cfg is not None and detected_cfg.exists(),
-            cfg_evidence if detected_cfg is None else f"{cfg_evidence}; using {detected_cfg.relative_to(repo_root)}",
-            "Add the active replacer config back under rulesets/ and align references.",
+            "clients/TEMPLATE/lines/receipt/config/receipt_line_config.json exists",
+            template_receipt_config_path.is_file(),
+            f"checked path: {template_receipt_config_path.relative_to(repo_root).as_posix()}",
+            "Restore the tracked TEMPLATE receipt_line_config.json from source control.",
         )
-        if detected_cfg is not None and detected_cfg.exists():
-            c44_passed, c44_evidence = _validate_receipt_runtime_tax_sections(detected_cfg)
+        receipt_line_clients = _discover_clients_with_line(repo_root, "receipt")
+        missing_receipt_client_configs: List[str] = []
+        receipt_client_config_evidence: List[str] = []
+        receipt_line_config_invalid: List[str] = []
+        receipt_line_config_valid: List[str] = []
+        for receipt_client_id, line_root in receipt_line_clients:
+            config_path = receipt_line_config_path(line_root)
+            exists = config_path.is_file()
+            receipt_client_config_evidence.append(
+                f"{receipt_client_id}:{config_path.relative_to(line_root).as_posix()}={exists}"
+            )
+            if not exists:
+                missing_receipt_client_configs.append(receipt_client_id)
+                continue
+            state_ok, state_evidence = _validate_receipt_line_config_contract(config_path)
+            entry = f"{receipt_client_id}: {state_evidence}"
+            if state_ok:
+                receipt_line_config_valid.append(entry)
+            else:
+                receipt_line_config_invalid.append(entry)
+        if not receipt_line_clients:
+            c49_passed = True
+            c49_evidence = "N/A: no receipt clients found"
+        elif not missing_receipt_client_configs:
+            c49_passed = True
+            c49_evidence = "; ".join(receipt_client_config_evidence)
+        else:
+            c49_passed = False
+            c49_evidence = (
+                "missing receipt_line_config.json for client(s): "
+                + ", ".join(missing_receipt_client_configs)
+            )
+        add_hard(
+            "C49",
+            "receipt client config/receipt_line_config.json exists for each line-aware receipt client",
+            c49_passed,
+            c49_evidence,
+            "Provision clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json for each receipt client.",
+        )
+        if template_receipt_config_path.is_file():
+            c44_passed, c44_evidence = _validate_receipt_line_config_contract(template_receipt_config_path)
+            if receipt_line_config_invalid:
+                c44_passed = False
+                evidence_parts = [f"TEMPLATE: {c44_evidence}"]
+                if receipt_line_config_valid:
+                    evidence_parts.append("valid_clients=" + "; ".join(receipt_line_config_valid[:5]))
+                evidence_parts.append("invalid_clients=" + "; ".join(receipt_line_config_invalid[:5]))
+                c44_evidence = " | ".join(evidence_parts)
+            elif receipt_line_config_valid:
+                c44_evidence = (
+                    f"TEMPLATE: {c44_evidence} | valid_clients="
+                    + "; ".join(receipt_line_config_valid[:5])
+                )
+            else:
+                c44_evidence = f"TEMPLATE: {c44_evidence}"
         else:
             c44_passed = False
-            c44_evidence = "active receipt replacer config missing"
+            c44_evidence = "TEMPLATE receipt_line_config.json missing"
         add_hard(
             "C44",
-            "active receipt replacer config contains required tax_division_thresholds and tax_division_confidence sections",
+            "receipt line config contains required csv_contract/tax runtime sections for TEMPLATE and present receipt clients",
             c44_passed,
             c44_evidence,
-            "Restore the tracked receipt tax threshold/confidence sections in the active replacer config.",
+            "Restore the tracked receipt line-config contract: csv_contract.dummy_summary_exact, "
+            "tax_division_thresholds, and tax_division_confidence.",
         )
 
         receipt_override_targets = _discover_receipt_override_targets(repo_root)

@@ -53,6 +53,13 @@ def _prepare_temp_repo_structure(repo_root: Path, client_id: str) -> Path:
     (client_dir / "config").mkdir(parents=True, exist_ok=True)
     (client_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (client_dir / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
+    (client_dir / "config" / "receipt_line_config.json").write_text(
+        json.dumps(
+            {"version": "1.15", "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     (repo_root / "rulesets" / "receipt").mkdir(parents=True, exist_ok=True)
     (repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json").write_text(
         json.dumps({"version": "1.15"}, ensure_ascii=False),
@@ -67,6 +74,13 @@ def _prepare_temp_repo_structure_line(repo_root: Path, client_id: str, *, line_i
     (client_line_dir / "config").mkdir(parents=True, exist_ok=True)
     (client_line_dir / "inputs" / "kari_shiwake").mkdir(parents=True, exist_ok=True)
     (client_line_dir / "inputs" / "ledger_ref").mkdir(parents=True, exist_ok=True)
+    (client_line_dir / "config" / "receipt_line_config.json").write_text(
+        json.dumps(
+            {"version": "1.15", "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
     (repo_root / "rulesets" / "receipt").mkdir(parents=True, exist_ok=True)
     (repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json").write_text(
         json.dumps({"version": "1.15"}, ensure_ascii=False),
@@ -475,7 +489,7 @@ class KariShiwakeIngestTests(unittest.TestCase):
             client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
             target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
             payload = _write_yayoi_row(target_path, summary="BAD CONFIG TARGET")
-            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+            config_path = client_line_dir / "config" / "receipt_line_config.json"
             config_path.write_text("{invalid json", encoding="utf-8")
             before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
             lex = SimpleNamespace(categories_by_key={})
@@ -495,12 +509,111 @@ class KariShiwakeIngestTests(unittest.TestCase):
                                         client_id,
                                         client_layout_line_id="receipt",
                                         client_dir=client_line_dir,
-                                        config_path=config_path,
                                     )
 
             self.assertTrue(target_path.exists())
             self.assertEqual(payload, target_path.read_bytes())
             self.assertEqual(before_ingest_state, _snapshot_kari_ingest_state(client_line_dir))
+
+    def test_receipt_runner_requires_line_config_even_if_repo_ruleset_exists(self) -> None:
+        client_id = "C_RECEIPT_LINE_CONFIG_REQUIRED"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
+            (client_line_dir / "config" / "receipt_line_config.json").unlink()
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            _write_yayoi_row(target_path, summary="LINE CONFIG REQUIRED")
+
+            with self.assertRaisesRegex(FileNotFoundError, "receipt_line_config.json not found"):
+                receipt_runner.run_receipt(
+                    repo_root,
+                    client_id,
+                    client_layout_line_id="receipt",
+                    client_dir=client_line_dir,
+                )
+
+    def test_receipt_runner_ignores_repo_ruleset_when_line_config_is_valid(self) -> None:
+        client_id = "C_RECEIPT_RULESET_INACTIVE"
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
+            target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
+            payload = _write_yayoi_row(target_path, summary="RULESET INACTIVE TARGET")
+            (repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json").write_text(
+                "{invalid json",
+                encoding="utf-8",
+            )
+            tm = SimpleNamespace(t_numbers={})
+            tm_summary = SimpleNamespace(applied_new_files=[], rows_used_added=0, warnings=[])
+            autogrow_summary = SimpleNamespace(
+                processed_files=0,
+                processed_rows=0,
+                unclassified_rows_seen=0,
+                new_keys=0,
+                updated_keys=0,
+                skipped_by_reason={},
+                warnings=[],
+            )
+            lex = SimpleNamespace(categories_by_key={})
+            replaced_inputs: list[Path] = []
+
+            def _fake_replace_yayoi_csv(
+                *,
+                in_path: Path,
+                out_path: Path,
+                lex,
+                client_cache,
+                defaults,
+                config,
+                run_dir: Path,
+                artifact_prefix: str | None = None,
+                yayoi_tax_config=None,
+            ):
+                del lex
+                del client_cache
+                del defaults
+                del config
+                del run_dir
+                del artifact_prefix
+                del yayoi_tax_config
+                replaced_inputs.append(in_path)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_bytes(b"")
+                return {
+                    "changed_ratio": 0.0,
+                    "output_file": str(out_path),
+                    "analysis": {"rows_with_t_number": 0, "rows_using_t_routes": 0},
+                }
+
+            with mock.patch.object(receipt_runner, "load_lexicon", return_value=lex):
+                with mock.patch.object(receipt_runner, "load_category_defaults", return_value={}):
+                    with mock.patch.object(receipt_runner, "try_load_category_overrides", return_value=({}, [])):
+                        with mock.patch.object(receipt_runner, "merge_effective_defaults", return_value={}):
+                            with mock.patch.object(
+                                receipt_runner,
+                                "ensure_client_cache_updated",
+                                return_value=(tm, tm_summary),
+                            ):
+                                with mock.patch.object(
+                                    receipt_runner,
+                                    "ensure_lexicon_candidates_updated_from_ledger_ref",
+                                    return_value=autogrow_summary,
+                                ):
+                                    with mock.patch.object(
+                                        receipt_runner,
+                                        "replace_yayoi_csv",
+                                        side_effect=_fake_replace_yayoi_csv,
+                                    ):
+                                        result = receipt_runner.run_receipt(
+                                            repo_root,
+                                            client_id,
+                                            client_layout_line_id="receipt",
+                                            client_dir=client_line_dir,
+                                        )
+
+            self.assertTrue(str(result.get("run_manifest_path") or "").endswith("run_manifest.json"))
+            self.assertFalse(target_path.exists())
+            self.assertEqual(payload, replaced_inputs[0].read_bytes())
 
     def test_receipt_client_cache_failure_keeps_target_in_inbox(self) -> None:
         client_id = "C_RECEIPT_CACHE_FAIL"
@@ -509,7 +622,6 @@ class KariShiwakeIngestTests(unittest.TestCase):
             client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
             target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
             payload = _write_yayoi_row(target_path, summary="CACHE FAIL TARGET")
-            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
             before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
             lex = SimpleNamespace(categories_by_key={})
 
@@ -538,7 +650,6 @@ class KariShiwakeIngestTests(unittest.TestCase):
                                                 client_id,
                                                 client_layout_line_id="receipt",
                                                 client_dir=client_line_dir,
-                                                config_path=config_path,
                                             )
 
             self.assertTrue(target_path.exists())
@@ -552,7 +663,6 @@ class KariShiwakeIngestTests(unittest.TestCase):
             client_line_dir = _prepare_temp_repo_structure_line(repo_root, client_id, line_id="receipt")
             target_path = client_line_dir / "inputs" / "kari_shiwake" / "target.csv"
             payload = _write_yayoi_row(target_path, summary="AUTOGROW FAIL TARGET")
-            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
             before_ingest_state = _snapshot_kari_ingest_state(client_line_dir)
             lex = SimpleNamespace(categories_by_key={})
             tm = SimpleNamespace(t_numbers={})
@@ -586,7 +696,6 @@ class KariShiwakeIngestTests(unittest.TestCase):
                                                 client_id,
                                                 client_layout_line_id="receipt",
                                                 client_dir=client_line_dir,
-                                                config_path=config_path,
                                             )
 
             self.assertTrue(target_path.exists())

@@ -182,43 +182,44 @@ def _prepare_shared_assets(repo_root: Path) -> Path:
             },
         },
     )
-    ruleset_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
-    _write_json(
-        ruleset_path,
-        {
-            "schema": "belle.replacer_config.v1",
-            "version": "1.16",
-            "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
-            "thresholds": {
-                "t_number_min_count": 1,
-                "t_number_p_majority_min": 0.5,
-                "vendor_key_min_count": 1,
-                "vendor_key_p_majority_min": 0.5,
-                "category_min_count": 1,
-                "category_p_majority_min": 0.5,
-                "t_number_x_category_min_count": 1,
-                "t_number_x_category_p_majority_min": 0.5,
-            },
-            "tax_division_thresholds": {
-                "t_number_x_category_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                "t_number_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                "vendor_key_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                "category_target_account": {"min_count": 1, "min_p_majority": 0.5},
-                "global_target_account": {"min_count": 1, "min_p_majority": 0.5},
-            },
-            "tax_division_confidence": {
-                "t_number_x_category_target_account_strength": 0.97,
-                "t_number_target_account_strength": 0.95,
-                "vendor_key_target_account_strength": 0.85,
-                "category_target_account_strength": 0.65,
-                "global_target_account_strength": 0.55,
-                "category_default_strength": 0.55,
-                "global_fallback_strength": 0.35,
-                "learned_weight_multiplier": 0.85,
-            },
+    receipt_config_payload = {
+        "schema": "belle.replacer_config.v1",
+        "version": "1.16",
+        "csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"},
+        "thresholds": {
+            "t_number_min_count": 1,
+            "t_number_p_majority_min": 0.5,
+            "vendor_key_min_count": 1,
+            "vendor_key_p_majority_min": 0.5,
+            "category_min_count": 1,
+            "category_p_majority_min": 0.5,
+            "t_number_x_category_min_count": 1,
+            "t_number_x_category_p_majority_min": 0.5,
         },
+        "tax_division_thresholds": {
+            "t_number_x_category_target_account": {"min_count": 1, "min_p_majority": 0.5},
+            "t_number_target_account": {"min_count": 1, "min_p_majority": 0.5},
+            "vendor_key_target_account": {"min_count": 1, "min_p_majority": 0.5},
+            "category_target_account": {"min_count": 1, "min_p_majority": 0.5},
+            "global_target_account": {"min_count": 1, "min_p_majority": 0.5},
+        },
+        "tax_division_confidence": {
+            "t_number_x_category_target_account_strength": 0.97,
+            "t_number_target_account_strength": 0.95,
+            "vendor_key_target_account_strength": 0.85,
+            "category_target_account_strength": 0.65,
+            "global_target_account_strength": 0.55,
+            "category_default_strength": 0.55,
+            "global_fallback_strength": 0.35,
+            "learned_weight_multiplier": 0.85,
+        },
+    }
+    _write_json(repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json", receipt_config_payload)
+    _write_json(
+        repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json",
+        receipt_config_payload,
     )
-    return ruleset_path
+    return repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"
 
 
 def _run_register(module, repo_root: Path, *, client_id: str, bookkeeping_mode: str) -> tuple[int, str]:
@@ -413,7 +414,7 @@ class BookkeepingModeRolloutAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             _prepare_template(self.real_repo_root, repo_root)
-            ruleset_path = _prepare_shared_assets(repo_root)
+            _prepare_shared_assets(repo_root)
 
             rc, output = _run_register(
                 self.register_module,
@@ -459,7 +460,6 @@ class BookkeepingModeRolloutAcceptanceTests(unittest.TestCase):
                 "C_PHASE3_EXCLUDED",
                 client_layout_line_id="receipt",
                 client_dir=receipt_line_root,
-                config_path=ruleset_path,
             )
             run_dir = Path(str(result["run_dir"]))
             run_manifest = json.loads((run_dir / "run_manifest.json").read_text(encoding="utf-8"))
@@ -479,7 +479,7 @@ class BookkeepingModeRolloutAcceptanceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             _prepare_template(self.real_repo_root, repo_root)
-            ruleset_path = _prepare_shared_assets(repo_root)
+            _prepare_shared_assets(repo_root)
 
             rc, output = _run_register(
                 self.register_module,
@@ -525,7 +525,6 @@ class BookkeepingModeRolloutAcceptanceTests(unittest.TestCase):
                 "C_PHASE3_INCLUDED",
                 client_layout_line_id="receipt",
                 client_dir=receipt_line_root,
-                config_path=ruleset_path,
             )
             receipt_run_dir = Path(str(receipt_result["run_dir"]))
             receipt_run_manifest = json.loads((receipt_run_dir / "run_manifest.json").read_text(encoding="utf-8"))

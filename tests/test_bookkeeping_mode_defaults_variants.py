@@ -144,7 +144,7 @@ class BookkeepingModeBootstrapTests(unittest.TestCase):
             repo_root = Path(td)
             client_id = "C_RECEIPT_BOOTSTRAP"
             client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
-            config_path = repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+            config_path = client_dir / "config" / "receipt_line_config.json"
             _write_shared_tax_config(repo_root, client_id, bookkeeping_mode="tax_included")
             _write_minimal_lexicon(repo_root)
             _write_mode_aware_defaults(
@@ -206,7 +206,6 @@ class BookkeepingModeBootstrapTests(unittest.TestCase):
                                     client_id,
                                     client_layout_line_id="receipt",
                                     client_dir=client_dir,
-                                    config_path=config_path,
                                 )
 
             overrides_path = client_dir / "config" / "category_overrides.json"

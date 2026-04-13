@@ -29,13 +29,6 @@ LINE_ID_CARD = "credit_card_statement"
 LINE_ORDER = ["receipt", "bank_statement", LINE_ID_CARD]
 
 
-def _resolve_config_path(repo_root: Path, config_arg: str) -> Path:
-    path = Path(config_arg)
-    if path.is_absolute():
-        return path
-    return repo_root / path
-
-
 def _format_target_files(target_files: list[str]) -> str:
     if not target_files:
         return "-"
@@ -112,11 +105,8 @@ def main() -> int:
         help="Document processing line_id",
     )
     ap.add_argument(
-        "--config",
-        help="Replacer config JSON path",
-        default="rulesets/receipt/replacer_config_v1_15.json",
+        "--dry-run", action="store_true", help="Print PLAN and exit"
     )
-    ap.add_argument("--dry-run", action="store_true", help="Print PLAN and exit")
     ap.add_argument("--yes", action="store_true", help="Skip interactive confirmation")
     args = ap.parse_args()
 
@@ -127,13 +117,12 @@ def main() -> int:
         print("例: $yayoi-replacer --client <CLIENT_ID>")
         return 2
 
-    config_path = _resolve_config_path(repo_root, args.config)
     selected_lines = LINE_ORDER if args.line == "all" else [args.line]
 
     plans: list[LinePlan] = []
     for line_id in selected_lines:
         if line_id == "receipt":
-            plans.append(plan_receipt(repo_root, client_id, config_path=config_path))
+            plans.append(plan_receipt(repo_root, client_id))
             continue
         if line_id == "bank_statement":
             plans.append(plan_bank(repo_root, client_id))
@@ -188,7 +177,6 @@ def main() -> int:
                     client_id,
                     client_layout_line_id=raw_layout,
                     client_dir=Path(client_dir_raw),
-                    config_path=config_path,
                 )
             elif line_id == "bank_statement":
                 client_dir_raw = str(details.get("client_dir") or "")
