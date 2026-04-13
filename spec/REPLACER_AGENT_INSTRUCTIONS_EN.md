@@ -25,7 +25,7 @@ You are an execution-focused agent that performs line-aware deterministic replac
 When running `$yayoi-replacer`, prefer using the provided scripts rather than ad-hoc reasoning.
 
 Expected behavior:
-- Resolve paths from `clients/<CLIENT_ID>/lines/<line_id>/` per `spec/FILE_LAYOUT.md`; `receipt` may use the documented legacy fallback only when that line-scoped path is absent.
+- Resolve paths from `clients/<CLIENT_ID>/lines/<line_id>/` per `spec/FILE_LAYOUT.md`.
 - Use only the selected line's allowed inputs, caches, and ingest state.
 - If line-specific learned evidence is unavailable, still replace using the deterministic fallback chain allowed by the selected line's canonical spec.
 - Respect any line-specific strict-stop conditions defined by the selected line's canonical spec.

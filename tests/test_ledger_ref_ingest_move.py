@@ -58,7 +58,7 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            client_dir = repo_root / "clients" / client_id
+            client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
             inbox = client_dir / "inputs" / "ledger_ref"
             _write_yayoi_row(inbox / "batch1.csv", summary="MOVE CHECK SHOP / one")
             _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
@@ -70,6 +70,7 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
                 client_id=client_id,
                 lex=lex,
                 config=config,
+                line_id="receipt",
             )
 
             remaining = [p for p in inbox.iterdir() if p.is_file() and p.name != ".gitkeep"]
@@ -94,17 +95,17 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            client_dir = repo_root / "clients" / client_id
+            client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
             inbox = client_dir / "inputs" / "ledger_ref"
             _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
             lex = load_lexicon(repo_root / "lexicon" / "lexicon.json")
             config = {"csv_contract": {"dummy_summary_exact": "##DUMMY_OCR_UNREADABLE##"}}
 
             _write_yayoi_row(inbox / "first.csv", summary="DUP CHECK SHOP / same")
-            ensure_client_cache_updated(repo_root=repo_root, client_id=client_id, lex=lex, config=config)
+            ensure_client_cache_updated(repo_root=repo_root, client_id=client_id, lex=lex, config=config, line_id="receipt")
 
             _write_yayoi_row(inbox / "second.csv", summary="DUP CHECK SHOP / same")
-            ensure_client_cache_updated(repo_root=repo_root, client_id=client_id, lex=lex, config=config)
+            ensure_client_cache_updated(repo_root=repo_root, client_id=client_id, lex=lex, config=config, line_id="receipt")
 
             remaining = [p for p in inbox.iterdir() if p.is_file() and p.name != ".gitkeep"]
             self.assertEqual(remaining, [])
@@ -123,7 +124,7 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            client_dir = repo_root / "clients" / client_id
+            client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
             inbox = client_dir / "inputs" / "ledger_ref"
             _write_yayoi_row(inbox / "batch1.csv", summary="AUTOGROW SHOP / x")
             _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
@@ -136,6 +137,7 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
                 client_id=client_id,
                 lex=lex,
                 config=config,
+                line_id="receipt",
             )
             autogrow = ensure_lexicon_candidates_updated_from_ledger_ref(
                 repo_root=repo_root,
@@ -146,6 +148,7 @@ class LedgerRefIngestMoveTests(unittest.TestCase):
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
                 line_id="receipt",
+                client_line_id="receipt",
             )
             self.assertEqual(autogrow.processed_files, 1)
             self.assertFalse(any("missing_ingested_file" in w for w in autogrow.warnings))

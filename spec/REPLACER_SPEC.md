@@ -118,10 +118,3 @@ Rules:
    2. `inputs.kari_shiwake.stored_name`
    3. `inputs.kari_shiwake.sha256`
 
-## Legacy compatibility (receipt only, deprecated)
-
-1. If `clients/<CLIENT_ID>/lines/receipt/` is absent, receipt scripts may use legacy paths:
-   1. `clients/<CLIENT_ID>/inputs/*`
-   2. `clients/<CLIENT_ID>/outputs/*`
-   3. `clients/<CLIENT_ID>/artifacts/*`
-2. Non-receipt lines must never use legacy fallback.

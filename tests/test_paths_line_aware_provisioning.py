@@ -11,6 +11,7 @@ from belle.paths import (
     get_client_registration_latest_path,
     get_client_registration_runs_dir,
     make_client_registration_run_dir,
+    resolve_ledger_ref_stored_path,
 )
 
 
@@ -40,15 +41,12 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
             self.assertTrue((line_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
             self.assertTrue((line_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
 
-    def test_shared_root_provisioning_still_creates_root_scoped_dirs(self) -> None:
+    def test_shared_root_provisioning_requires_explicit_line_id(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C_SHARED_ROOT_DIRS"
-            ensure_client_system_dirs(repo_root, client_id, line_id=None)
-
-            client_root = repo_root / "clients" / client_id
-            self.assertTrue((client_root / "artifacts" / "ingest" / "ledger_ref").is_dir())
-            self.assertTrue((client_root / "artifacts" / "ingest" / "kari_shiwake").is_dir())
+            with self.assertRaises(ValueError):
+                ensure_client_system_dirs(repo_root, client_id, line_id=None)
 
     def test_credit_card_statement_provisioning_creates_ledger_ref_ingest_dir(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -65,6 +63,40 @@ class EnsureClientSystemDirsLineAwareTests(unittest.TestCase):
                 get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement"),
             )
             self.assertTrue(get_cc_teacher_derived_dir(repo_root, client_id, line_id="credit_card_statement").is_dir())
+
+    def test_resolve_ledger_ref_stored_path_requires_explicit_line_id(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            with self.assertRaises(ValueError):
+                resolve_ledger_ref_stored_path(repo_root, "C1", {"stored_name": "sample.csv"}, line_id=None)
+
+    def test_resolve_ledger_ref_stored_path_does_not_fallback_to_legacy_client_root(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_id = "C1"
+            legacy_path = repo_root / "clients" / client_id / "inputs" / "ledger_ref" / "sample.csv"
+            legacy_path.parent.mkdir(parents=True, exist_ok=True)
+            legacy_path.write_text("legacy", encoding="utf-8")
+
+            resolved = resolve_ledger_ref_stored_path(
+                repo_root,
+                client_id,
+                {"stored_name": "sample.csv"},
+                line_id="receipt",
+            )
+
+            self.assertEqual(
+                repo_root
+                / "clients"
+                / client_id
+                / "lines"
+                / "receipt"
+                / "artifacts"
+                / "ingest"
+                / "ledger_ref"
+                / "sample.csv",
+                resolved,
+            )
 
     def test_client_registration_audit_helpers_resolve_shared_client_root_paths(self) -> None:
         with tempfile.TemporaryDirectory() as td:

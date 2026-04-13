@@ -12,21 +12,19 @@ Updates `lexicon/receipt/pending/label_queue.csv` by scanning per-client ledger_
 2. If `--line != receipt`, the script exits with code `2` and an explicit receipt-only error.
 
 ## Inputs
-1. Preferred line layout:
+1. Receipt line layout:
    - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
-2. Receipt legacy fallback (deprecated):
-   - `clients/<CLIENT_ID>/inputs/ledger_ref/`
 
 ## Outputs
 1. `lexicon/receipt/pending/label_queue.csv`
 2. `lexicon/receipt/pending/label_queue_state.json`
 3. `lexicon/receipt/pending/locks/label_queue.lock`
-4. `.../artifacts/ingest/ledger_ref_ingested.json`
-5. `.../artifacts/telemetry/lexicon_autogrow_latest.json`
+4. `clients/<CLIENT_ID>/lines/receipt/artifacts/ingest/ledger_ref_ingested.json`
+5. `clients/<CLIENT_ID>/lines/receipt/artifacts/telemetry/lexicon_autogrow_latest.json`
 
 ## Ingest behavior
 1. `inputs/ledger_ref/` is an ingest inbox.
-2. Successful ingest moves files into `clients/<CLIENT_ID>/artifacts/ingest/ledger_ref/`.
+2. Successful ingest moves files into `clients/<CLIENT_ID>/lines/receipt/artifacts/ingest/ledger_ref/`.
 3. Autogrow reads stored file paths from `ledger_ref_ingested.json` entries.
 
 ## Execution

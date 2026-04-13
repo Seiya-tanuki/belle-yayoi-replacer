@@ -11,35 +11,33 @@ Deterministic replacement skill for Yayoi import CSVs.
 1. `--client <CLIENT_ID>` is required.
 2. `--line` choices: `receipt`, `bank_statement`, `credit_card_statement`, `all` (default: `all`).
 3. Work under a single client folder.
-4. Receipt preferred line layout:
+4. Receipt line layout:
    - `clients/<CLIENT_ID>/lines/receipt/`
    - active config: `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`
-5. Receipt legacy fallback (deprecated, auto-detected if line layout missing):
-   - `clients/<CLIENT_ID>/`
-6. Bank line is line-scoped only:
+5. Bank line is line-scoped only:
    - `clients/<CLIENT_ID>/lines/bank_statement/`
-7. `bank_statement` training is optional:
+6. `bank_statement` training is optional:
    - when both inboxes are empty (`inputs/training/ocr_kari_shiwake/` = 0 and `inputs/training/reference_yayoi/` = 0), learning is skipped as a normal no-op
    - if training is provided, per run it must be exactly one pair: OCR `*.csv` = 1 and reference (`*.csv` or `*.txt`) = 1
    - one-side-only (`1/0`, `0/1`) or multiple files on either side (`2+`) is fail-closed
-8. `bank_statement` pair-set idempotency:
+7. `bank_statement` pair-set idempotency:
    - `pair_set_sha256 = sha256("ocr=<ocr_sha>|ref=<ref_sha>")`
    - if already applied in `client_cache.applied_training_sets`, learning is skipped, but both inbox files are still ingested for cleanup (duplicate records are kept)
-9. `bank_statement` fail-closed gates for new learning:
+8. `bank_statement` fail-closed gates for new learning:
    - one-side-new manifest mismatch (`ocr_sha_known != ref_sha_known`)
    - both OCR/reference SHAs are known in manifests but the pair-set is not applied in cache
    - `pairs_unique_used == 0` (no ingest/cache write side effects; inbox files remain)
-10. `bank_statement` target should satisfy Contract A assumptions (one target CSV should represent one passbook/account context).
-11. `bank_statement` bank-side subaccount fill is file-level:
+9. `bank_statement` target should satisfy Contract A assumptions (one target CSV should represent one passbook/account context).
+10. `bank_statement` bank-side subaccount fill is file-level:
    - inference source: row votes from `cache.bank_account_subaccount_stats`
    - when inference is `OK`, the SAME inferred bank-side subaccount is applied to all required-fill rows in the file (no partial fill)
    - thresholds: `thresholds.file_level_bank_sub_inference.min_votes` (default `3`) and `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
    - if required fill exists and inference is not `OK`, runner strict-stops with exit `2` after writing artifacts (`bank_sub_fill_required_failed == true`)
-12. `receipt` replaces debit-side `target_account` and debit-side `target_tax_division`.
-13. `credit_card_statement` is implemented/runnable.
-14. `credit_card_statement` target must satisfy Contract A (one statement per target file).
-15. `credit_card_statement` target side is the placeholder side (`debit` or `credit`), and placeholder-side tax division replacement runs before shared tax postprocess.
-16. `bank_statement` keeps its existing line-specific tax division replacement; shared tax postprocess may then fill tax amount in the same run when configured.
+11. `receipt` replaces debit-side `target_account` and debit-side `target_tax_division`.
+12. `credit_card_statement` is implemented/runnable.
+13. `credit_card_statement` target must satisfy Contract A (one statement per target file).
+14. `credit_card_statement` target side is the placeholder side (`debit` or `credit`), and placeholder-side tax division replacement runs before shared tax postprocess.
+15. `bank_statement` keeps its existing line-specific tax division replacement; shared tax postprocess may then fill tax amount in the same run when configured.
 
 ## Shared tax postprocess config
 1. Shared config path:

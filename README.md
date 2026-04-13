@@ -69,7 +69,6 @@ Current v1 runtime scope:
 1. `receipt`: `clients/<CLIENT_ID>/lines/receipt/inputs/kari_shiwake/` and `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
 2. `bank_statement`: `clients/<CLIENT_ID>/lines/bank_statement/inputs/kari_shiwake/`, `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/`, and `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/`
 3. `credit_card_statement`: `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/` and `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/ledger_ref/`
-4. Legacy receipt fallback (deprecated): `clients/<CLIENT_ID>/inputs/*`
 
 ## Receipt lexicon pending workflow
 

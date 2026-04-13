@@ -87,11 +87,11 @@ def _read_queue_count(queue_csv: Path, norm_key: str) -> int:
 
 
 def _ingest_one_ledger_ref(repo_root: Path, *, client_id: str, summary: str) -> Path:
-    ledger_ref_dir = repo_root / "clients" / client_id / "inputs" / "ledger_ref"
-    client_dir = repo_root / "clients" / client_id
+    client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
+    ledger_ref_dir = client_dir / "inputs" / "ledger_ref"
     ledger_ref_store_dir = client_dir / "artifacts" / "ingest" / "ledger_ref"
     _write_yayoi_row(ledger_ref_dir / "batch1.csv", summary=summary)
-    manifest_path = repo_root / "clients" / client_id / "artifacts" / "ingest" / "ledger_ref_ingested.json"
+    manifest_path = client_dir / "artifacts" / "ingest" / "ledger_ref_ingested.json"
     ingest_csv_dir(
         dir_path=ledger_ref_dir,
         store_dir=ledger_ref_store_dir,
@@ -122,7 +122,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
             client_id = "C1"
-            ledger_ref_file = repo_root / "clients" / client_id / "inputs" / "ledger_ref" / "batch1.csv"
+            ledger_ref_file = repo_root / "clients" / client_id / "lines" / "receipt" / "inputs" / "ledger_ref" / "batch1.csv"
             _write_yayoi_row(ledger_ref_file, summary="ACME SHOP / test")
             _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
 
@@ -138,6 +138,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
                 line_id="receipt",
+                client_line_id="receipt",
             )
             self.assertEqual(first.processed_files, 1)
 
@@ -154,12 +155,13 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                 lock_timeout_sec=5,
                 lock_stale_sec=5,
                 line_id="receipt",
+                client_line_id="receipt",
             )
             self.assertEqual(second.processed_files, 0)
             second_count = _read_queue_count(queue_csv, "ACMESHOP")
             self.assertEqual(second_count, first_count)
 
-            manifest_path = repo_root / "clients" / client_id / "artifacts" / "ingest" / "ledger_ref_ingested.json"
+            manifest_path = repo_root / "clients" / client_id / "lines" / "receipt" / "artifacts" / "ingest" / "ledger_ref_ingested.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             ingested_entries = manifest.get("ingested") or {}
             self.assertEqual(len(ingested_entries), 1)
@@ -210,6 +212,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                         lock_timeout_sec=5,
                         lock_stale_sec=5,
                         line_id="receipt",
+                        client_line_id="receipt",
                     )
 
             self.assertEqual(queue_before, queue_csv.read_bytes())
@@ -241,6 +244,7 @@ class LexiconAutogrowIdempotencyTests(unittest.TestCase):
                         lock_timeout_sec=5,
                         lock_stale_sec=5,
                         line_id="receipt",
+                        client_line_id="receipt",
                     )
 
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))

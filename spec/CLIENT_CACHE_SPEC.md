@@ -48,7 +48,7 @@ Behavior:
    1. `.../artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
 4. Duplicate content is moved+renamed to:
    1. `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
-5. Manifest `ingested[sha256]` records `stored_name` and `stored_relpath` (relative to effective client root).
+5. Manifest `ingested[sha256]` records `stored_name` and `stored_relpath` (relative to the selected receipt line root).
 6. `client_cache` tracks already-applied batches via `client_cache.applied_ledger_ref_sha256`.
 
 No bank-training sources (`training/ocr_kari_shiwake`, `training/reference_yayoi`) are part of this receipt spec.
@@ -112,9 +112,3 @@ Maps:
 
 This phase does not provide backward-compatibility or migration support for older receipt client_cache schema versions.
 
-## Legacy compatibility (receipt only, deprecated)
-
-1. If `clients/<CLIENT_ID>/lines/receipt/` is absent, receipt scripts may use:
-   1. `clients/<CLIENT_ID>/artifacts/cache/client_cache.json`
-   2. `clients/<CLIENT_ID>/artifacts/ingest/*`
-2. Non-receipt lines must never use legacy fallback.

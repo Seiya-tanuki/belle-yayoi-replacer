@@ -157,20 +157,10 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
    2. `lexicon/receipt/pending/locks/.gitkeep`
 3. `exports/**`
 
-## Legacy compatibility (receipt only, deprecated)
-
-1. Receipt scripts may read/write legacy client layout:
-   1. `clients/<CLIENT_ID>/config/`
-   2. `clients/<CLIENT_ID>/inputs/`
-   3. `clients/<CLIENT_ID>/outputs/`
-   4. `clients/<CLIENT_ID>/artifacts/`
-2. Non-receipt lines must never fall back to legacy layout.
-3. Shared assets do not use legacy global paths in the current rollout.
-
 ## Ingest marker extension (`ledger_ref_ingested.json`)
 
 Each `ingested[sha256]` entry may include:
-1. `stored_name` and `stored_relpath` (relative path from effective client root)
+1. `stored_name` and `stored_relpath` (relative path from the selected line root)
 2. `processed_to_label_queue_at` (ISO-8601 UTC)
 3. `processed_to_label_queue_run_id` (optional)
 4. `processed_to_label_queue_version` (optional)

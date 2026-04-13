@@ -8,30 +8,29 @@ description: Update append-only per-line client caches from line-specific teache
 Updates per-line `client_cache.json` from historical finalized teacher inputs. Line-specific learning contracts differ.
 
 ## Inputs
-1. Preferred line layout:
+1. `receipt` line layout:
    - `clients/<CLIENT_ID>/lines/receipt/inputs/ledger_ref/`
+2. `credit_card_statement` line layout:
    - `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/ledger_ref/`
-2. Receipt legacy fallback (deprecated):
-   - `clients/<CLIENT_ID>/inputs/ledger_ref/`
-3. `bank_statement` line layout (legacy fallbackなし):
+3. `bank_statement` line layout:
    - `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/ocr_kari_shiwake/`
    - `clients/<CLIENT_ID>/lines/bank_statement/inputs/training/reference_yayoi/`
 
 ## Outputs
-1. `.../artifacts/cache/client_cache.json`
+1. `clients/<CLIENT_ID>/lines/<line_id>/artifacts/cache/client_cache.json`
 2. line-specific ingest manifest(s)
-3. `.../artifacts/telemetry/client_cache_update_run_<TS>.json`
+3. `clients/<CLIENT_ID>/lines/<line_id>/artifacts/telemetry/client_cache_update_run_<TS>.json`
 
 Additional credit-card managed outputs:
 1. `.../artifacts/derived/cc_teacher/<RAW_SHA256>__cc_teacher.csv`
 2. `.../artifacts/derived/cc_teacher_manifest.json`
 
 ## Ingest behavior
-1. `inputs/ledger_ref/` is an inbox only.
+1. For `receipt` / `credit_card_statement`, `clients/<CLIENT_ID>/lines/<line_id>/inputs/ledger_ref/` is an inbox only.
 2. On ingest success, files are moved to:
-   - `.../artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
+   - `clients/<CLIENT_ID>/lines/<line_id>/artifacts/ingest/ledger_ref/INGESTED_<UTC_TS>_<SHA8>.csv`
 3. Duplicate sha files are moved to:
-   - `.../artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
+   - `clients/<CLIENT_ID>/lines/<line_id>/artifacts/ingest/ledger_ref/IGNORED_DUPLICATE_<UTC_TS>_<SHA8>.csv`
 4. Consumers read ingested files via paths recorded in `ledger_ref_ingested.json`.
 5. `bank_statement` uses training ingest manifests (`training_ocr_ingested.json`, `training_reference_ingested.json`).
 6. `receipt`, `bank_statement`, and `credit_card_statement` are implemented/runnable (line-specific contracts apply).
