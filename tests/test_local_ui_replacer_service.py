@@ -53,7 +53,7 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
             with self.assertRaises(replacer_service.SessionFatalError) as ctx:
                 replacer_service.run_precheck_for_lines("C1", ["receipt"], root=Path("C:/repo"))
 
-        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", ctx.exception.ui_reason_code)
+        self.assertEqual("SESSION_FATAL_APPLICATION_CALL_FAILED", ctx.exception.ui_reason_code)
         self.assertEqual("precheck", ctx.exception.detail["phase"])
         self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
         self.assertIn("shared-layer call failed", ctx.exception.detail["raw_error"])
@@ -175,10 +175,12 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
                 LinePlan(
                     line_id="credit_card_statement",
                     status="FAIL",
-                    reason="missing_cc_config: expected=C:/repo/x.json",
+                    reason="plan text is no longer the classifier",
+                    reason_key="missing_cc_config",
                     target_files=("target.csv",),
                     ui_reason_code="PRECHECK_FAIL_CARD_CONFIG_MISSING",
                     ui_reason_detail={"phase": "plan", "status": "FAIL", "reason": "missing_cc_config"},
+                    run_failure_ui_reason_code="RUN_FAIL_CARD_CONFIG_MISSING",
                 ),
             ),
         )
@@ -195,10 +197,10 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual(1, len(results))
         self.assertEqual("failure", results[0].status)
         self.assertEqual("RUN_FAIL_CARD_CONFIG_MISSING", results[0].ui_reason_code)
-        self.assertEqual("missing_cc_config: expected=C:/repo/x.json", results[0].stdout)
+        self.assertEqual("plan text is no longer the classifier", results[0].stdout)
         self.assertEqual(1, results[0].returncode)
 
-    def test_run_selected_lines_maps_shared_layer_run_failure_without_stdout_marker_validation(self) -> None:
+    def test_run_selected_lines_maps_shared_layer_run_failure_from_structured_error_fields(self) -> None:
         from belle.local_ui.services import replacer as replacer_service
 
         plan_result = ReplacerPlanResult(
@@ -226,7 +228,10 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
                 "run_replacer",
                 side_effect=replacer_service.ReplacerRunFailedError(
                     line_id="receipt",
-                    message="仮仕訳CSVの取り込みに失敗しました: broken",
+                    message="message text is no longer the classifier",
+                    failure_key="target_ingest_failed",
+                    ui_reason_code="RUN_FAIL_TARGET_INGEST",
+                    ui_reason_detail={"phase": "run", "status": "failure", "failure_key": "target_ingest_failed"},
                 ),
             ):
                 results = replacer_service.run_selected_lines("C1", ["receipt"], root=Path("C:/repo"))
@@ -234,7 +239,7 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual(1, len(results))
         self.assertEqual("failure", results[0].status)
         self.assertEqual("RUN_FAIL_TARGET_INGEST", results[0].ui_reason_code)
-        self.assertEqual("仮仕訳CSVの取り込みに失敗しました: broken", results[0].stdout)
+        self.assertEqual("message text is no longer the classifier", results[0].stdout)
         self.assertEqual(1, results[0].returncode)
 
     def test_run_selected_lines_raises_session_fatal_on_unexpected_shared_layer_exception(self) -> None:
@@ -264,7 +269,7 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
                 with self.assertRaises(replacer_service.SessionFatalError) as ctx:
                     replacer_service.run_selected_lines("C1", ["receipt"], root=Path("C:/repo"))
 
-        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", ctx.exception.ui_reason_code)
+        self.assertEqual("SESSION_FATAL_APPLICATION_CALL_FAILED", ctx.exception.ui_reason_code)
         self.assertEqual("run", ctx.exception.detail["phase"])
         self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
         self.assertIn("shared-layer call failed", ctx.exception.detail["raw_error"])
@@ -297,13 +302,13 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
             [result.line_id for result in precheck_results],
         )
         self.assertTrue(all(result.status == "FAIL" for result in precheck_results))
-        self.assertTrue(all(result.ui_reason_code == "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID" for result in precheck_results))
+        self.assertTrue(all(result.ui_reason_code == "SESSION_FATAL_APPLICATION_CALL_FAILED" for result in precheck_results))
         self.assertEqual(
             ["receipt", "bank_statement", "credit_card_statement"],
             [result.line_id for result in run_results],
         )
         self.assertTrue(all(result.status == "failure" for result in run_results))
-        self.assertEqual("SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID", payload["ui_reason_code"])
+        self.assertEqual("SESSION_FATAL_APPLICATION_CALL_FAILED", payload["ui_reason_code"])
         self.assertEqual("run", payload["detail"]["phase"])
 
 

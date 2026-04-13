@@ -4,6 +4,7 @@ from pathlib import Path
 
 from belle.application.errors import (
     InvalidRequestedLineError,
+    LineRunnerFailure,
     ReplacerPlanBlockedError,
     ReplacerRunFailedError,
 )
@@ -17,7 +18,11 @@ from belle.application.models import (
 from belle.line_runners.bank_statement import plan_bank, run_bank
 from belle.line_runners.credit_card_statement import plan_card, run_card
 from belle.line_runners.receipt import plan_receipt, run_receipt
-from belle.ui_reason_codes import precheck_reason_code_for
+from belle.ui_reason_codes import (
+    PRECHECK_FAIL_CARD_CONFIG_MISSING,
+    RUN_FAIL_CARD_CONFIG_MISSING,
+    RUN_FAIL_UNKNOWN,
+)
 
 LINE_ORDER = ("receipt", "bank_statement", "credit_card_statement")
 
@@ -55,9 +60,11 @@ def _enforce_cc_config_required(repo_root: Path, client_id: str, plan: LinePlan)
         line_id=plan.line_id,
         status="FAIL",
         reason=reason,
+        reason_key="missing_cc_config",
         target_files=plan.target_files,
-        ui_reason_code=precheck_reason_code_for(plan.line_id, "FAIL", reason),
-        ui_reason_detail={"phase": "plan", "status": "FAIL", "reason": reason},
+        ui_reason_code=PRECHECK_FAIL_CARD_CONFIG_MISSING,
+        ui_reason_detail={"phase": "plan", "status": "FAIL", "reason": reason, "reason_key": "missing_cc_config"},
+        run_failure_ui_reason_code=RUN_FAIL_CARD_CONFIG_MISSING,
         details=details,
     )
 
@@ -121,9 +128,19 @@ def run_replacer(
             else:
                 line_result = run_card(repo_root, client_id)
         except Exception as exc:
+            failure_key = "unknown"
+            ui_reason_code = RUN_FAIL_UNKNOWN
+            ui_reason_detail = {"phase": "run", "status": "failure", "failure_key": failure_key, "error": str(exc)}
+            if isinstance(exc, LineRunnerFailure):
+                failure_key = exc.failure_key
+                ui_reason_code = exc.ui_reason_code
+                ui_reason_detail = dict(exc.ui_reason_detail)
             raise ReplacerRunFailedError(
                 line_id=plan.line_id,
                 message=str(exc),
+                failure_key=failure_key,
+                ui_reason_code=ui_reason_code,
+                ui_reason_detail=ui_reason_detail,
                 partial_results=tuple(results),
             ) from exc
 

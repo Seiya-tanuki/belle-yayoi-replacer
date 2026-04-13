@@ -39,7 +39,7 @@ COLLECT_FAIL_NO_RUNS_FOUND = "COLLECT_FAIL_NO_RUNS_FOUND"
 COLLECT_FAIL_MISSING_RUN_REFS = "COLLECT_FAIL_MISSING_RUN_REFS"
 COLLECT_FAIL_UNKNOWN = "COLLECT_FAIL_UNKNOWN"
 
-SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID = "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID"
+SESSION_FATAL_APPLICATION_CALL_FAILED = "SESSION_FATAL_APPLICATION_CALL_FAILED"
 
 
 def build_ui_reason_event(
@@ -95,6 +95,7 @@ def parse_ui_reason_from_text(
 
 
 def precheck_reason_code_for(line_id: str, status: str, reason: str) -> str:
+    """Compatibility fallback for untouched CLI/script callers."""
     normalized_reason = str(reason or "")
     if status == "RUN":
         return PRECHECK_READY
@@ -124,6 +125,7 @@ def precheck_reason_code_for(line_id: str, status: str, reason: str) -> str:
 
 
 def run_failure_reason_code_for(line_id: str, text: str) -> str:
+    """Compatibility fallback for untouched CLI/script callers."""
     normalized = str(text or "")
     if "multiple target inputs" in normalized:
         return RUN_FAIL_MULTIPLE_TARGET_INPUTS

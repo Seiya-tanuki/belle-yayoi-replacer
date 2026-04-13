@@ -20,14 +20,18 @@ class LinePlan:
     line_id: str
     status: PlanStatus
     reason: str
+    reason_key: str = ""
     target_files: tuple[str, ...] = ()
     ui_reason_code: str = ""
     ui_reason_detail: dict[str, Any] = field(default_factory=dict)
+    run_failure_ui_reason_code: str = ""
     details: dict[str, object] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "reason_key", str(self.reason_key or ""))
         object.__setattr__(self, "target_files", tuple(self.target_files))
         object.__setattr__(self, "ui_reason_detail", _copy_detail(self.ui_reason_detail))
+        object.__setattr__(self, "run_failure_ui_reason_code", str(self.run_failure_ui_reason_code or ""))
         object.__setattr__(self, "details", dict(self.details))
 
 

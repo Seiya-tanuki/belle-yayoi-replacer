@@ -205,9 +205,10 @@ class InputDiscoveryHardeningTests(unittest.TestCase):
             _write_text(inbox / "notes.md", "ignored")
             _write_text(inbox / "draft.csv.tmp", "ignored")
 
-            status, reason, target_files = compute_target_file_status(client_dir)
+            status, reason_key, reason, target_files = compute_target_file_status(client_dir)
 
             self.assertEqual("OK", status)
+            self.assertEqual("single_target_input", reason_key)
             self.assertEqual("single target input", reason)
             self.assertEqual(["TARGET.CSV"], target_files)
 
@@ -219,9 +220,10 @@ class InputDiscoveryHardeningTests(unittest.TestCase):
             _write_text(inbox / "notes.md", "ignored")
             _write_text(inbox / "draft.csv.tmp", "ignored")
 
-            status, reason, target_files = compute_target_file_status(client_dir)
+            status, reason_key, reason, target_files = compute_target_file_status(client_dir)
 
             self.assertEqual("SKIP", status)
+            self.assertEqual("no_target_input", reason_key)
             self.assertEqual("no target input", reason)
             self.assertEqual([], target_files)
 

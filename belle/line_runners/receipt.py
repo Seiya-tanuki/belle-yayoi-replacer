@@ -35,9 +35,27 @@ from belle.tax_postprocess import (
     get_yayoi_tax_config_path,
     load_yayoi_tax_postprocess_config,
 )
-from belle.ui_reason_codes import RUN_OK
+from belle.ui_reason_codes import (
+    PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
+    PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
+    PRECHECK_FAIL_RECEIPT_CONFIG_MISSING,
+    PRECHECK_READY,
+    PRECHECK_SKIP_NO_TARGET,
+    RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+    RUN_FAIL_RECEIPT_CLIENT_CACHE_UPDATE,
+    RUN_FAIL_RECEIPT_LEXICON_AUTOGROW,
+    RUN_FAIL_TARGET_INGEST,
+    RUN_FAIL_UNKNOWN,
+    RUN_OK,
+)
 
-from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import (
+    build_line_plan,
+    compute_target_file_status,
+    list_input_files,
+    raise_line_runner_failure,
+    resolve_client_layout,
+)
 
 LINE_ID_RECEIPT = "receipt"
 
@@ -51,7 +69,10 @@ def plan_receipt(repo_root: Path, client_id: str):
             line_id=LINE_ID_RECEIPT,
             status="FAIL",
             reason=str(exc),
+            reason_key="client_dir_not_found",
+            ui_reason_code=PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
             target_files=[],
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -65,13 +86,16 @@ def plan_receipt(repo_root: Path, client_id: str):
     config_path = receipt_line_config_path(client_dir)
     details["config_path"] = str(config_path)
 
-    status, reason, target_files = compute_target_file_status(client_dir)
+    status, reason_key, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
         return build_line_plan(
             line_id=LINE_ID_RECEIPT,
             status=status,
             reason=reason,
+            reason_key=reason_key,
+            ui_reason_code=PRECHECK_SKIP_NO_TARGET if status == "SKIP" else PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
             target_files=target_files,
+            run_failure_ui_reason_code="" if status == "SKIP" else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
             details=details,
         )
 
@@ -80,7 +104,10 @@ def plan_receipt(repo_root: Path, client_id: str):
             line_id=LINE_ID_RECEIPT,
             status="FAIL",
             reason=f"config not found: {config_path}",
+            reason_key="receipt_config_missing",
+            ui_reason_code=PRECHECK_FAIL_RECEIPT_CONFIG_MISSING,
             target_files=target_files,
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -88,6 +115,8 @@ def plan_receipt(repo_root: Path, client_id: str):
         line_id=LINE_ID_RECEIPT,
         status="RUN",
         reason="ready",
+        reason_key="ready",
+        ui_reason_code=PRECHECK_READY,
         target_files=target_files,
         details=details,
     )
@@ -103,9 +132,15 @@ def _ingest_single_kari_input(
     in_dir = client_dir / "inputs" / "kari_shiwake"
     input_files = list_input_files(in_dir, allowed_extensions={".csv"})
     if len(input_files) != 1:
-        raise RuntimeError(
-            "receipt target input must be exactly one file under inputs/kari_shiwake "
-            f"(current={len(input_files)})"
+        raise_line_runner_failure(
+            line_id=LINE_ID_RECEIPT,
+            message=(
+                "receipt target input must be exactly one file under inputs/kari_shiwake "
+                f"(current={len(input_files)})"
+            ),
+            failure_key="target_input_count_invalid",
+            ui_reason_code=RUN_FAIL_UNKNOWN if len(input_files) <= 1 else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+            detail={"input_count": len(input_files)},
         )
     kari_input = input_files[0]
     try:
@@ -118,7 +153,12 @@ def _ingest_single_kari_input(
             manifest_schema="belle.kari_shiwake_ingest.v1",
         )
     except Exception as exc:
-        raise RuntimeError(f"仮仕訳CSVの取り込みに失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_RECEIPT,
+            message=f"仮仕訳CSVの取り込みに失敗しました: {exc}",
+            failure_key="target_ingest_failed",
+            ui_reason_code=RUN_FAIL_TARGET_INGEST,
+        )
     return kari_ingest
 
 
@@ -175,7 +215,12 @@ def run_receipt(
             line_id=client_layout_line_id,
         )
     except Exception as exc:
-        raise RuntimeError(f"client_cache 更新に失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_RECEIPT,
+            message=f"client_cache 更新に失敗しました: {exc}",
+            failure_key="receipt_client_cache_update_failed",
+            ui_reason_code=RUN_FAIL_RECEIPT_CLIENT_CACHE_UPDATE,
+        )
 
     try:
         lock_timeout_sec = int(os.environ.get("BELLE_LABEL_QUEUE_LOCK_TIMEOUT_SEC", "120"))
@@ -193,7 +238,12 @@ def run_receipt(
             client_line_id=client_layout_line_id,
         )
     except Exception as exc:
-        raise RuntimeError(f"label_queue 自動更新に失敗しました。出力は作成しません: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_RECEIPT,
+            message=f"label_queue 自動更新に失敗しました。出力は作成しません: {exc}",
+            failure_key="receipt_lexicon_autogrow_failed",
+            ui_reason_code=RUN_FAIL_RECEIPT_LEXICON_AUTOGROW,
+        )
 
     run_id, run_dir = make_run_dir(repo_root, client_id, line_id=client_layout_line_id)
     latest_path = get_latest_path(repo_root, client_id, line_id=client_layout_line_id)

@@ -35,11 +35,31 @@ except ImportError:  # pragma: no cover - compatibility guard
 
 from belle.ingest import ingest_single_file
 from belle.ui_reason_codes import (
+    PRECHECK_FAIL_BANK_CONFIG_MISSING,
+    PRECHECK_FAIL_BANK_TRAINING_OCR_TOO_MANY,
+    PRECHECK_FAIL_BANK_TRAINING_PAIR_INCOMPLETE,
+    PRECHECK_FAIL_BANK_TRAINING_REFERENCE_TOO_MANY,
+    PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
+    PRECHECK_FAIL_LEGACY_LAYOUT_UNSUPPORTED,
+    PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
+    PRECHECK_READY,
+    PRECHECK_SKIP_NO_TARGET,
+    RUN_FAIL_BANK_CACHE_UPDATE,
+    RUN_FAIL_BANK_CONFIG_LOAD,
+    RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+    RUN_FAIL_TARGET_INGEST,
+    RUN_FAIL_UNKNOWN,
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
 )
 
-from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import (
+    build_line_plan,
+    compute_target_file_status,
+    list_input_files,
+    raise_line_runner_failure,
+    resolve_client_layout,
+)
 
 LINE_ID_BANK = "bank_statement"
 
@@ -106,7 +126,10 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=str(exc),
+            reason_key="client_dir_not_found",
+            ui_reason_code=PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
             target_files=[],
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -115,7 +138,10 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason="bank_statement does not support legacy client layout",
+            reason_key="legacy_layout_unsupported",
+            ui_reason_code=PRECHECK_FAIL_LEGACY_LAYOUT_UNSUPPORTED,
             target_files=[],
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -128,13 +154,16 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
         }
     )
 
-    status, reason, target_files = compute_target_file_status(client_dir)
+    status, reason_key, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
         return build_line_plan(
             line_id=LINE_ID_BANK,
             status=status,
             reason=reason,
+            reason_key=reason_key,
+            ui_reason_code=PRECHECK_SKIP_NO_TARGET if status == "SKIP" else PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
             target_files=target_files,
+            run_failure_ui_reason_code="" if status == "SKIP" else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
             details=details,
         )
 
@@ -143,7 +172,10 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=f"bank_line_config.json not found: {config_path}",
+            reason_key="bank_config_missing",
+            ui_reason_code=PRECHECK_FAIL_BANK_CONFIG_MISSING,
             target_files=target_files,
+            run_failure_ui_reason_code=RUN_FAIL_BANK_CONFIG_LOAD,
             details=details,
         )
 
@@ -151,11 +183,22 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
     details.update(training_details)
     details["training_pair_summary"] = training_reason
     if training_state == "fail":
+        training_reason_key = "training_pair_incomplete"
+        training_ui_reason_code = PRECHECK_FAIL_BANK_TRAINING_PAIR_INCOMPLETE
+        if training_reason.startswith("training OCR count must be <=1"):
+            training_reason_key = "training_ocr_too_many"
+            training_ui_reason_code = PRECHECK_FAIL_BANK_TRAINING_OCR_TOO_MANY
+        elif training_reason.startswith("training reference count must be <=1"):
+            training_reason_key = "training_reference_too_many"
+            training_ui_reason_code = PRECHECK_FAIL_BANK_TRAINING_REFERENCE_TOO_MANY
         return build_line_plan(
             line_id=LINE_ID_BANK,
             status="FAIL",
             reason=training_reason,
+            reason_key=training_reason_key,
+            ui_reason_code=training_ui_reason_code,
             target_files=target_files,
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -163,6 +206,8 @@ def plan_bank(repo_root: Path, client_id: str) -> LinePlan:
         line_id=LINE_ID_BANK,
         status="RUN",
         reason="ready",
+        reason_key="ready",
+        ui_reason_code=PRECHECK_READY,
         target_files=target_files,
         details=details,
     )
@@ -180,9 +225,15 @@ def _ingest_single_kari_input(
         allowed_extensions={".csv"},
     )
     if len(input_files) != 1:
-        raise RuntimeError(
-            "bank_statement target input must be exactly one file under inputs/kari_shiwake "
-            f"(current={len(input_files)})"
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message=(
+                "bank_statement target input must be exactly one file under inputs/kari_shiwake "
+                f"(current={len(input_files)})"
+            ),
+            failure_key="target_input_count_invalid",
+            ui_reason_code=RUN_FAIL_UNKNOWN if len(input_files) <= 1 else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+            detail={"input_count": len(input_files)},
         )
     kari_input = input_files[0]
     try:
@@ -195,7 +246,12 @@ def _ingest_single_kari_input(
             manifest_schema="belle.kari_shiwake_ingest.v1",
         )
     except Exception as exc:
-        raise RuntimeError(f"仮仕訳CSVの取り込みに失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message=f"仮仕訳CSVの取り込みに失敗しました: {exc}",
+            failure_key="target_ingest_failed",
+            ui_reason_code=RUN_FAIL_TARGET_INGEST,
+        )
     return kari_ingest
 
 
@@ -218,7 +274,12 @@ def run_bank(
     client_dir: Path,
 ) -> RunLineResult:
     if ensure_bank_client_cache_updated is None or replace_bank_yayoi_csv is None:
-        raise RuntimeError("bank_statement runtime modules are unavailable")
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message="bank_statement runtime modules are unavailable",
+            failure_key="runtime_modules_unavailable",
+            ui_reason_code=RUN_FAIL_UNKNOWN,
+        )
 
     client_layout_line_id = LINE_ID_BANK
     ensure_client_system_dirs(repo_root, client_id, line_id=client_layout_line_id)
@@ -226,12 +287,22 @@ def run_bank(
     try:
         cache_update = ensure_bank_client_cache_updated(repo_root, client_id)
     except Exception as exc:
-        raise RuntimeError(f"bank client_cache 更新に失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message=f"bank client_cache 更新に失敗しました: {exc}",
+            failure_key="bank_cache_update_failed",
+            ui_reason_code=RUN_FAIL_BANK_CACHE_UPDATE,
+        )
 
     try:
         bank_config = _load_bank_runtime_config(repo_root, client_id)
     except Exception as exc:
-        raise RuntimeError(f"bank_line_config 読み込みに失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_BANK,
+            message=f"bank_line_config 読み込みに失敗しました: {exc}",
+            failure_key="bank_config_load_failed",
+            ui_reason_code=RUN_FAIL_BANK_CONFIG_LOAD,
+        )
     yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
     yayoi_tax_config_path = get_yayoi_tax_config_path(repo_root, client_id)
 

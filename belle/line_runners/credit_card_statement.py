@@ -34,13 +34,29 @@ from belle.tax_postprocess import (
     load_yayoi_tax_postprocess_config,
 )
 from belle.ui_reason_codes import (
+    PRECHECK_FAIL_CARD_CONFIG_MISSING,
+    PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
+    PRECHECK_FAIL_LEGACY_LAYOUT_UNSUPPORTED,
+    PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
+    PRECHECK_READY,
+    PRECHECK_SKIP_NO_TARGET,
+    RUN_FAIL_CARD_CACHE_UPDATE,
+    RUN_FAIL_CARD_CONFIG_MISSING,
+    RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+    RUN_FAIL_TARGET_INGEST,
+    RUN_FAIL_UNKNOWN,
     RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
     RUN_OK,
-    precheck_reason_code_for,
 )
 
-from .common import build_line_plan, compute_target_file_status, list_input_files, resolve_client_layout
+from .common import (
+    build_line_plan,
+    compute_target_file_status,
+    list_input_files,
+    raise_line_runner_failure,
+    resolve_client_layout,
+)
 
 LINE_ID_CARD = "credit_card_statement"
 
@@ -62,7 +78,10 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason=str(exc),
+            reason_key="client_dir_not_found",
+            ui_reason_code=PRECHECK_FAIL_CLIENT_DIR_NOT_FOUND,
             target_files=[],
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -71,7 +90,10 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason="credit_card_statement does not support legacy client layout",
+            reason_key="legacy_layout_unsupported",
+            ui_reason_code=PRECHECK_FAIL_LEGACY_LAYOUT_UNSUPPORTED,
             target_files=[],
+            run_failure_ui_reason_code=RUN_FAIL_UNKNOWN,
             details=details,
         )
 
@@ -82,13 +104,16 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
         }
     )
 
-    status, reason, target_files = compute_target_file_status(client_dir)
+    status, reason_key, reason, target_files = compute_target_file_status(client_dir)
     if status in {"SKIP", "FAIL"}:
         return build_line_plan(
             line_id=LINE_ID_CARD,
             status=status,
             reason=reason,
+            reason_key=reason_key,
+            ui_reason_code=PRECHECK_SKIP_NO_TARGET if status == "SKIP" else PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS,
             target_files=target_files,
+            run_failure_ui_reason_code="" if status == "SKIP" else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
             details=details,
         )
 
@@ -98,7 +123,10 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
             line_id=LINE_ID_CARD,
             status="FAIL",
             reason=_missing_cc_config_reason(client_dir),
+            reason_key="missing_cc_config",
+            ui_reason_code=PRECHECK_FAIL_CARD_CONFIG_MISSING,
             target_files=target_files,
+            run_failure_ui_reason_code=RUN_FAIL_CARD_CONFIG_MISSING,
             details=details,
         )
 
@@ -106,6 +134,8 @@ def plan_card(repo_root: Path, client_id: str) -> LinePlan:
         line_id=LINE_ID_CARD,
         status="RUN",
         reason="ready",
+        reason_key="ready",
+        ui_reason_code=PRECHECK_READY,
         target_files=target_files,
         details=details,
     )
@@ -117,9 +147,15 @@ def _ingest_single_kari_input(*, repo_root: Path, client_id: str, client_dir: Pa
         allowed_extensions={".csv"},
     )
     if len(input_files) != 1:
-        raise RuntimeError(
-            "credit_card_statement target input must be exactly one file under inputs/kari_shiwake "
-            f"(current={len(input_files)})"
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=(
+                "credit_card_statement target input must be exactly one file under inputs/kari_shiwake "
+                f"(current={len(input_files)})"
+            ),
+            failure_key="target_input_count_invalid",
+            ui_reason_code=RUN_FAIL_UNKNOWN if len(input_files) <= 1 else RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+            detail={"input_count": len(input_files)},
         )
     kari_input = input_files[0]
     try:
@@ -132,7 +168,12 @@ def _ingest_single_kari_input(*, repo_root: Path, client_id: str, client_dir: Pa
             manifest_schema="belle.kari_shiwake_ingest.v1",
         )
     except Exception as exc:
-        raise RuntimeError(f"仮仕訳CSVの取り込みに失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=f"仮仕訳CSVの取り込みに失敗しました: {exc}",
+            failure_key="target_ingest_failed",
+            ui_reason_code=RUN_FAIL_TARGET_INGEST,
+        )
     return kari_ingest
 
 
@@ -145,25 +186,45 @@ def run_card(repo_root: Path, client_id: str) -> RunLineResult:
     try:
         client_layout_line_id, client_dir = resolve_client_layout(repo_root, client_id, LINE_ID_CARD)
     except FileNotFoundError as exc:
-        raise RuntimeError(str(exc)) from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=str(exc),
+            failure_key="client_dir_not_found",
+            ui_reason_code=RUN_FAIL_UNKNOWN,
+        )
     if client_layout_line_id is None:
-        raise RuntimeError("credit_card_statement does not support legacy client layout")
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message="credit_card_statement does not support legacy client layout",
+            failure_key="legacy_layout_unsupported",
+            ui_reason_code=RUN_FAIL_UNKNOWN,
+        )
 
-    status, reason, target_files = compute_target_file_status(client_dir)
+    status, reason_key, reason, target_files = compute_target_file_status(client_dir)
     if status == "SKIP":
         return RunLineResult.skipped(
             line_id=LINE_ID_CARD,
             reason=reason,
-            ui_reason_code=precheck_reason_code_for(LINE_ID_CARD, status, reason),
-            ui_reason_detail={"phase": "run", "status": "skipped", "reason": reason},
+            ui_reason_code=PRECHECK_SKIP_NO_TARGET,
+            ui_reason_detail={"phase": "run", "status": "skipped", "reason": reason, "reason_key": reason_key},
             target_files=tuple(target_files),
         )
     if status == "FAIL":
-        raise RuntimeError(reason)
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=reason,
+            failure_key=reason_key,
+            ui_reason_code=RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+        )
 
     cc_config_path = _credit_card_line_config_path(client_dir)
     if not cc_config_path.exists():
-        raise RuntimeError(_missing_cc_config_reason(client_dir))
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=_missing_cc_config_reason(client_dir),
+            failure_key="missing_cc_config",
+            ui_reason_code=RUN_FAIL_CARD_CONFIG_MISSING,
+        )
 
     ensure_client_system_dirs(repo_root, client_id, line_id=LINE_ID_CARD)
     yayoi_tax_config = load_yayoi_tax_postprocess_config(repo_root, client_id)
@@ -176,7 +237,12 @@ def run_card(repo_root: Path, client_id: str) -> RunLineResult:
     try:
         _cache, cache_update_summary = ensure_cc_client_cache_updated(repo_root, client_id)
     except Exception as exc:
-        raise RuntimeError(f"credit card client_cache 更新に失敗しました: {exc}") from exc
+        raise_line_runner_failure(
+            line_id=LINE_ID_CARD,
+            message=f"credit card client_cache 更新に失敗しました: {exc}",
+            failure_key="card_cache_update_failed",
+            ui_reason_code=RUN_FAIL_CARD_CACHE_UPDATE,
+        )
 
     kari_ingest = _ingest_single_kari_input(repo_root=repo_root, client_id=client_id, client_dir=client_dir)
 

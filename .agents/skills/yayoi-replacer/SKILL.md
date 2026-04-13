@@ -32,7 +32,7 @@ Deterministic replacement skill for Yayoi import CSVs.
    - inference source: row votes from `cache.bank_account_subaccount_stats`
    - when inference is `OK`, the SAME inferred bank-side subaccount is applied to all required-fill rows in the file (no partial fill)
    - thresholds: `thresholds.file_level_bank_sub_inference.min_votes` (default `3`) and `thresholds.file_level_bank_sub_inference.min_p_majority` (default `0.9`)
-   - if required fill exists and inference is not `OK`, runner strict-stops with exit `2` after writing artifacts (`bank_sub_fill_required_failed == true`)
+   - if required fill exists and inference is not `OK`, the runner returns a structured needs-review result after writing artifacts, and the CLI adapter exits with code `2` (`bank_sub_fill_required_failed == true`)
 11. `receipt` replaces debit-side `target_account` and debit-side `target_tax_division`.
 12. `credit_card_statement` is implemented/runnable.
 13. `credit_card_statement` target must satisfy Contract A (one statement per target file).
@@ -102,7 +102,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 3. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
 4. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
 5. `credit_card_statement` tax routing thresholds are tuned in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json` under `tax_division_thresholds`.
-6. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
+6. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true` の場合、成果物を書き出した後に structured needs-review result を返し、CLI adapter が outward な exit code `2` を返す（run_dir保持）。
 7. `credit_card_statement` では payable 側の出力勘定科目が teacher-derived canonical payable account に書き換わることがある。
 
 ### Examples (dialog)
@@ -125,7 +125,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - bank training input contract or learning safety gates are violated (`0/0` is allowed, otherwise `1/1` only; one-side-new mismatch / manifests-known-but-not-applied / `pairs_unique_used == 0`)
 4. `credit_card_statement` behavior:
    - in `--line all`: 他ラインと同様に input 契約で `RUN` / `SKIP` / `FAIL` を判定（未実装扱いの特別SKIPはしない）
-   - PLAN は file-level card inference の確信度不足や canonical payable の安全利用可否を事前確定できないため、実行時に strict-stop（exit `2`）が起こりうる
+   - PLAN は file-level card inference の確信度不足や canonical payable の安全利用可否を事前確定できないため、実行時に structured needs-review result が発生し、CLI adapter が exit code `2` を返しうる
    - strict-stop 条件: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true`（成果物は保持）
 
 ## Confirmation gate
@@ -138,7 +138,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - interactive TTY: prompt `Proceed with RUN lines? [y/N]`
    - non-interactive without `--yes`: exit 2 with guidance
 4. If all selected lines are `SKIP`, exits 0 with `[OK] nothing to do`.
-5. During execution, strict-stop returns exit 2 after writing artifacts for:
+5. During execution, strict-stop writes artifacts first, then returns a structured needs-review result that the CLI adapter maps to exit code 2 for:
    - `bank_statement` when `bank_sub_fill_required_failed == true`
    - `credit_card_statement` when `payable_sub_fill_required_failed == true`
    - `credit_card_statement` when `canonical_payable_required_failed == true`
@@ -151,7 +151,7 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
    - `credit_card_statement.py`
 3. `bank_statement` runner enforces file-level bank-side subaccount inference behavior:
    - one inferred value per target CSV (no hybrid/partial bank-side fill)
-   - strict-stop via `SystemExit(2)` when `bank_sub_fill_required_failed == true` after artifact write
+   - strict-stop via structured needs-review result when `bank_sub_fill_required_failed == true` after artifact write; the CLI adapter maps that to exit code `2`
    - thresholds path: `thresholds.file_level_bank_sub_inference.min_votes` / `min_p_majority`
 4. `credit_card_statement` runner enforces Contract A assumptions and strict-stop behavior.
 

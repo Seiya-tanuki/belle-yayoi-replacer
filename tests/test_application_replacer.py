@@ -16,6 +16,7 @@ from belle.application import (
     RunLineResult,
 )
 from belle.application import replacer as replacer_app
+from belle.ui_reason_codes import PRECHECK_FAIL_CARD_CONFIG_MISSING, RUN_FAIL_CARD_CONFIG_MISSING, RUN_FAIL_TARGET_INGEST
 
 
 def _load_replacer_script_module(repo_root: Path):
@@ -166,6 +167,64 @@ class ReplacerApplicationTests(unittest.TestCase):
         self.assertTrue(result.stopped_early)
         self.assertEqual("needs_review", result.line_results[0].outcome)
         self.assertTrue(result.line_results[0].strict_stop_applied)
+
+    def test_enforce_cc_config_required_sets_structured_codes_without_reason_text_classification(self) -> None:
+        repo_root = Path("C:/repo")
+        plan = LinePlan(
+            line_id="credit_card_statement",
+            status="RUN",
+            reason="arbitrary precheck text",
+            reason_key="ready",
+            target_files=("target.csv",),
+            ui_reason_code="PRECHECK_READY",
+        )
+
+        result = replacer_app._enforce_cc_config_required(repo_root, "C1", plan)
+
+        self.assertEqual("FAIL", result.status)
+        self.assertEqual("missing_cc_config", result.reason_key)
+        self.assertEqual(PRECHECK_FAIL_CARD_CONFIG_MISSING, result.ui_reason_code)
+        self.assertEqual(RUN_FAIL_CARD_CONFIG_MISSING, result.run_failure_ui_reason_code)
+
+    def test_run_replacer_preserves_structured_failure_metadata_from_line_runner(self) -> None:
+        repo_root = Path("C:/repo")
+        plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="receipt",
+            plans=(
+                LinePlan(
+                    line_id="receipt",
+                    status="RUN",
+                    reason="ready",
+                    reason_key="ready",
+                    target_files=("target.csv",),
+                    ui_reason_code="PRECHECK_READY",
+                    ui_reason_detail={"phase": "plan", "status": "RUN", "reason": "ready"},
+                    details={
+                        "client_layout_line_id": "receipt",
+                        "client_dir": str(repo_root / "clients" / "C1" / "lines" / "receipt"),
+                    },
+                ),
+            ),
+        )
+
+        with mock.patch.object(
+            replacer_app,
+            "run_receipt",
+            side_effect=replacer_app.LineRunnerFailure(
+                line_id="receipt",
+                message="free text no longer matters",
+                failure_key="target_ingest_failed",
+                ui_reason_code=RUN_FAIL_TARGET_INGEST,
+                ui_reason_detail={"phase": "run", "status": "failure", "failure_key": "target_ingest_failed"},
+            ),
+        ):
+            with self.assertRaises(replacer_app.ReplacerRunFailedError) as ctx:
+                replacer_app.run_replacer(repo_root, "C1", plan_result=plan_result)
+
+        self.assertEqual("receipt", ctx.exception.line_id)
+        self.assertEqual("target_ingest_failed", ctx.exception.failure_key)
+        self.assertEqual(RUN_FAIL_TARGET_INGEST, ctx.exception.ui_reason_code)
 
     def test_cli_main_maps_structured_needs_review_to_exit_code_2(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]

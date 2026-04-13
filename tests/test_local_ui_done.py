@@ -123,7 +123,7 @@ class LocalUiDonePageTests(unittest.TestCase):
         from belle.local_ui.pages.done import detail_markdown_for_result
 
         text = detail_markdown_for_result(
-            {"status": "failure", "ui_reason_code": "SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID"}
+            {"status": "failure", "ui_reason_code": "SESSION_FATAL_APPLICATION_CALL_FAILED"}
         )
         self.assertIn("想定外の問題が発生したため、今回の処理は完了できませんでした。", text)
         self.assertIn(
@@ -131,7 +131,7 @@ class LocalUiDonePageTests(unittest.TestCase):
             text,
         )
         self.assertIn("さらにこのブラウザも終了し、その後改めてデスクトップからシステムを起動してください。", text)
-        self.assertIn("```text\nSESSION_FATAL_SUBPROCESS_OUTPUT_INVALID\n```", text)
+        self.assertIn("```text\nSESSION_FATAL_APPLICATION_CALL_FAILED\n```", text)
 
 
 if __name__ == "__main__":

@@ -9,8 +9,8 @@ from belle.application.errors import ReplacerRunFailedError
 from belle.application.models import LinePlan, RunLineResult
 from belle.local_ui.state import normalize_selected_lines
 from belle.ui_reason_codes import (
-    SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID,
-    run_failure_reason_code_for,
+    RUN_FAIL_UNKNOWN,
+    SESSION_FATAL_APPLICATION_CALL_FAILED,
 )
 
 STATUS_LABELS = {
@@ -85,7 +85,7 @@ class SessionFatalError(RuntimeError):
         self.phase = str(phase)
         self.line_id = str(line_id)
         self.raw_error = message
-        self.ui_reason_code = SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID
+        self.ui_reason_code = SESSION_FATAL_APPLICATION_CALL_FAILED
         self.detail: dict[str, object] = {
             "phase": self.phase,
             "origin_line_id": self.line_id,
@@ -149,8 +149,8 @@ def _run_result_from_failed_plan(plan: LinePlan) -> RunResult:
         line_id=plan.line_id,
         status="failure",
         status_label=EXECUTION_LABELS["failure"],
-        ui_reason_code=run_failure_reason_code_for(plan.line_id, plan.reason),
-        ui_reason_detail={"phase": "plan_gate", "status": plan.status, "reason": plan.reason},
+        ui_reason_code=plan.run_failure_ui_reason_code or RUN_FAIL_UNKNOWN,
+        ui_reason_detail={"phase": "plan_gate", "status": plan.status, "reason": plan.reason, "reason_key": plan.reason_key},
         returncode=1,
         stdout=plan.reason,
         stderr="",
@@ -224,8 +224,8 @@ def run_selected_lines(client_id: str, selected_lines: list[str], *, root: Path 
                     line_id=exc.line_id,
                     status="failure",
                     status_label=EXECUTION_LABELS["failure"],
-                    ui_reason_code=run_failure_reason_code_for(exc.line_id, str(exc)),
-                    ui_reason_detail={"phase": "run", "status": "failure", "error": str(exc)},
+                    ui_reason_code=exc.ui_reason_code or RUN_FAIL_UNKNOWN,
+                    ui_reason_detail=dict(exc.ui_reason_detail) or {"phase": "run", "status": "failure", "error": str(exc)},
                     returncode=1,
                     stdout=str(exc),
                     stderr="",

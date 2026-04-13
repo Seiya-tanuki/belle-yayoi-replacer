@@ -10,7 +10,7 @@ from belle.ui_reason_codes import (
     RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
     RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
     RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
-    SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID,
+    SESSION_FATAL_APPLICATION_CALL_FAILED,
 )
 
 NEEDS_REVIEW_SECTION_SUFFIX = "（詳細を見るボタンをクリック）"
@@ -44,7 +44,7 @@ def markdown_code_block(text: str) -> str:
 
 def detail_markdown_for_result(result: dict[str, object]) -> str:
     ui_reason_code = str(result.get("ui_reason_code") or "").strip()
-    if ui_reason_code == SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID:
+    if ui_reason_code == SESSION_FATAL_APPLICATION_CALL_FAILED:
         return (
             "注意事項:\n"
             f"{SESSION_FATAL_DETAIL_TEXT}\n\n"
