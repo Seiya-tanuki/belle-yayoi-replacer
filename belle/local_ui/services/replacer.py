@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import locale
-import os
-import re
-import subprocess
-import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from belle.local_ui.state import LINE_ORDER, normalize_selected_lines
+from belle.application import plan_replacer, run_replacer
+from belle.application.errors import ReplacerRunFailedError
+from belle.application.models import LinePlan, RunLineResult
+from belle.local_ui.state import normalize_selected_lines
 from belle.ui_reason_codes import (
-    RUN_OK,
     SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID,
-    parse_ui_reason_from_text,
-    precheck_reason_code_for,
     run_failure_reason_code_for,
-    run_needs_review_reason_code_for,
 )
 
 STATUS_LABELS = {
@@ -29,6 +23,7 @@ EXECUTION_LABELS = {
     "success": "処理が完了しました",
     "needs_review": "処理は完了しましたが、確認が必要です",
     "failure": "処理を完了できませんでした",
+    "skipped": "今回は対象ファイルがありません",
 }
 
 SESSION_FATAL_REASON = (
@@ -43,10 +38,6 @@ SESSION_FATAL_DETAIL_TEXT = (
     "（システム起動時に表示されるテキストだけの黒い画面）を右上のバツボタンを押して終了してください。\n"
     "さらにこのブラウザも終了し、その後改めてデスクトップからシステムを起動してください。\n"
     "再起動後も同じエラーコードが表示される場合は、管理者に連絡してください。"
-)
-
-PLAN_LINE_RE = re.compile(
-    r"^- (?P<line_id>[a-z_]+): (?P<status>RUN|SKIP|FAIL) \((?P<reason>.+)\) target=\[(?P<targets>.*)\]$"
 )
 
 
@@ -86,170 +77,104 @@ class SessionFatalError(RuntimeError):
         *,
         phase: str,
         line_id: str,
-        command: list[str],
-        returncode: int | None,
-        stdout: str | None,
-        stderr: str | None,
         raw_error: str,
+        detail: dict[str, object] | None = None,
     ) -> None:
-        normalized_stdout = "" if stdout is None else str(stdout)
-        normalized_stderr = "" if stderr is None else str(stderr)
-        message = str(raw_error or "subprocess output invalid")
+        message = str(raw_error or "unexpected replacer failure")
         super().__init__(message)
         self.phase = str(phase)
         self.line_id = str(line_id)
-        self.command = [str(part) for part in command]
-        self.returncode = returncode
-        self.stdout = normalized_stdout
-        self.stderr = normalized_stderr
         self.raw_error = message
         self.ui_reason_code = SESSION_FATAL_SUBPROCESS_OUTPUT_INVALID
         self.detail: dict[str, object] = {
             "phase": self.phase,
             "origin_line_id": self.line_id,
-            "command": list(self.command),
-            "returncode": self.returncode,
-            "stdout_was_none": stdout is None,
-            "stderr_was_none": stderr is None,
             "raw_error": self.raw_error,
-            "stdout": self.stdout,
-            "stderr": self.stderr,
         }
+        if detail:
+            self.detail.update(dict(detail))
 
 
 def source_repo_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-def replacer_script_path(root: Path | None = None) -> Path:
-    current_root = root or source_repo_root()
-    return current_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
-
-
-def build_replacer_command(
-    client_id: str,
-    line_id: str,
-    *,
-    root: Path | None = None,
-    dry_run: bool = False,
-    confirm_yes: bool = False,
-) -> list[str]:
-    command = [
-        sys.executable,
-        str(replacer_script_path(root)),
-        "--client",
-        client_id,
-        "--line",
-        line_id,
-    ]
-    if dry_run:
-        command.append("--dry-run")
-    if confirm_yes:
-        command.append("--yes")
-    return command
-
-
 def normalized_line_order(selected_lines: list[str]) -> list[str]:
     return normalize_selected_lines(selected_lines)
 
 
-def _command_env() -> dict[str, str]:
-    env = os.environ.copy()
-    source_root = str(source_repo_root())
-    current_pythonpath = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = source_root if not current_pythonpath else f"{source_root}{os.pathsep}{current_pythonpath}"
-    return env
+def _plan_stdout(plan: LinePlan) -> str:
+    return f"{plan.line_id}: {plan.status} ({plan.reason})"
 
 
-def _run_command(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        command,
-        cwd=cwd,
-        env=_command_env(),
-        capture_output=True,
-        text=True,
-        encoding=locale.getpreferredencoding(False),
-        errors="replace",
-        timeout=120,
+def _format_changed_ratio(value: float) -> str:
+    return f"{float(value):.3f}"
+
+
+def _precheck_result_from_plan(plan: LinePlan) -> PrecheckResult:
+    return PrecheckResult(
+        line_id=plan.line_id,
+        status=plan.status,
+        status_label=STATUS_LABELS[plan.status],
+        ui_reason_code=plan.ui_reason_code,
+        ui_reason_detail=dict(plan.ui_reason_detail),
+        reason=plan.reason,
+        target_files=list(plan.target_files),
+        returncode=0 if plan.status in {"RUN", "SKIP"} else 1,
+        stdout=_plan_stdout(plan),
+        stderr="",
     )
 
 
-def parse_plan_output(stdout: str, *, returncode: int, stderr: str = "") -> list[PrecheckResult]:
-    stdout = str(stdout or "")
-    stderr = str(stderr or "")
-    results: list[PrecheckResult] = []
-    for line in stdout.splitlines():
-        match = PLAN_LINE_RE.match(line.strip())
-        if not match:
-            continue
-        raw_status = match.group("status")
-        targets = match.group("targets").strip()
-        target_files = [] if targets in {"", "-"} else [part.strip() for part in targets.split(",") if part.strip()]
-        results.append(
-            PrecheckResult(
-                line_id=match.group("line_id"),
-                status=raw_status,
-                status_label=STATUS_LABELS[raw_status],
-                ui_reason_code=precheck_reason_code_for(match.group("line_id"), raw_status, match.group("reason")),
-                ui_reason_detail={"phase": "plan", "status": raw_status, "reason": match.group("reason")},
-                reason=match.group("reason"),
-                target_files=target_files,
-                returncode=returncode,
-                stdout=stdout,
-                stderr=stderr,
-            )
-        )
-    return results
-
-
-def parse_run_output(stdout: str, *, line_id: str, returncode: int, stderr: str = "") -> RunResult:
-    stdout = str(stdout or "")
-    stderr = str(stderr or "")
-    run_id = ""
-    run_dir = ""
-    run_manifest = ""
-    changed_ratio = ""
-
-    for line in stdout.splitlines():
-        stripped = line.strip()
-        if "[OK] client=" in stripped and " run_id=" in stripped:
-            run_id = stripped.split(" run_id=", 1)[1].split()[0]
-        elif stripped.startswith("[OK] run_dir="):
-            run_dir = stripped.split("=", 1)[1]
-        elif stripped.startswith("[OK] run_manifest="):
-            run_manifest = stripped.split("=", 1)[1]
-        elif "changed_ratio=" in stripped:
-            changed_ratio = stripped.split("changed_ratio=", 1)[1].split()[0]
-
-    parsed_reason = parse_ui_reason_from_text(stdout, line_id=line_id) or parse_ui_reason_from_text(stderr, line_id=line_id)
-    if returncode == 0:
-        status = "success"
-        fallback_code = RUN_OK
-    elif returncode == 2:
-        status = "needs_review"
-        fallback_code = run_needs_review_reason_code_for(line_id)
-    else:
-        status = "failure"
-        fallback_code = run_failure_reason_code_for(line_id, f"{stdout}\n{stderr}")
-
-    if parsed_reason is not None:
-        ui_reason_code, ui_reason_detail = parsed_reason
-    else:
-        ui_reason_code, ui_reason_detail = fallback_code, {}
-
+def _run_result_from_line_result(result: RunLineResult) -> RunResult:
+    status = str(result.outcome)
     return RunResult(
-        line_id=line_id,
+        line_id=result.line_id,
         status=status,
         status_label=EXECUTION_LABELS[status],
-        ui_reason_code=ui_reason_code,
-        ui_reason_detail=ui_reason_detail,
-        returncode=returncode,
-        stdout=stdout,
-        stderr=stderr,
-        run_id=run_id,
-        run_dir=run_dir,
-        run_manifest=run_manifest,
-        changed_ratio=changed_ratio,
+        ui_reason_code=result.ui_reason_code,
+        ui_reason_detail=dict(result.ui_reason_detail),
+        returncode=0 if status in {"success", "needs_review", "skipped"} else 1,
+        stdout=str(result.reason or ""),
+        stderr="",
+        run_id=str(result.run_id or ""),
+        run_dir=str(result.run_dir or ""),
+        run_manifest=str(result.run_manifest_path or ""),
+        changed_ratio=_format_changed_ratio(result.changed_ratio),
+    )
+
+
+def _run_result_from_failed_plan(plan: LinePlan) -> RunResult:
+    return RunResult(
+        line_id=plan.line_id,
+        status="failure",
+        status_label=EXECUTION_LABELS["failure"],
+        ui_reason_code=run_failure_reason_code_for(plan.line_id, plan.reason),
+        ui_reason_detail={"phase": "plan_gate", "status": plan.status, "reason": plan.reason},
+        returncode=1,
+        stdout=plan.reason,
+        stderr="",
+        run_id="",
+        run_dir="",
+        run_manifest="",
+        changed_ratio="",
+    )
+
+
+def _run_result_from_skipped_plan(plan: LinePlan) -> RunResult:
+    return RunResult(
+        line_id=plan.line_id,
+        status="skipped",
+        status_label=EXECUTION_LABELS["skipped"],
+        ui_reason_code=plan.ui_reason_code,
+        ui_reason_detail={"phase": "run", "status": "skipped", "reason": plan.reason},
+        returncode=0,
+        stdout=plan.reason,
+        stderr="",
+        run_id="",
+        run_dir="",
+        run_manifest="",
+        changed_ratio="",
     )
 
 
@@ -257,34 +182,15 @@ def run_precheck_for_lines(client_id: str, selected_lines: list[str], *, root: P
     current_root = root or source_repo_root()
     results: list[PrecheckResult] = []
     for line_id in normalized_line_order(selected_lines):
-        command = build_replacer_command(client_id, line_id, root=current_root, dry_run=True)
         try:
-            proc = _run_command(
-                command,
-                cwd=current_root,
-            )
+            plan_result = plan_replacer(current_root, client_id, requested_line=line_id)
         except Exception as exc:
             raise SessionFatalError(
                 phase="precheck",
                 line_id=line_id,
-                command=command,
-                returncode=None,
-                stdout=None,
-                stderr=None,
-                raw_error=f"precheck subprocess failed before output parsing: {exc}",
+                raw_error=f"precheck shared-layer call failed: {exc}",
             ) from exc
-        parsed = parse_plan_output(proc.stdout, returncode=proc.returncode, stderr=proc.stderr)
-        if proc.stdout is None or not parsed:
-            raise SessionFatalError(
-                phase="precheck",
-                line_id=line_id,
-                command=command,
-                returncode=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                raw_error="precheck output did not contain any parseable PLAN lines",
-            )
-        results.extend(parsed)
+        results.extend(_precheck_result_from_plan(plan) for plan in plan_result.plans)
     return results
 
 
@@ -292,37 +198,52 @@ def run_selected_lines(client_id: str, selected_lines: list[str], *, root: Path 
     current_root = root or source_repo_root()
     results: list[RunResult] = []
     for line_id in normalized_line_order(selected_lines):
-        command = build_replacer_command(client_id, line_id, root=current_root, confirm_yes=True)
         try:
-            proc = _run_command(
-                command,
-                cwd=current_root,
-            )
+            plan_result = plan_replacer(current_root, client_id, requested_line=line_id)
         except Exception as exc:
             raise SessionFatalError(
                 phase="run",
                 line_id=line_id,
-                command=command,
-                returncode=None,
-                stdout=None,
-                stderr=None,
-                raw_error=f"run subprocess failed before output parsing: {exc}",
+                raw_error=f"run preflight shared-layer call failed: {exc}",
             ) from exc
-        result = parse_run_output(proc.stdout, line_id=line_id, returncode=proc.returncode, stderr=proc.stderr)
-        missing_success_markers = proc.returncode in {0, 2} and (
-            not result.run_id or not result.run_dir or not result.run_manifest
-        )
-        if proc.stdout is None or missing_success_markers:
+
+        if plan_result.has_failures:
+            results.extend(_run_result_from_failed_plan(plan) for plan in plan_result.plans if plan.status == "FAIL")
+            continue
+
+        if not plan_result.runnable_plans:
+            results.extend(_run_result_from_skipped_plan(plan) for plan in plan_result.plans if plan.status == "SKIP")
+            continue
+
+        try:
+            run_result = run_replacer(current_root, client_id, plan_result=plan_result)
+        except ReplacerRunFailedError as exc:
+            results.extend(_run_result_from_line_result(result) for result in exc.partial_results)
+            results.append(
+                RunResult(
+                    line_id=exc.line_id,
+                    status="failure",
+                    status_label=EXECUTION_LABELS["failure"],
+                    ui_reason_code=run_failure_reason_code_for(exc.line_id, str(exc)),
+                    ui_reason_detail={"phase": "run", "status": "failure", "error": str(exc)},
+                    returncode=1,
+                    stdout=str(exc),
+                    stderr="",
+                    run_id="",
+                    run_dir="",
+                    run_manifest="",
+                    changed_ratio="",
+                )
+            )
+            continue
+        except Exception as exc:
             raise SessionFatalError(
                 phase="run",
                 line_id=line_id,
-                command=command,
-                returncode=proc.returncode,
-                stdout=proc.stdout,
-                stderr=proc.stderr,
-                raw_error="run output did not contain required success markers",
-            )
-        results.append(result)
+                raw_error=f"run shared-layer call failed: {exc}",
+            ) from exc
+
+        results.extend(_run_result_from_line_result(result) for result in run_result.line_results)
     return results
 
 
@@ -349,7 +270,7 @@ def build_session_fatal_precheck_results(
             ui_reason_detail=dict(error.detail),
             reason=SESSION_FATAL_REASON,
             target_files=[],
-            returncode=int(error.returncode or 1),
+            returncode=1,
             stdout=log_text,
             stderr="",
         )
@@ -369,7 +290,7 @@ def build_session_fatal_run_results(
             status_label=EXECUTION_LABELS["failure"],
             ui_reason_code=error.ui_reason_code,
             ui_reason_detail=dict(error.detail),
-            returncode=int(error.returncode or 1),
+            returncode=1,
             stdout="",
             stderr="",
             run_id="",
