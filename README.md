@@ -17,6 +17,11 @@ The current taxonomy is the reconstructed 69-category operational/posting taxono
 3. `credit_card_statement`: replace placeholder-side account, placeholder-side tax division, rewrite the payable side to cache `canonical_payable` when safe, and fill payable-side subaccount per `spec/CREDIT_CARD_REPLACER_SPEC.md`; the placeholder side may be `debit` or `credit`.
 4. Keep everything offline (no network dependency).
 
+## Receipt active config
+
+1. Active runtime config path: `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`
+2. Tracked TEMPLATE provisioning baseline: `clients/TEMPLATE/lines/receipt/config/receipt_line_config.json`
+
 ## Defaults / overrides contract
 
 1. `receipt` and `credit_card_statement` defaults/overrides use the live row shape:

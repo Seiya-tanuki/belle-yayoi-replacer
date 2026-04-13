@@ -262,14 +262,20 @@ class ClientRegisterLineAwareTests(unittest.TestCase):
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 
-    def test_template_receipt_line_config_matches_active_ruleset(self) -> None:
+    def test_template_receipt_line_config_is_tracked_active_contract(self) -> None:
         template_config_path = (
             self.real_repo_root / "clients" / "TEMPLATE" / "lines" / "receipt" / "config" / "receipt_line_config.json"
         )
-        active_ruleset_path = self.real_repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
+        deleted_ruleset_path = self.real_repo_root / "rulesets" / "receipt" / "replacer_config_v1_15.json"
 
         self.assertTrue(template_config_path.exists())
-        self.assertEqual(_load_json(active_ruleset_path), _load_json(template_config_path))
+        self.assertFalse(deleted_ruleset_path.exists())
+
+        template_obj = _load_json(template_config_path)
+        self.assertEqual("belle.replacer_config.v1", template_obj.get("schema"))
+        self.assertIn("csv_contract", template_obj)
+        self.assertIn("tax_division_thresholds", template_obj)
+        self.assertIn("tax_division_confidence", template_obj)
 
     def test_receipt_register_still_initializes_category_overrides(self) -> None:
         repo_root = self.test_tmp_root / f"client_register_receipt_{uuid4().hex}"

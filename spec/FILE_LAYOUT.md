@@ -24,6 +24,7 @@ clients/<CLIENT_ID>/
   lines/
     <line_id>/
       config/
+        receipt_line_config.json       # receipt only; active receipt runtime contract (`csv_contract`, `tax_division_thresholds`, `tax_division_confidence`)
         category_overrides.json        # receipt + credit_card_statement only; shared override rows use target_account / target_tax_division
         bank_line_config.json          # bank_statement only
         credit_card_line_config.json   # credit_card_statement only; target_payable_placeholder_names + teacher_extraction.canonical_payable_thresholds live here
@@ -98,6 +99,7 @@ Related specs:
 1. `receipt` uses `inputs/ledger_ref/` and `artifacts/ingest/ledger_ref*/` for incremental ingest/cache updates.
    1. Lexicon category routing is enabled (primary).
    2. Pending queue/autogrow path is `lexicon/receipt/pending/`.
+   3. Active runtime config path is `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`.
 2. `bank_statement` MUST NOT use any `ledger_ref` path; it uses only:
    1. `inputs/training/ocr_kari_shiwake/`
    2. `inputs/training/reference_yayoi/`
@@ -128,9 +130,9 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
 3. `defaults/receipt/category_defaults_tax_included.json`
 4. `defaults/credit_card_statement/category_defaults_tax_excluded.json`
 5. `defaults/credit_card_statement/category_defaults_tax_included.json`
-6. `rulesets/receipt/replacer_config_v1_15.json`
-7. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`
-8. `clients/TEMPLATE/config/yayoi_tax_config.json`
+6. `rulesets/credit_card_statement/teacher_extraction_rules_v1.json`
+7. `clients/TEMPLATE/config/yayoi_tax_config.json`
+8. `clients/TEMPLATE/lines/receipt/config/receipt_line_config.json`
 9. `lexicon/receipt/pending/.gitkeep`
 10. `lexicon/receipt/pending/locks/.gitkeep`
 
@@ -164,10 +166,6 @@ The following paths are forbidden for `line_id=bank_statement` and must not be u
    4. `clients/<CLIENT_ID>/artifacts/`
 2. Non-receipt lines must never fall back to legacy layout.
 3. Shared assets do not use legacy global paths in the current rollout.
-4. Phase 2 provides an explicit safe migration utility:
-   1. `python .agents/skills/migrate-line-layout/scripts/migrate_line_layout.py --client <ID|ALL> --dry-run true --line receipt`
-   2. Real migration requires `--apply --dry-run false`
-5. Legacy shared pending path `lexicon/pending/` may be migrated to `lexicon/receipt/pending/` via the same utility.
 
 ## Ingest marker extension (`ledger_ref_ingested.json`)
 

@@ -13,6 +13,7 @@ Deterministic replacement skill for Yayoi import CSVs.
 3. Work under a single client folder.
 4. Receipt preferred line layout:
    - `clients/<CLIENT_ID>/lines/receipt/`
+   - active config: `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`
 5. Receipt legacy fallback (deprecated, auto-detected if line layout missing):
    - `clients/<CLIENT_ID>/`
 6. Bank line is line-scoped only:
@@ -99,12 +100,12 @@ python .agents/skills/yayoi-replacer/scripts/run_yayoi_replacer.py --client "<CL
 
 ### 必須ファイルメモ（診断結果優先）
 1. `receipt` line: 対象は `inputs/kari_shiwake/` 配下。実行時アセット不足は PLAN の `fail` 内容をそのまま提示する。
-2. `receipt` tax routing thresholds are tuned in `rulesets/receipt/replacer_config_v1_15.json` under `tax_division_thresholds` / `tax_division_confidence`.
-2. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
-3. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
-4. `credit_card_statement` tax routing thresholds are tuned in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json` under `tax_division_thresholds`.
-5. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
-6. `credit_card_statement` では payable 側の出力勘定科目が teacher-derived canonical payable account に書き換わることがある。
+2. `receipt` active config は `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`。tax routing thresholds はその `tax_division_thresholds` / `tax_division_confidence` を使う。
+3. `bank_statement` line: training は任意（`ocr_kari_shiwake=0` かつ `reference_yayoi=0` は no-op）。training 実施時は `inputs/training/ocr_kari_shiwake/` にCSV1件 + `inputs/training/reference_yayoi/` にCSV/TXT1件のみ許可（片側のみ/複数は fail-closed）。
+4. `credit_card_statement` line: 対象は `clients/<CLIENT_ID>/lines/credit_card_statement/inputs/kari_shiwake/`。件数は `0 => SKIP`, `1 => RUN`, `2+ => FAIL`（plan-time）。
+5. `credit_card_statement` tax routing thresholds are tuned in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json` under `tax_division_thresholds`.
+6. `credit_card_statement` runtime strict-stop: `payable_sub_fill_required_failed == true` または `canonical_payable_required_failed == true` の場合、成果物を書き出した後に exit `2`（`SystemExit(2)`、run_dir保持）。
+7. `credit_card_statement` では payable 側の出力勘定科目が teacher-derived canonical payable account に書き換わることがある。
 
 ### Examples (dialog)
 1. User: 「yayoi-replacerを実行して」

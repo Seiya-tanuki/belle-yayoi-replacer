@@ -52,7 +52,7 @@ Additional credit-card managed outputs:
    - telemetry/reporting includes `raw_rows_observed_added`, `derived_rows_selected_added`, `rows_total_added`, `rows_used_added`, and cache `canonical_payable_status`
 4. Tracked repository baseline contains no per-client `client_cache.json`; the builder creates the file from client state when absent and then updates it append-only.
 5. `artifacts/*` is system-managed.
-6. `--config` is receipt-specific. It is not used by `bank_statement` or `credit_card_statement`.
+6. Receipt loads `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json` directly.
 
 ## Execution
 ```bash

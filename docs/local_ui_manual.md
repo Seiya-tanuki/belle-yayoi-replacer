@@ -25,7 +25,7 @@ It is intentionally narrow and delegates actual replacement and collection work 
 - Editing lexicon or pending queues
 - Editing runtime config files
 - Editing `target_tax_division` inside `category_overrides.json`
-- Editing receipt tax-threshold config in `rulesets/receipt/replacer_config_v1_15.json`
+- Editing receipt line config in `clients/<CLIENT_ID>/lines/receipt/config/receipt_line_config.json`
 - Editing credit-card tax-threshold config in `clients/<CLIENT_ID>/lines/credit_card_statement/config/credit_card_line_config.json`
 - Editing line-level tax-threshold config of any kind
 - Editing `clients/<CLIENT_ID>/config/yayoi_tax_config.json`
