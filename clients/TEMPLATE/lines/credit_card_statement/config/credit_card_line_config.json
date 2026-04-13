@@ -23,7 +23,7 @@
   "thresholds": {
     "merchant_key_account": {
       "min_count": 3,
-      "min_p_majority": 0.9
+      "min_p_majority": 0.7
     },
     "file_level_card_inference": {
       "min_votes": 3,

@@ -12,7 +12,7 @@
   "thresholds": {
     "kana_sign_amount": {
       "min_count": 1,
-      "min_p_majority": 0.85
+      "min_p_majority": 0.8
     },
     "kana_sign": {
       "min_count": 2,
