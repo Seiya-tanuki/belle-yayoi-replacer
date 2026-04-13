@@ -16,7 +16,13 @@ from belle.application import (
     RunLineResult,
 )
 from belle.application import replacer as replacer_app
-from belle.ui_reason_codes import PRECHECK_FAIL_CARD_CONFIG_MISSING, RUN_FAIL_CARD_CONFIG_MISSING, RUN_FAIL_TARGET_INGEST
+from belle.ui_reason_codes import (
+    PRECHECK_FAIL_CARD_CONFIG_MISSING,
+    RUN_FAIL_CARD_CONFIG_MISSING,
+    RUN_FAIL_MULTIPLE_TARGET_INPUTS,
+    RUN_FAIL_TARGET_INGEST,
+    parse_ui_reason_from_text,
+)
 
 
 def _load_replacer_script_module(repo_root: Path):
@@ -291,6 +297,138 @@ class ReplacerApplicationTests(unittest.TestCase):
         self.assertIn("[OK] run_manifest=C:/repo/clients/C1/lines/bank_statement/outputs/runs/RID003/run_manifest.json", out)
         self.assertIn("[UI_REASON]", out)
         self.assertIn("strict-stop: Contract A failed", out)
+
+    def test_cli_main_emits_plan_gate_ui_reason_from_structured_metadata_not_reason_text(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        module = _load_replacer_script_module(repo_root)
+        module.__file__ = str(
+            repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+        )
+        plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="credit_card_statement",
+            plans=(
+                LinePlan(
+                    line_id="credit_card_statement",
+                    status="FAIL",
+                    reason="multiple target inputs",
+                    reason_key="multiple_target_inputs",
+                    target_files=("a.csv", "b.csv"),
+                    ui_reason_code="PRECHECK_FAIL_MULTIPLE_TARGET_INPUTS",
+                    ui_reason_detail={
+                        "phase": "plan",
+                        "status": "FAIL",
+                        "reason": "multiple target inputs",
+                        "reason_key": "multiple_target_inputs",
+                    },
+                    run_failure_ui_reason_code=RUN_FAIL_CARD_CONFIG_MISSING,
+                ),
+            ),
+        )
+
+        buf = io.StringIO()
+        with mock.patch.object(module, "plan_replacer", return_value=plan_result):
+            with mock.patch.object(module, "run_replacer") as mocked_run:
+                with mock.patch.object(
+                    sys,
+                    "argv",
+                    ["run_yayoi_replacer.py", "--client", "C1", "--line", "credit_card_statement", "--dry-run"],
+                ):
+                    with contextlib.redirect_stdout(buf):
+                        rc = module.main()
+
+        out = buf.getvalue()
+        mocked_run.assert_not_called()
+        self.assertEqual(1, rc, msg=out)
+        parsed = parse_ui_reason_from_text(out, line_id="credit_card_statement")
+        self.assertEqual(
+            (
+                RUN_FAIL_CARD_CONFIG_MISSING,
+                {
+                    "phase": "plan_gate",
+                    "reason": "multiple target inputs",
+                    "reason_key": "multiple_target_inputs",
+                    "status": "FAIL",
+                },
+            ),
+            parsed,
+        )
+        self.assertNotIn(RUN_FAIL_MULTIPLE_TARGET_INPUTS, out)
+
+    def test_cli_main_emits_runtime_failure_ui_reason_from_structured_error_not_message_text(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        module = _load_replacer_script_module(repo_root)
+        module.__file__ = str(
+            repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"
+        )
+        plan_result = ReplacerPlanResult(
+            client_id="C1",
+            requested_line="receipt",
+            plans=(
+                LinePlan(
+                    line_id="receipt",
+                    status="RUN",
+                    reason="ready",
+                    reason_key="ready",
+                    target_files=("target.csv",),
+                    ui_reason_code="PRECHECK_READY",
+                    ui_reason_detail={"phase": "plan", "status": "RUN", "reason": "ready", "reason_key": "ready"},
+                    details={
+                        "client_layout_line_id": "receipt",
+                        "client_dir": "C:/repo/clients/C1/lines/receipt",
+                    },
+                ),
+            ),
+        )
+
+        buf = io.StringIO()
+        with mock.patch.object(module, "plan_replacer", return_value=plan_result):
+            with mock.patch.object(
+                module,
+                "run_replacer",
+                side_effect=module.ReplacerRunFailedError(
+                    line_id="receipt",
+                    message="client_cache 更新に失敗しました",
+                    failure_key="target_ingest_failed",
+                    ui_reason_code=RUN_FAIL_TARGET_INGEST,
+                    ui_reason_detail={
+                        "phase": "run",
+                        "status": "failure",
+                        "failure_key": "target_ingest_failed",
+                    },
+                ),
+            ):
+                with mock.patch.object(sys, "argv", ["run_yayoi_replacer.py", "--client", "C1", "--line", "receipt", "--yes"]):
+                    with contextlib.redirect_stdout(buf):
+                        rc = module.main()
+
+        out = buf.getvalue()
+        self.assertEqual(1, rc, msg=out)
+        parsed = parse_ui_reason_from_text(out, line_id="receipt")
+        self.assertEqual(
+            (
+                RUN_FAIL_TARGET_INGEST,
+                {
+                    "failure_key": "target_ingest_failed",
+                    "phase": "run",
+                    "status": "failure",
+                },
+            ),
+            parsed,
+        )
+        self.assertIn("[ERROR] receipt run failed: client_cache 更新に失敗しました", out)
+
+    def test_replacer_cli_script_source_has_no_run_failure_reason_helper_dependency(self) -> None:
+        script_path = (
+            Path(__file__).resolve().parents[1]
+            / ".agents"
+            / "skills"
+            / "yayoi-replacer"
+            / "scripts"
+            / "run_yayoi_replacer.py"
+        )
+        source = script_path.read_text(encoding="utf-8")
+        self.assertNotIn("run_failure_reason_code_for", source)
 
 
 if __name__ == "__main__":

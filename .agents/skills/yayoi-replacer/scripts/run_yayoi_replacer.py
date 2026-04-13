@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from belle.application import (
+    LinePlan,
     ReplacerPlanResult,
     ReplacerRunFailedError,
     ReplacerRunResult,
@@ -17,10 +18,7 @@ from belle.application import (
     plan_replacer,
     run_replacer,
 )
-from belle.ui_reason_codes import (
-    build_ui_reason_event,
-    run_failure_reason_code_for,
-)
+from belle.ui_reason_codes import RUN_FAIL_UNKNOWN, build_ui_reason_event
 
 LINE_ID_CARD = "credit_card_statement"
 
@@ -83,6 +81,22 @@ def _print_run_result(client_id: str, result: RunLineResult) -> None:
         print(result.reason)
 
 
+def _plan_gate_failure_detail(plan: LinePlan) -> dict[str, object]:
+    detail = dict(plan.ui_reason_detail)
+    if not detail:
+        detail = {"status": plan.status, "reason": plan.reason}
+    detail["phase"] = "plan_gate"
+    detail.setdefault("status", plan.status)
+    detail.setdefault("reason", plan.reason)
+    if plan.reason_key:
+        detail.setdefault("reason_key", plan.reason_key)
+    return detail
+
+
+def _run_failure_detail(exc: ReplacerRunFailedError) -> dict[str, object]:
+    return dict(exc.ui_reason_detail) or {"phase": "run", "status": "failure", "error": str(exc)}
+
+
 def _confirm_or_exit(*, force_yes: bool) -> int:
     if force_yes:
         return 0
@@ -131,9 +145,9 @@ def main() -> int:
         for plan in fail_plans:
             print(
                 build_ui_reason_event(
-                    run_failure_reason_code_for(plan.line_id, plan.reason),
+                    plan.run_failure_ui_reason_code or RUN_FAIL_UNKNOWN,
                     line_id=plan.line_id,
-                    detail={"phase": "plan_gate", "status": plan.status, "reason": plan.reason},
+                    detail=_plan_gate_failure_detail(plan),
                 )
             )
         print("[ERROR] PLAN contains FAIL. Fix inputs/config and rerun (use --dry-run to only inspect).")
@@ -169,9 +183,9 @@ def main() -> int:
         print(f"[ERROR] {exc.line_id} run failed: {exc}")
         print(
             build_ui_reason_event(
-                run_failure_reason_code_for(exc.line_id, str(exc)),
+                exc.ui_reason_code or RUN_FAIL_UNKNOWN,
                 line_id=exc.line_id,
-                detail={"phase": "run", "status": "failure", "error": str(exc)},
+                detail=_run_failure_detail(exc),
             )
         )
         return 1
