@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import shutil
 import sys
@@ -332,6 +334,52 @@ class CollectOutputsTests(unittest.TestCase):
                     ["C1:20260215T010203Z_WANTED"],
                     manifest_obj["summary"]["lines"]["receipt"]["included_run_ids"],
                 )
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_collect_outputs_cli_renders_success_markers_from_structured_result(self) -> None:
+        module = _load_collect_module()
+        test_tmp_root = Path(__file__).resolve().parents[1] / ".tmp"
+        test_tmp_root.mkdir(parents=True, exist_ok=True)
+        repo_root = test_tmp_root / f"collect_outputs_cli_markers_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            (repo_root / "clients" / "TEMPLATE").mkdir(parents=True, exist_ok=True)
+            run_dir = (
+                repo_root
+                / "clients"
+                / "C1"
+                / "lines"
+                / "receipt"
+                / "outputs"
+                / "runs"
+                / "20260215T010203Z_R1"
+            )
+            _write_bytes(run_dir / "r_replaced_20260215T010203Z_R1.csv", b"CSV")
+            _write_bytes(run_dir / "r_01_20260215T010203Z_R1_review_report.csv", b"REPORT")
+            _write_bytes(run_dir / "run_manifest.json", b"{\"run\":\"RID\"}\n")
+
+            stdout = io.StringIO()
+            stderr = io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                rc = module.main(
+                    [
+                        "--line",
+                        "receipt",
+                        "--date",
+                        "2026-02-15",
+                        "--client",
+                        "C1",
+                        "--yes",
+                    ],
+                    repo_root=repo_root,
+                )
+
+            out = stdout.getvalue()
+            self.assertEqual(0, rc, msg=stderr.getvalue())
+            self.assertIn("[OK] ZIP: ", out)
+            self.assertIn("[OK] LATEST: ", out)
+            self.assertIn("[OK] 件数: runs=1, csv=1, reports=1, manifests=1, items=3", out)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

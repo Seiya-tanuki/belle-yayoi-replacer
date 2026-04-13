@@ -2,6 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .collect import (
+    ALL_LINE_ID,
+    ALL_MODE_LINE_ORDER,
+    CollectLinePlan,
+    CollectPlan,
+    CollectRequest,
+    CollectResult,
+    CollectRunPreview,
+    execute_collect_plan,
+    prepare_collect_plan,
+    run_collect as run_collect_outputs,
+)
 from .errors import (
     InvalidRequestedLineError,
     ReplacerApplicationError,
@@ -42,6 +54,13 @@ def run_replacer(
 
 
 __all__ = [
+    "ALL_LINE_ID",
+    "ALL_MODE_LINE_ORDER",
+    "CollectLinePlan",
+    "CollectPlan",
+    "CollectRequest",
+    "CollectResult",
+    "CollectRunPreview",
     "InvalidRequestedLineError",
     "LINE_ORDER",
     "LinePlan",
@@ -52,6 +71,9 @@ __all__ = [
     "ReplacerRunResult",
     "RequestedLine",
     "RunLineResult",
+    "execute_collect_plan",
     "plan_replacer",
+    "prepare_collect_plan",
+    "run_collect_outputs",
     "run_replacer",
 ]
