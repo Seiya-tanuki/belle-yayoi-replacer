@@ -115,9 +115,15 @@ class LocalUiDonePageTests(unittest.TestCase):
         from belle.local_ui.pages.done import detail_markdown_for_collect_result
 
         text = detail_markdown_for_collect_result({"ui_reason_code": "COLLECT_FAIL_UNKNOWN"})
-        self.assertIn("予期しないエラーが発生しました。システム管理者に問い合わせてください。", text)
-        self.assertIn("発生したエラー:", text)
-        self.assertIn("```text\nCOLLECT_FAIL_UNKNOWN\n```", text)
+        self.assertIn("成果物ZIPを作成できませんでした。", text)
+        self.assertIn(
+            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:",
+            text,
+        )
+        self.assertIn(
+            "COLLECT_FAIL_UNKNOWN が発生しました。原因と対処法を教えてください。",
+            text,
+        )
 
     def test_detail_markdown_for_session_fatal_uses_restart_guidance(self) -> None:
         from belle.local_ui.pages.done import detail_markdown_for_result
@@ -131,7 +137,10 @@ class LocalUiDonePageTests(unittest.TestCase):
             text,
         )
         self.assertIn("さらにこのブラウザも終了し、その後改めてデスクトップからシステムを起動してください。", text)
-        self.assertIn("```text\nSESSION_FATAL_APPLICATION_CALL_FAILED\n```", text)
+        self.assertIn(
+            "SESSION_FATAL_APPLICATION_CALL_FAILED が発生しました。再起動手順と、管理者に伝える内容を教えてください。",
+            text,
+        )
 
 
 if __name__ == "__main__":

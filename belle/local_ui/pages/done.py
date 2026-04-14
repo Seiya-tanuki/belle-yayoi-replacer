@@ -3,15 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from belle.local_ui.services.collect import overall_result_title, run_collect, serialize_collect_result
-from belle.local_ui.services.replacer import SESSION_FATAL_DETAIL_TEXT
+from belle.local_ui.services.detail_messages import (
+    detail_markdown_for_collect_result as _detail_markdown_for_collect_result,
+    detail_markdown_for_run_result as _detail_markdown_for_run_result,
+    markdown_code_block as _markdown_code_block,
+)
 from belle.local_ui.state import get_state, line_label, reset_state
 from belle.local_ui.theme import page_shell, primary_button, secondary_button
-from belle.ui_reason_codes import (
-    RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED,
-    RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED,
-    RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED,
-    SESSION_FATAL_APPLICATION_CALL_FAILED,
-)
 
 NEEDS_REVIEW_SECTION_SUFFIX = "（詳細を見るボタンをクリック）"
 
@@ -39,59 +37,15 @@ def requested_run_refs_for_results(client_id: str, run_results: list[dict[str, o
 
 
 def markdown_code_block(text: str) -> str:
-    return f"```text\n{text}\n```"
+    return _markdown_code_block(text)
 
 
 def detail_markdown_for_result(result: dict[str, object]) -> str:
-    ui_reason_code = str(result.get("ui_reason_code") or "").strip()
-    if ui_reason_code == SESSION_FATAL_APPLICATION_CALL_FAILED:
-        return (
-            "注意事項:\n"
-            f"{SESSION_FATAL_DETAIL_TEXT}\n\n"
-            "発生したエラー:\n"
-            f"{markdown_code_block(ui_reason_code)}"
-        )
-    if ui_reason_code == RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED:
-        return (
-            "注意事項:\n"
-            "カードを推定する十分な根拠が得られず、補助科目が置換されませんでした。\n\n"
-            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
-            f"{markdown_code_block('RUN_NEEDS_REVIEW_CARD_SUBACCOUNT_INFERENCE_FAILED が発生しました。原因と対処法を教えてください。')}"
-        )
-    if ui_reason_code == RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED:
-        return (
-            "注意事項:\n"
-            "貸借の未払側は見つかりましたが、最終出力に使う canonical payable account を安全に確定できませんでした。\n\n"
-            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
-            f"{markdown_code_block('RUN_NEEDS_REVIEW_CARD_CANONICAL_PAYABLE_FAILED が発生しました。原因と対処法を教えてください。')}"
-        )
-    if ui_reason_code == RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED:
-        return (
-            "注意事項:\n"
-            "銀行を推定する十分な根拠が得られず、補助科目が置換されませんでした。\n\n"
-            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
-            f"{markdown_code_block('RUN_NEEDS_REVIEW_BANK_SUBACCOUNT_INFERENCE_FAILED が発生しました。原因と対処法を教えてください。')}"
-        )
-    if str(result.get("status") or "") == "failure":
-        prompt = f"{ui_reason_code or 'RUN_FAIL_UNKNOWN'} が発生しました。原因と対処法を教えてください。"
-        return (
-            "注意事項:\n"
-            "処理時にエラーが発生しました。\n\n"
-            "操作マニュアル（NotebookLM）に以下のメッセージをそのまま貼り付ければ詳細な原因が確認できます:\n"
-            f"{markdown_code_block(prompt)}"
-        )
-
-    detail_text = str(result.get("stdout") or result.get("stderr") or "ログはありません。")
-    return f"```\n{detail_text}\n```"
+    return _detail_markdown_for_run_result(result)
 
 
 def detail_markdown_for_collect_result(result: dict[str, object]) -> str:
-    ui_reason_code = str(result.get("ui_reason_code") or "").strip() or "COLLECT_FAIL_UNKNOWN"
-    return (
-        "予期しないエラーが発生しました。システム管理者に問い合わせてください。\n\n"
-        "発生したエラー:\n"
-        f"{markdown_code_block(ui_reason_code)}"
-    )
+    return _detail_markdown_for_collect_result(result)
 
 
 def build() -> None:

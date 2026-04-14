@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import asdict
+
+from belle.local_ui.services.detail_messages import detail_markdown_for_precheck_result
 from belle.local_ui.services.replacer import (
     SessionFatalError,
     build_session_fatal_precheck_results,
@@ -40,8 +43,8 @@ def build() -> None:
                 ui.label(result.status_label).classes("text-lg font-semibold")
                 ui.label(result.reason).classes("text-sm text-slate-600")
                 if result.status == "FAIL":
-                    with ui.expansion("詳細ログを見る", value=False).classes("w-full"):
-                        ui.markdown(f"```\n{result.stdout or result.stderr or 'ログはありません。'}\n```")
+                    with ui.expansion("詳細を見る", value=False).classes("w-full"):
+                        ui.markdown(detail_markdown_for_precheck_result(asdict(result)))
 
         with ui.row().classes("w-full items-center justify-between gap-3"):
             secondary_button(
