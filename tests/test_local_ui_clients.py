@@ -6,6 +6,8 @@ import json
 import shutil
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 from uuid import uuid4
 
 
@@ -265,6 +267,29 @@ class LocalUiClientServicesTests(unittest.TestCase):
             self.assertEqual("", result.client_id)
             self.assertEqual("クライアントを作成できませんでした。入力内容を確認してください。", result.error_message)
             self.assertIn("Already exists", result.stdout)
+        finally:
+            shutil.rmtree(repo_root, ignore_errors=True)
+
+    def test_create_client_normalizes_system_exit_from_register_module_to_failure_result(self) -> None:
+        repo_root = self.test_tmp_root / f"local_ui_clients_system_exit_{uuid4().hex}"
+        repo_root.mkdir(parents=True, exist_ok=False)
+        try:
+            _prepare_template(self.real_repo_root, repo_root)
+            _prepare_shared_assets(repo_root)
+            from belle.local_ui.services.clients import create_client
+
+            fake_module = SimpleNamespace(
+                validate_and_canonicalize=lambda raw_name: SimpleNamespace(ok=True, canonical="ABC", reason=""),
+                main=mock.Mock(side_effect=SystemExit("register fail-closed")),
+            )
+
+            with mock.patch("belle.local_ui.services.clients._load_register_module", return_value=fake_module):
+                result = create_client("ABC", "tax_excluded", repo_root)
+
+            self.assertFalse(result.ok)
+            self.assertEqual("", result.client_id)
+            self.assertEqual("クライアントを作成できませんでした。入力内容を確認してください。", result.error_message)
+            self.assertIn("register fail-closed", result.stdout)
         finally:
             shutil.rmtree(repo_root, ignore_errors=True)
 

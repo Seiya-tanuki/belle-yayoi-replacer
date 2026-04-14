@@ -58,6 +58,19 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
         self.assertIn("shared-layer call failed", ctx.exception.detail["raw_error"])
 
+    def test_run_precheck_for_lines_raises_session_fatal_when_shared_layer_system_exit_occurs(self) -> None:
+        from belle.local_ui.services import replacer as replacer_service
+
+        with mock.patch.object(replacer_service, "plan_replacer", side_effect=SystemExit("boom")):
+            with self.assertRaises(replacer_service.SessionFatalError) as ctx:
+                replacer_service.run_precheck_for_lines("C1", ["receipt"], root=Path("C:/repo"))
+
+        self.assertEqual("SESSION_FATAL_APPLICATION_CALL_FAILED", ctx.exception.ui_reason_code)
+        self.assertEqual("precheck", ctx.exception.detail["phase"])
+        self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
+        self.assertEqual("SystemExit", ctx.exception.detail["source_exception_type"])
+        self.assertIn("shared-layer call failed", ctx.exception.detail["raw_error"])
+
     def test_run_selected_lines_maps_structured_success_results(self) -> None:
         from belle.local_ui.services import replacer as replacer_service
 
@@ -369,6 +382,19 @@ class LocalUiReplacerServiceTests(unittest.TestCase):
         self.assertEqual("run", ctx.exception.detail["phase"])
         self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
         self.assertIn("shared-layer call failed", ctx.exception.detail["raw_error"])
+
+    def test_run_selected_lines_raises_session_fatal_on_preflight_system_exit(self) -> None:
+        from belle.local_ui.services import replacer as replacer_service
+
+        with mock.patch.object(replacer_service, "plan_replacer", side_effect=SystemExit("boom")):
+            with self.assertRaises(replacer_service.SessionFatalError) as ctx:
+                replacer_service.run_selected_lines("C1", ["receipt"], root=Path("C:/repo"))
+
+        self.assertEqual("SESSION_FATAL_APPLICATION_CALL_FAILED", ctx.exception.ui_reason_code)
+        self.assertEqual("run", ctx.exception.detail["phase"])
+        self.assertEqual("receipt", ctx.exception.detail["origin_line_id"])
+        self.assertEqual("SystemExit", ctx.exception.detail["source_exception_type"])
+        self.assertIn("run preflight shared-layer call failed", ctx.exception.detail["raw_error"])
 
     def test_build_session_fatal_results_expand_to_all_selected_lines(self) -> None:
         from belle.local_ui.services.replacer import (

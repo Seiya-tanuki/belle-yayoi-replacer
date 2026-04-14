@@ -123,13 +123,19 @@ def create_client(
         if selected_bootstrap_categories is not None:
             selected_json_path = _write_selected_bootstrap_json(teacher_path, selected_bootstrap_categories)
             argv.extend(["--category-override-selected-json", str(selected_json_path)])
+    system_exit_message = ""
     try:
         with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
             rc = module.main(argv=argv, repo_root=current_root)
+    except SystemExit as exc:
+        rc = 1
+        system_exit_message = str(exc)
     finally:
         sys.path[:] = original_sys_path
 
     stdout = buffer.getvalue()
+    if system_exit_message:
+        stdout = (stdout + ("\n" if stdout and not stdout.endswith("\n") else "") + system_exit_message).strip()
     return ClientCreateResult(
         ok=rc == 0,
         client_id=validation.canonical if rc == 0 else "",

@@ -178,18 +178,41 @@ def _run_result_from_skipped_plan(plan: LinePlan) -> RunResult:
     )
 
 
+def _raise_session_fatal(
+    *,
+    phase: str,
+    line_id: str,
+    raw_error: str,
+    exc: BaseException,
+) -> None:
+    raise SessionFatalError(
+        phase=phase,
+        line_id=line_id,
+        raw_error=raw_error,
+        detail={"source_exception_type": type(exc).__name__},
+    ) from exc
+
+
 def run_precheck_for_lines(client_id: str, selected_lines: list[str], *, root: Path | None = None) -> list[PrecheckResult]:
     current_root = root or source_repo_root()
     results: list[PrecheckResult] = []
     for line_id in normalized_line_order(selected_lines):
         try:
             plan_result = plan_replacer(current_root, client_id, requested_line=line_id)
-        except Exception as exc:
-            raise SessionFatalError(
+        except SystemExit as exc:
+            _raise_session_fatal(
                 phase="precheck",
                 line_id=line_id,
                 raw_error=f"precheck shared-layer call failed: {exc}",
-            ) from exc
+                exc=exc,
+            )
+        except Exception as exc:
+            _raise_session_fatal(
+                phase="precheck",
+                line_id=line_id,
+                raw_error=f"precheck shared-layer call failed: {exc}",
+                exc=exc,
+            )
         results.extend(_precheck_result_from_plan(plan) for plan in plan_result.plans)
     return results
 
@@ -200,12 +223,20 @@ def run_selected_lines(client_id: str, selected_lines: list[str], *, root: Path 
     for line_id in normalized_line_order(selected_lines):
         try:
             plan_result = plan_replacer(current_root, client_id, requested_line=line_id)
-        except Exception as exc:
-            raise SessionFatalError(
+        except SystemExit as exc:
+            _raise_session_fatal(
                 phase="run",
                 line_id=line_id,
                 raw_error=f"run preflight shared-layer call failed: {exc}",
-            ) from exc
+                exc=exc,
+            )
+        except Exception as exc:
+            _raise_session_fatal(
+                phase="run",
+                line_id=line_id,
+                raw_error=f"run preflight shared-layer call failed: {exc}",
+                exc=exc,
+            )
 
         if plan_result.has_failures:
             results.extend(_run_result_from_failed_plan(plan) for plan in plan_result.plans if plan.status == "FAIL")
