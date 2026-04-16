@@ -300,7 +300,8 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
     def test_lock_timeout_prevents_run_dir_creation(self) -> None:
         repo_root = Path(__file__).resolve().parents[1]
         client_id = f"TEST_FAIL_CLOSED_{uuid4().hex[:8]}"
-        client_dir = repo_root / "clients" / client_id / "lines" / "receipt"
+        client_root = repo_root / "clients" / client_id
+        client_dir = client_root / "lines" / "receipt"
         lock_path = repo_root / "lexicon" / "receipt" / "pending" / "locks" / "label_queue.lock"
         lock_backup: Path | None = None
 
@@ -345,7 +346,7 @@ class YayoiReplacerFailClosedTests(unittest.TestCase):
             self.assertEqual(run_dirs, [], msg=proc.stdout + "\n" + proc.stderr)
             self.assertFalse((client_dir / "outputs" / "LATEST.txt").exists())
         finally:
-            shutil.rmtree(client_dir, ignore_errors=True)
+            shutil.rmtree(client_root, ignore_errors=True)
             if lock_path.exists():
                 try:
                     lock_path.unlink()
