@@ -409,17 +409,9 @@ class LocalUiClientServicesTests(unittest.TestCase):
             shutil.rmtree(repo_root, ignore_errors=True)
 
     def test_create_app_registers_client_routes(self) -> None:
-        import pkgutil
+        from belle.local_ui.nicegui_compat import ensure_nicegui_compat
 
-        if not hasattr(pkgutil, "find_loader"):
-            import importlib.util
-
-            def _find_loader(name: str):
-                spec = importlib.util.find_spec(name)
-                return None if spec is None else spec.loader
-
-            pkgutil.find_loader = _find_loader  # type: ignore[attr-defined]
-
+        ensure_nicegui_compat()
         from nicegui import Client
         import belle.local_ui.pages as pages_module
         from belle.local_ui.app import create_app

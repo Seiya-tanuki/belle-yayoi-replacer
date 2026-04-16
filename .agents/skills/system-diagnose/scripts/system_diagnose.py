@@ -2112,7 +2112,11 @@ def main() -> int:
     print(f"次の一手: {next_step_ja}")
     if render_only:
         print(_REPORT_BEGIN_MARKER)
-        print(report_content, end="")
+        stdout_buffer = getattr(sys.stdout, "buffer", None)
+        if stdout_buffer is not None:
+            stdout_buffer.write(report_content.encode("utf-8"))
+        else:  # pragma: no cover - fallback for non-standard stdout shims
+            sys.stdout.write(report_content)
         print(_REPORT_END_MARKER)
     else:
         assert report_path is not None

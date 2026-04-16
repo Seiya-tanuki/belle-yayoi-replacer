@@ -5,8 +5,6 @@ import importlib.util
 import json
 import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import time
 import unittest
@@ -14,6 +12,8 @@ from pathlib import Path
 from unittest import mock
 from uuid import uuid4
 
+from belle.application import plan_replacer, run_replacer
+from belle.application.errors import ReplacerRunFailedError
 from belle.ingest import ingest_csv_dir
 from belle.lexicon import load_lexicon
 from belle.lexicon_manager import (
@@ -64,6 +64,36 @@ def _write_receipt_line_config(config_path: Path) -> None:
         ),
         encoding="utf-8",
     )
+
+
+def _write_category_defaults(repo_root: Path) -> None:
+    defaults_dir = repo_root / "defaults" / "receipt"
+    defaults_dir.mkdir(parents=True, exist_ok=True)
+    defaults_obj = {
+        "schema": "belle.category_defaults.v2",
+        "version": "0.1",
+        "defaults": {
+            "known": {
+                "target_account": "旅費交通費",
+                "target_tax_division": "",
+                "confidence": 0.7,
+                "priority": "MED",
+                "reason_code": "category_default",
+            }
+        },
+        "global_fallback": {
+            "target_account": "仮払金",
+            "target_tax_division": "",
+            "confidence": 0.35,
+            "priority": "HIGH",
+            "reason_code": "global_fallback",
+        },
+    }
+    for name in ("category_defaults_tax_excluded.json", "category_defaults_tax_included.json"):
+        (defaults_dir / name).write_text(
+            json.dumps(defaults_obj, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _write_yayoi_row(path: Path, *, summary: str, debit: str = "旅費交通費") -> None:
@@ -298,62 +328,47 @@ class LexiconApplyExitCodeTests(unittest.TestCase):
 
 class YayoiReplacerFailClosedTests(unittest.TestCase):
     def test_lock_timeout_prevents_run_dir_creation(self) -> None:
-        repo_root = Path(__file__).resolve().parents[1]
+        real_repo_root = Path(__file__).resolve().parents[1]
         client_id = f"TEST_FAIL_CLOSED_{uuid4().hex[:8]}"
-        client_root = repo_root / "clients" / client_id
-        client_dir = client_root / "lines" / "receipt"
-        lock_path = repo_root / "lexicon" / "receipt" / "pending" / "locks" / "label_queue.lock"
-        lock_backup: Path | None = None
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            client_root = repo_root / "clients" / client_id
+            client_dir = client_root / "lines" / "receipt"
+            lock_path = repo_root / "lexicon" / "receipt" / "pending" / "locks" / "label_queue.lock"
 
-        try:
+            shutil.copytree(real_repo_root / "clients" / "TEMPLATE", repo_root / "clients" / "TEMPLATE")
+            _write_minimal_lexicon(repo_root / "lexicon" / "lexicon.json")
+            _write_category_defaults(repo_root)
             (client_dir / "config").mkdir(parents=True, exist_ok=True)
             _write_receipt_line_config(client_dir / "config" / "receipt_line_config.json")
             _write_yayoi_row(client_dir / "inputs" / "ledger_ref" / "batch1.csv", summary="LOCK TEST SHOP / row")
             _write_yayoi_row(client_dir / "inputs" / "kari_shiwake" / "target.csv", summary="dummy")
 
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            if lock_path.exists():
-                lock_backup = lock_path.with_name(f"{lock_path.name}.bak.{uuid4().hex[:8]}")
-                lock_path.rename(lock_backup)
             lock_path.write_text(json.dumps({"owner_id": "unit-test"}), encoding="utf-8")
 
-            env = os.environ.copy()
-            env["BELLE_LABEL_QUEUE_LOCK_TIMEOUT_SEC"] = "1"
-            env["BELLE_LABEL_QUEUE_LOCK_STALE_SEC"] = "120"
+            plan_result = plan_replacer(repo_root, client_id, requested_line="receipt")
+            self.assertFalse(plan_result.has_failures)
 
-            proc = subprocess.run(
-                [
-                    sys.executable,
-                    str(repo_root / ".agents" / "skills" / "yayoi-replacer" / "scripts" / "run_yayoi_replacer.py"),
-                    "--client",
-                    client_id,
-                    "--line",
-                    "receipt",
-                    "--yes",
-                ],
-                cwd=repo_root,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "BELLE_LABEL_QUEUE_LOCK_TIMEOUT_SEC": "1",
+                    "BELLE_LABEL_QUEUE_LOCK_STALE_SEC": "120",
+                },
+                clear=False,
+            ):
+                with self.assertRaises(ReplacerRunFailedError) as ctx:
+                    run_replacer(repo_root, client_id, plan_result=plan_result)
 
-            self.assertNotEqual(proc.returncode, 0, msg=proc.stdout + "\n" + proc.stderr)
-            self.assertIn("label_queue 自動更新に失敗しました", proc.stdout + proc.stderr)
+            self.assertEqual("receipt", ctx.exception.line_id)
+            self.assertEqual("receipt_lexicon_autogrow_failed", ctx.exception.failure_key)
+            self.assertIn("label_queue 自動更新に失敗しました", str(ctx.exception))
 
             runs_dir = client_dir / "outputs" / "runs"
             run_dirs = [p for p in runs_dir.iterdir() if p.is_dir()] if runs_dir.exists() else []
-            self.assertEqual(run_dirs, [], msg=proc.stdout + "\n" + proc.stderr)
+            self.assertEqual(run_dirs, [], msg=str(ctx.exception))
             self.assertFalse((client_dir / "outputs" / "LATEST.txt").exists())
-        finally:
-            shutil.rmtree(client_root, ignore_errors=True)
-            if lock_path.exists():
-                try:
-                    lock_path.unlink()
-                except OSError:
-                    pass
-            if lock_backup and lock_backup.exists():
-                lock_backup.rename(lock_path)
 
 
 if __name__ == "__main__":
